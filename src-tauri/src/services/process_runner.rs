@@ -33,10 +33,33 @@ pub fn resolve_executable(name: &str, override_path: Option<&str>) -> Option<Pat
             }
         }
     }
-    ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
-        .iter()
-        .map(|directory| Path::new(directory).join(name))
+    resolve_in_directories(name, common_tool_directories())
+}
+
+fn resolve_in_directories(
+    name: &str,
+    directories: impl IntoIterator<Item = PathBuf>,
+) -> Option<PathBuf> {
+    directories
+        .into_iter()
+        .map(|directory| directory.join(name))
         .find(|candidate| candidate.is_file())
+}
+
+fn common_tool_directories() -> Vec<PathBuf> {
+    let mut directories = vec![
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/bin"),
+    ];
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        directories.extend([
+            home.join(".local/bin"),
+            home.join("homebrew/bin"),
+            home.join("local/homebrew/bin"),
+        ]);
+    }
+    directories
 }
 
 pub fn run_bounded(
@@ -105,6 +128,20 @@ mod tests {
             Some(PathBuf::from("/usr/bin/true"))
         );
         assert!(resolve_executable("ignored", Some("/definitely/missing")).is_none());
+    }
+
+    #[test]
+    fn resolves_tool_from_a_custom_directory() {
+        let directory =
+            std::env::temp_dir().join(format!("homer-tool-discovery-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let executable = directory.join("example-tool");
+        std::fs::write(&executable, b"fixture").unwrap();
+        assert_eq!(
+            resolve_in_directories("example-tool", [directory.clone()]),
+            Some(executable)
+        );
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

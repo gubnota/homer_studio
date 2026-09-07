@@ -5,7 +5,7 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 
-use super::{process_runner, project_store::CommandError};
+use super::{llm, process_runner, project_store::CommandError};
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,6 +15,8 @@ pub struct Settings {
     pub speech: SpeechSettings,
     pub ffmpeg_path: Option<String>,
     pub ffprobe_path: Option<String>,
+    #[serde(default)]
+    pub ollama_path: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -47,9 +49,13 @@ pub struct SpeechSettings {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolDiagnostic {
+    pub key: String,
     pub name: String,
     pub path: Option<String>,
     pub available: bool,
+    pub status: String,
+    pub configured_path: Option<String>,
+    pub detected_path: Option<String>,
 }
 
 impl Default for Settings {
@@ -64,6 +70,7 @@ impl Default for Settings {
             },
             ffmpeg_path: None,
             ffprobe_path: None,
+            ollama_path: None,
         }
     }
 }
@@ -99,23 +106,82 @@ pub fn save(app: &AppHandle, settings: Settings) -> Result<Settings, CommandErro
 
 pub fn diagnostics(settings: &Settings) -> Vec<ToolDiagnostic> {
     let tools = [
-        ("macOS speech", "say", None),
-        ("FFmpeg", "ffmpeg", settings.ffmpeg_path.as_deref()),
-        ("FFprobe", "ffprobe", settings.ffprobe_path.as_deref()),
-        ("llama.cpp", "llama-cli", llama_override(&settings.llm)),
-        ("Ollama", "ollama", None),
+        ("speech", "macOS speech", "say", None),
+        (
+            "ffmpeg",
+            "FFmpeg",
+            "ffmpeg",
+            settings.ffmpeg_path.as_deref(),
+        ),
+        (
+            "ffprobe",
+            "FFprobe",
+            "ffprobe",
+            settings.ffprobe_path.as_deref(),
+        ),
+        (
+            "llama",
+            "llama.cpp",
+            "llama-cli",
+            llama_override(&settings.llm),
+        ),
+        (
+            "ollama",
+            "Ollama CLI",
+            "ollama",
+            settings.ollama_path.as_deref(),
+        ),
     ];
-    tools
+    let mut diagnostics: Vec<_> = tools
         .into_iter()
-        .map(|(label, name, override_path)| {
-            let path = process_runner::resolve_executable(name, override_path);
+        .map(|(key, label, name, configured)| {
+            let detected = process_runner::resolve_executable(name, None);
+            let resolved = process_runner::resolve_executable(name, configured);
+            let configured_valid = configured
+                .filter(|value| !value.trim().is_empty())
+                .is_some_and(|_| resolved.is_some());
+            let status = if configured.is_some_and(|value| !value.trim().is_empty()) {
+                if configured_valid {
+                    "configured"
+                } else {
+                    "invalid_configuration"
+                }
+            } else if detected.is_some() {
+                "found_automatically"
+            } else {
+                "not_found"
+            };
             ToolDiagnostic {
+                key: key.into(),
                 name: label.into(),
-                available: path.is_some(),
-                path: path.map(|path| path.to_string_lossy().into_owned()),
+                available: resolved.is_some(),
+                path: resolved.map(|path| path.to_string_lossy().into_owned()),
+                status: status.into(),
+                configured_path: configured.map(str::to_string),
+                detected_path: detected.map(|path| path.to_string_lossy().into_owned()),
             }
         })
-        .collect()
+        .collect();
+    let base_url = match &settings.llm {
+        LlmSettings::Ollama { base_url, .. } => base_url.as_str(),
+        _ => "http://127.0.0.1:11434",
+    };
+    let reachable = llm::ollama_reachable(base_url);
+    diagnostics.push(ToolDiagnostic {
+        key: "ollama_service".into(),
+        name: "Ollama server".into(),
+        path: Some(base_url.into()),
+        available: reachable,
+        status: if reachable {
+            "service_reachable"
+        } else {
+            "service_unavailable"
+        }
+        .into(),
+        configured_path: Some(base_url.into()),
+        detected_path: None,
+    });
+    diagnostics
 }
 
 fn llama_override(llm: &LlmSettings) -> Option<&str> {

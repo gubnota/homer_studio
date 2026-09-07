@@ -165,40 +165,8 @@ fn candidate(text: String, provider: &str, model: &str) -> Result<TextCandidate,
 }
 
 fn post_loopback(base_url: &str, path: &str, body: &str) -> Result<String, CommandError> {
-    let address = base_url
-        .strip_prefix("http://")
-        .ok_or_else(|| CommandError::new("UNSAFE_OLLAMA_URL", "Ollama must use loopback HTTP."))?
-        .trim_end_matches('/');
-    let mut parts = address.split(':');
-    let host = parts.next().unwrap_or_default();
-    if !matches!(host, "127.0.0.1" | "localhost") {
-        return Err(CommandError::new(
-            "UNSAFE_OLLAMA_URL",
-            "Ollama must use a loopback address.",
-        ));
-    }
-    let port: u16 =
-        parts.next().unwrap_or("11434").parse().map_err(|_| {
-            CommandError::new("INVALID_OLLAMA_URL", "Ollama URL has an invalid port.")
-        })?;
-    if parts.next().is_some() {
-        return Err(CommandError::new(
-            "INVALID_OLLAMA_URL",
-            "Ollama URL is invalid.",
-        ));
-    }
-    let mut stream = TcpStream::connect_timeout(
-        &format!("{host}:{port}")
-            .parse()
-            .map_err(|_| CommandError::new("INVALID_OLLAMA_URL", "Ollama URL is invalid."))?,
-        Duration::from_secs(3),
-    )
-    .map_err(|error| {
-        CommandError::new(
-            "OLLAMA_UNAVAILABLE",
-            format!("Cannot connect to Ollama: {error}"),
-        )
-    })?;
+    let (host, port) = loopback_address(base_url)?;
+    let mut stream = connect_loopback(&host, port)?;
     stream.set_read_timeout(Some(Duration::from_secs(600))).ok();
     write!(stream, "POST {path} HTTP/1.1\r\nHost: {host}:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).map_err(|error| CommandError::io("Cannot send Ollama request", error))?;
     let mut response = Vec::new();
@@ -223,6 +191,53 @@ fn post_loopback(base_url: &str, path: &str, body: &str) -> Result<String, Comma
         ));
     }
     Ok(body.to_string())
+}
+
+pub fn ollama_reachable(base_url: &str) -> bool {
+    loopback_address(base_url)
+        .and_then(|(host, port)| connect_loopback(&host, port))
+        .is_ok()
+}
+
+fn loopback_address(base_url: &str) -> Result<(String, u16), CommandError> {
+    let address = base_url
+        .strip_prefix("http://")
+        .ok_or_else(|| CommandError::new("UNSAFE_OLLAMA_URL", "Ollama must use loopback HTTP."))?
+        .trim_end_matches('/');
+    let mut parts = address.split(':');
+    let host = parts.next().unwrap_or_default();
+    if !matches!(host, "127.0.0.1" | "localhost") {
+        return Err(CommandError::new(
+            "UNSAFE_OLLAMA_URL",
+            "Ollama must use a loopback address.",
+        ));
+    }
+    let port: u16 =
+        parts.next().unwrap_or("11434").parse().map_err(|_| {
+            CommandError::new("INVALID_OLLAMA_URL", "Ollama URL has an invalid port.")
+        })?;
+    if parts.next().is_some() {
+        return Err(CommandError::new(
+            "INVALID_OLLAMA_URL",
+            "Ollama URL is invalid.",
+        ));
+    }
+    Ok((host.to_string(), port))
+}
+
+fn connect_loopback(host: &str, port: u16) -> Result<TcpStream, CommandError> {
+    TcpStream::connect_timeout(
+        &format!("{host}:{port}")
+            .parse()
+            .map_err(|_| CommandError::new("INVALID_OLLAMA_URL", "Ollama URL is invalid."))?,
+        Duration::from_secs(3),
+    )
+    .map_err(|error| {
+        CommandError::new(
+            "OLLAMA_UNAVAILABLE",
+            format!("Cannot connect to Ollama: {error}"),
+        )
+    })
 }
 
 fn concise(message: &str) -> String {

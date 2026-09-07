@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Chapter, JobRecord, ProjectSnapshot, Settings, ToolDiagnostic, Voice } from '../../shared/contracts'
 import type { RouteId } from '../../shared/navigation'
-import { chooseAudio, chooseFolder, chooseManuscript, errorMessage, productionApi, projectApi, systemApi } from './native'
+import { chooseAudio, chooseFolder, chooseManuscript, chooseTool, errorMessage, productionApi, projectApi, systemApi } from './native'
 
 interface DesktopInfo { platform: string; architecture: string; runtime: string }
 
@@ -277,23 +277,39 @@ export function SettingsPage(): JSX.Element {
         <h2>Desktop runtime</h2>
         <dl><div><dt>Platform</dt><dd>{desktop.platform}</dd></div><div><dt>Architecture</dt><dd>{desktop.architecture}</dd></div><div><dt>Runtime</dt><dd>{desktop.runtime}</dd></div></dl>
         <h2>Local tools</h2>
-        <div className="tool-list">{tools.map((tool) => <div key={tool.name}><span className={tool.available ? 'dot available' : 'dot'} /><strong>{tool.name}</strong><small>{tool.path ?? 'Not found'}</small></div>)}</div>
+        <div className="tool-list">{tools.map((tool) => <div key={tool.name}><span className={tool.available ? 'dot available' : 'dot'} /><strong>{tool.name}</strong><span className="tool-result"><small>{toolStatus(tool.status)}</small>{tool.path && <small title={tool.path}>{tool.path}</small>}</span></div>)}</div>
       </section>
-      {settings && <SettingsForm settings={settings} onChange={setSettings} />}
+      {settings && <SettingsForm settings={settings} tools={tools} onChange={setSettings} />}
     </div>
   </div>
 }
 
-function SettingsForm({ settings, onChange }: { settings: Settings; onChange: (value: Settings) => void }): JSX.Element {
+function toolStatus(status: ToolDiagnostic['status']): string {
+  return ({ invalid_configuration: 'Configured path is invalid', not_found: 'Not found', service_unavailable: 'Server is not running', service_reachable: 'Server is reachable', configured: 'Configured', found_automatically: 'Found automatically' })[status]
+}
+
+function SettingsForm({ settings, tools, onChange }: { settings: Settings; tools: ToolDiagnostic[]; onChange: (value: Settings) => void }): JSX.Element {
   const ollama = settings.llm.provider === 'ollama' ? settings.llm : null
   const llama = settings.llm.provider === 'llama_cpp' ? settings.llm : null
+  const detected = (key: ToolDiagnostic['key']): string => tools.find((tool) => tool.key === key)?.detectedPath ?? ''
+  async function pick(title: string, apply: (path: string) => void, extensions?: string[]): Promise<void> {
+    const path = await chooseTool(title, extensions)
+    if (path) apply(path)
+  }
+  const pathField = (label: string, value: string, apply: (path: string) => void, key?: ToolDiagnostic['key'], extensions?: string[]): JSX.Element => {
+    const detectedPath = key ? detected(key) : ''
+    return <label>{label}<div className="path-picker"><input value={value} onChange={(event) => apply(event.target.value)} placeholder={key ? 'Automatically detected when empty' : 'Choose a file'} /><button type="button" onClick={() => void pick(`Choose ${label}`, apply, extensions)}>Choose</button>{detectedPath && value !== detectedPath && <button type="button" onClick={() => apply(detectedPath)}>Use detected</button>}</div></label>
+  }
   return <section className="panel settings-form">
     <h2>Speech</h2>
     <label>Installed voice<input value={settings.speech.voiceId} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, voiceId: event.target.value } })} /></label>
     <label>Words per minute<input type="number" min="80" max="500" value={settings.speech.rate} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, rate: Number(event.target.value) } })} /></label>
+    <h2>Audio tools</h2>
+    {pathField('FFmpeg path', settings.ffmpegPath ?? '', (path) => onChange({ ...settings, ffmpegPath: path || null }), 'ffmpeg')}
+    {pathField('FFprobe path', settings.ffprobePath ?? '', (path) => onChange({ ...settings, ffprobePath: path || null }), 'ffprobe')}
     <h2>Text processing</h2>
     <label>Provider<select value={settings.llm.provider} onChange={(event) => onChange({ ...settings, llm: event.target.value === 'ollama' ? { provider: 'ollama', base_url: 'http://127.0.0.1:11434', model: '', context_size: 8192, max_tokens: 2048 } : event.target.value === 'llama_cpp' ? { provider: 'llama_cpp', executable_path: '', model_path: '', context_size: 8192, max_tokens: 2048, gpu_layers: 99 } : { provider: 'none' } })}><option value="none">Disabled</option><option value="llama_cpp">llama.cpp / GGUF</option><option value="ollama">Ollama</option></select></label>
-    {ollama && <div><label>Loopback URL<input value={ollama.base_url} onChange={(event) => onChange({ ...settings, llm: { ...ollama, base_url: event.target.value } })} /></label><label>Model<input value={ollama.model} onChange={(event) => onChange({ ...settings, llm: { ...ollama, model: event.target.value } })} /></label></div>}
-    {llama && <div><label>llama-cli path<input value={llama.executable_path} onChange={(event) => onChange({ ...settings, llm: { ...llama, executable_path: event.target.value } })} /></label><label>GGUF model path<input value={llama.model_path} onChange={(event) => onChange({ ...settings, llm: { ...llama, model_path: event.target.value } })} /></label></div>}
+    {ollama && <div><label>Loopback URL<input value={ollama.base_url} onChange={(event) => onChange({ ...settings, llm: { ...ollama, base_url: event.target.value } })} /></label><label>Model<input value={ollama.model} onChange={(event) => onChange({ ...settings, llm: { ...ollama, model: event.target.value } })} /></label>{pathField('Ollama CLI path', settings.ollamaPath ?? '', (path) => onChange({ ...settings, ollamaPath: path || null }), 'ollama')}</div>}
+    {llama && <div>{pathField('llama-cli path', llama.executable_path, (path) => onChange({ ...settings, llm: { ...llama, executable_path: path } }), 'llama')}{pathField('GGUF model path', llama.model_path, (path) => onChange({ ...settings, llm: { ...llama, model_path: path } }), undefined, ['gguf'])}</div>}
   </section>
 }

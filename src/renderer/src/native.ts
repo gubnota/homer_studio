@@ -35,6 +35,17 @@ export async function chooseAudio(): Promise<string | null> {
   return typeof selected === 'string' ? selected : null
 }
 
+export async function chooseTool(title: string, extensions?: string[]): Promise<string | null> {
+  if (!isDesktop()) return null
+  const selected = await open({
+    directory: false,
+    multiple: false,
+    title,
+    ...(extensions ? { filters: [{ name: title, extensions }] } : {})
+  })
+  return typeof selected === 'string' ? selected : null
+}
+
 export const projectApi = {
   create: (parentPath: string, title: string, manuscript: string) =>
     invoke<ProjectSnapshot>('create_project', { parentPath, title, manuscript }),

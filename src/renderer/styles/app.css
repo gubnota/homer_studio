@@ -34,7 +34,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); gap: 20px; }
 .panel { padding: 24px; }
 label { display: grid; gap: 8px; margin-bottom: 20px; font-size: 12px; font-weight: 650; }
-.field-note { color: #96958e; font-size: 11px; font-weight: 400; }.path-picker { display: flex; gap: 8px; }.path-picker input { flex: 1; }
+.field-note { color: #96958e; font-size: 11px; font-weight: 400; }.path-picker { display: flex; flex-wrap: wrap; gap: 8px; }.path-picker input { flex: 1 1 260px; }.path-picker button { white-space: nowrap; }
 input, textarea { width: 100%; padding: 11px 12px; border: 1px solid #dcdad4; border-radius: 7px; color: #222; background: #fcfcfb; outline: none; }
 input:focus, textarea:focus { border-color: #8a8982; box-shadow: 0 0 0 3px #efeee9; }
 textarea { min-height: 280px; resize: vertical; line-height: 1.55; }
@@ -61,6 +61,7 @@ dt { color: #77766f; } dd { margin: 0; font-family: ui-monospace, monospace; }
 .tool-list > div { display: grid; grid-template-columns: 12px 110px 1fr; align-items: center; }
 .tool-list small, .job-row small { color: #697386; }
 .tool-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-result { display: grid; min-width: 0; gap: 2px; }.tool-result small:first-child { color: #333; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #c9cdd4; }
 .dot.available { background: #2a9d66; }
 .settings-form h2:not(:first-child) { margin-top: 10px; }

@@ -64,7 +64,16 @@ export interface Settings {
   speech: { provider: 'macos_say'; voiceId: string; rate: number }
   ffmpegPath: string | null
   ffprobePath: string | null
+  ollamaPath: string | null
 }
 
-export interface ToolDiagnostic { name: string; path: string | null; available: boolean }
+export interface ToolDiagnostic {
+  key: 'speech' | 'ffmpeg' | 'ffprobe' | 'llama' | 'ollama' | 'ollama_service'
+  name: string
+  path: string | null
+  available: boolean
+  status: 'configured' | 'invalid_configuration' | 'found_automatically' | 'not_found' | 'service_reachable' | 'service_unavailable'
+  configuredPath: string | null
+  detectedPath: string | null
+}
 export interface JobRecord { id: string; kind: string; label: string; status: 'queued' | 'running' | 'completed' | 'cancelled' | 'failed'; progress: number; message: string | null; createdAtMs: number }
