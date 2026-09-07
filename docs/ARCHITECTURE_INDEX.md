@@ -16,11 +16,10 @@
 - No application source tree, package manifest, lockfile, native entry, tests, or CI configuration.
 - Local Git: `main`, no commits, `origin` points to GitHub (`gubnota/homer_studio`); remote inspection returned no HEAD, branches, or tags.
 
-## Proposed navigation (not implemented)
-- `src/main/`: Electron lifecycle, validated IPC, project/configuration I/O, subprocess jobs, models, and audio.
-- `src/preload/`: narrow renderer API.
+## Implemented navigation
+- `src-tauri/`: Tauri lifecycle, permissions, Rust commands, icons, build configuration, and future native services.
 - `src/shared/`: serializable contracts and pure chapter/time logic.
 - `src/renderer/`: React screens, shared controls, and prototype-derived styles.
 - `tests/`: focused unit, filesystem, media-integration, and desktop smoke tests.
-- Root package/build configuration: development, checks, and arm64 packaging.
+- Root npm/Vite/TypeScript configuration: renderer development, checks, and Tauri arm64 packaging.
 - `docs/IMPLEMENTATION_PLAN.md`: exact planned filenames and verification commands.

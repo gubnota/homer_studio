@@ -9,7 +9,7 @@ The downloaded demo's in-memory objects are reference data, not supported contra
 - Original chapter source in readable UTF-8 files; project-owned paths are relative.
 - Stable IDs independent of displayed chapter numbers.
 - Settings separate LLM provider selection from speech generation settings.
-- Narrow preload API for project operations, settings, jobs, audio import/playback, and export.
+- Narrow Tauri command API for project operations, settings, jobs, audio import/playback, and export.
 - Structured errors include a code, actionable message, and optional affected chapter/job ID.
 - Jobs expose real state/progress and cancellation; interrupted jobs never become completed automatically.
 - Precise measured durations are accumulated before timestamps are formatted.

@@ -37,9 +37,9 @@ Keep `audio_studio_ui/` untouched and excluded as today. The tracked application
 
 ### 1. Framework and first-version scope
 
-Use **Electron + React + TypeScript**, with electron-vite for main/preload/renderer builds and electron-builder for macOS packages. This fits the observed React prototype and lets filesystem, subprocess, and orchestration code use the same language. Tauri would add a Rust toolchain without existing Rust code to reuse; SwiftUI would require rebuilding the interface in a different UI framework. Accept Electron's larger runtime for this first version. electron-vite supports a single configuration for the three application entry points. [Build documentation](https://electron-vite.org/guide/)
+Use **Tauri 2 + Rust + React + TypeScript**, with Vite for the renderer and Cargo/Tauri for the native application. The user selected Tauri after reviewing the initial Electron proposal. Its small system-webview shell leaves more memory available for local models and audio processing, while Rust owns files, subprocesses, jobs, and command validation.
 
-Use npm with a committed lockfile, a supported Node 22 release at least 22.12, strict TypeScript, Vitest, and Playwright's Electron support for a narrow smoke test. Choose mutually compatible maintained dependency versions when implementing and lock them; the prototype's bundled React version is evidence of its origin, not a requirement to retain an obsolete dependency.
+Use npm and Cargo with committed lockfiles, a supported Node 22 release, current stable Rust, strict TypeScript, Vitest, Rust tests, and a packaged-app smoke test. Choose mutually compatible maintained dependency versions and lock them.
 
 **Speech scope proposal:** use installed macOS voices through `/usr/bin/say`, plus chapter-audio import. This provides real local speech without adding a Python/model-serving runtime. It is separate from text LLM processing. The user has been asked whether Qwen3-TTS must instead be included; this document proposes the macOS baseline and does not record that as an answered preference. Approval of this version accepts this baseline. If Qwen3-TTS is requested, revise its engine/setup/testing sections before implementation.
 
@@ -47,11 +47,11 @@ Preserve all primary screens. Make chapter import/edit/order, segment regenerati
 
 ### 2. Native boundary and filesystem
 
-Use one application window and one active project. The main process owns native dialogs, files, settings, jobs, and subprocesses. The renderer accesses a narrow typed `window.audioStudio` preload API; never expose raw IPC or an arbitrary shell/filesystem API. Enable context isolation and renderer sandboxing, disable Node integration, validate IPC sender and payloads, and load packaged UI through a restricted `app://` protocol with a CSP. In development, allow only the configured loopback Vite origin. [Electron isolation](https://www.electronjs.org/docs/latest/tutorial/context-isolation) and [security guidance](https://www.electronjs.org/docs/latest/tutorial/security)
+Use one application window and one active project. The Rust application owns native dialogs, files, settings, jobs, and subprocesses. The renderer invokes named, typed Tauri commands; never grant generic shell or filesystem permissions. Use a restrictive capability file and CSP, validate every command payload, and load packaged UI through Tauri's local protocol. In development, allow only the configured loopback Vite origin.
 
 Native file dialogs return selected inputs to main-process services. Renderer requests address project/chapter/segment IDs rather than arbitrary output paths. Canonicalize paths and reject traversal and symlink escapes. Serve playback through an `audio://` protocol accepting project-owned asset IDs, supporting MIME types and byte ranges; do not read whole audiobooks into the renderer or expose arbitrary local files.
 
-Store settings and the recent-project list beneath `app.getPath('userData')`, and operational logs beneath `app.getPath('logs')`. Projects live in user-selected writable directories, not inside the installed app. Write settings/manifests using same-directory temporary files and rename; serialize writes, retain a last-good manifest, and use a small recovery journal for multi-file edits/exports. Reject concurrent edits during generation/export and verify input revision before committing a job result. Use Electron's single-instance lock.
+Store settings and the recent-project list beneath Tauri's application data directory, and operational logs beneath its application log directory. Projects live in user-selected writable directories, not inside the installed app. Write settings/manifests using same-directory temporary files and rename; serialize writes, retain a last-good manifest, and use a small recovery journal for multi-file edits/exports. Reject concurrent edits during generation/export and verify input revision before committing a job result. Use Tauri's single-instance plugin.
 
 Proposed readable project layout:
 
@@ -96,7 +96,7 @@ Preload methods and main-process handlers:
 - `settings.read()`, `settings.update({settings})`, `settings.pickPath({kind})`, `settings.check()`, `models.discover()`, `voices.list()`: constrained picker kinds, configuration validation, executable/model diagnostics, bounded optional GGUF discovery, installed voice enumeration.
 - `jobs.start({kind,targetIds,options})`, `jobs.list()`, `jobs.control({jobId,action})`: kinds are text processing, segment/chapter generation, and export; actions are cancel, retry, pause, resume. Text processing returns a candidate preview; only a separate validated accept change updates project text.
 - `audio.url({assetId})`, `exports.readTimestamps({exportId})`, `exports.reveal({exportId})`, `clipboard.copyTimestamps({exportId})`: validated project-owned playback/output access.
-- `onJobUpdated(handler)` and `onProjectUpdated(handler)` return unsubscribe functions; events contain serializable snapshots/revisions, not Electron event objects. This is direct IPC progress reporting, not an application-wide event-bus abstraction.
+- `onJobUpdated(handler)` and `onProjectUpdated(handler)` return unsubscribe functions; Tauri events contain serializable snapshots/revisions. This is direct command/event progress reporting, not an application-wide event-bus abstraction.
 
 Error codes: `INVALID_PROJECT`, `UNSUPPORTED_SCHEMA`, `PERMISSION_DENIED`, `WRITE_FAILED`, `REVISION_CONFLICT`, `BUSY`, `MISSING_FILE`, `MODEL_NOT_FOUND`, `MODEL_LOAD_FAILED`, `MODEL_UNAVAILABLE`, `CONTEXT_LIMIT`, `TOOL_NOT_FOUND`, `UNSUPPORTED_TOOL_VERSION`, `INVALID_AUDIO`, `GENERATION_FAILED`, `CONCAT_FAILED`, `CANCELLED`, and `INTERRUPTED`. No automatic skipping of failed or stale chapters.
 
@@ -109,7 +109,7 @@ Import UTF-8 TXT/Markdown or pasted text. Let the user preview chapter boundarie
 Define a small `TextProvider` interface: `validate(config)` and `process({instruction,text,signal,onProgress}) -> {text,provider,model}`. Providers never mutate project files. LLM processing is opt-in and produces an editable preview; source text and approved audio survive cancellation, empty output, context overflow, or rejected suggestions.
 
 - **llama.cpp/GGUF:** select an existing `.gguf` and executable independently. Run a bounded, noninteractive `llama-cli` child process with a UTF-8 prompt file, model path, token/context limits, and configurable GPU layers. Check supported CLI flags before execution; parse answer output without exposing prompt echoes or diagnostic text as manuscript content. Exercise noninteractive termination in a real optional smoke test. Apple Silicon/Metal acceleration is supported by the upstream runtime; show actual load errors rather than promising acceleration. [llama.cpp](https://github.com/ggml-org/llama.cpp)
-- **Ollama:** call the user's existing loopback installation from the main process using `POST /api/generate`; configure model and base URL, handle HTTP errors and incremental responses, and abort the request on cancel. Do not start/stop the user's Ollama daemon. Validate loopback URLs, reject off-host redirects, and bound request/output sizes. [Ollama API](https://docs.ollama.com/api/generate)
+- **Ollama:** call the user's existing loopback installation from the Rust backend using `POST /api/generate`; configure model and base URL, handle HTTP errors and incremental responses, and abort the request on cancel. Do not start/stop the user's Ollama daemon. Validate loopback URLs, reject off-host redirects, and bound request/output sizes. [Ollama API](https://docs.ollama.com/api/generate)
 - Process bounded segments sequentially; reject over-budget inputs with an actionable split/reduce-context message instead of silent truncation. Preserve ordered candidate outputs and do not apply partial processing automatically.
 - Optional model discovery scans a configured directory to a bounded depth/count for GGUF files; it does not follow symlinks or download weights. Ollama model discovery uses its installed-model endpoint.
 - **MLX evaluation:** defer. It is an additional Python package/runtime and model format here, while GGUF and Ollama already satisfy the text-provider requirement. There is no measured repository-specific gain to justify a third engine in v1. [MLX LM](https://github.com/ml-explore/mlx-lm)
@@ -141,7 +141,7 @@ Show a nonblocking eligibility message if there are fewer than three chapters, d
 
 ### 6. Packaging and GitHub CI
 
-Package a macOS arm64 `.app`, `.dmg`, and `.zip` using electron-builder. Default initial version is `0.1.0`; configure development artifacts for ad-hoc signing without Developer ID credentials. Build a local, self-contained renderer; package only built code/runtime dependencies, not prototype files, manuscripts, models, or test fixtures. [macOS packaging](https://www.electron.build/mac/)
+Package a macOS arm64 `.app` and `.dmg` using Tauri, and create the release `.zip` from the verified app bundle. Default initial version is `0.1.0`; configure development artifacts for ad-hoc signing without Developer ID credentials. Build a local, self-contained renderer; package only built code/runtime dependencies, not prototype files, manuscripts, models, or test fixtures.
 
 Use `macos-15` and assert `uname -m` is `arm64` in both workflows. GitHub currently documents this label as Apple Silicon; the assertion catches runner changes. Pin actions to reviewed revisions during implementation. [GitHub runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 
@@ -160,28 +160,27 @@ Paths below are relative to the workspace root. These are planned source/configu
 | `package.json` | Create | Runtime/dev dependencies; `dev`, `typecheck`, `test`, `test:integration`, `test:smoke`, `build`, `pack:mac`, `package:mac` scripts; version and main entry. |
 | `package-lock.json` | Create | Reproducible npm dependency resolution. |
 | `tsconfig.json` | Create | Strict shared TypeScript settings and references to native/renderer configs. |
-| `tsconfig.node.json` | Create | Main/preload/shared/build/test type-check scope. |
-| `tsconfig.web.json` | Create | Renderer/shared DOM and JSX type-check scope. |
-| `electron.vite.config.ts` | Create | Main, sandbox-compatible bundled CommonJS preload, React renderer, and local assets. |
-| `electron-builder.yml` | Create | Product metadata, arm64 DMG/ZIP, ad-hoc signing, output and packaged-file allowlist. |
+| `src-tauri/Cargo.toml` / `Cargo.lock` | Create | Locked Rust application and native dependencies. |
+| `vite.config.ts` | Create | React renderer build and local development origin. |
+| `src-tauri/tauri.conf.json` | Create | Product metadata, arm64 app/DMG, ad-hoc signing, CSP, and window settings. |
+| `src-tauri/capabilities/default.json` | Create | Minimal named permissions for the main window. |
 | `vitest.config.ts` | Create | Unit/integration grouping and timeouts without model downloads. |
-| `playwright.config.ts` | Create | One-worker Electron smoke test configuration. |
+| `src-tauri/src/lib.rs` | Create | Tauri command registration and native service composition. |
 | `.gitignore` | Modify | Preserve existing prototype exclusion; ignore dependencies, builds, packages, logs, test results, and temporary files. |
 | `src/shared/contracts.ts` | Create | Versioned schemas, IPC request/result types, capabilities, structured errors, project/job/settings data. |
 | `src/shared/chapters.ts` | Create | Import parsing, stable ordering, segmentation, and invalidation logic. |
 | `src/shared/timestamps.ts` | Create | Exact cumulative timing, format/title cleanup, and YouTube eligibility checks. |
-| `src/main/index.ts` | Create | App/window lifecycle, single-instance lock, shutdown cancellation, safe UI protocol, service composition. |
-| `src/main/ipc.ts` | Create | Explicit handlers, trusted-sender validation, native pickers, payload validation, event delivery. |
-| `src/main/project-store.ts` | Create | Project creation/open/read/edit, asset ownership, revision checks, atomic writes/recovery, interrupted-job persistence. |
-| `src/main/settings.ts` | Create | Settings/recent-project persistence, bounded model discovery, tool diagnostics and configuration validation. |
-| `src/main/process-runner.ts` | Create | Executable lookup, safe asynchronous spawn, progress, bounded diagnostics, timeouts, process-group cancellation. |
-| `src/main/jobs.ts` | Create | Single heavy-job queue, progress/state transitions, pause boundaries, retry, revision-safe result commits. |
-| `src/main/llm.ts` | Create | Minimal text-provider interface, llama-cli and Ollama adapters, request limits, response cleanup and cancellation. |
-| `src/main/speech.ts` | Create | Installed macOS voice enumeration and `say` generation adapter. |
-| `src/main/audio.ts` | Create | Audio import/probing, take/chapter assembly, compatibility checks, safe concat/fallback, waveform peak generation, verified export commit. |
-| `src/main/audio-protocol.ts` | Create | Validated asset-ID playback, byte-range requests, MIME types, closed-project rejection. |
-| `src/main/logger.ts` | Create | Bounded operational logs without manuscript text or model prompts. |
-| `src/preload/index.ts` | Create | Typed minimal bridge and listener cleanup, without generic raw IPC exposure. |
+| `src-tauri/src/commands/` | Create | Explicit handlers, payload validation, native pickers, and event delivery. |
+| `src-tauri/src/services/project_store.rs` | Create | Project creation/open/read/edit, asset ownership, revision checks, atomic writes/recovery, interrupted-job persistence. |
+| `src-tauri/src/services/settings.rs` | Create | Settings/recent-project persistence, bounded model discovery, tool diagnostics and configuration validation. |
+| `src-tauri/src/services/process_runner.rs` | Create | Executable lookup, safe asynchronous spawn, progress, bounded diagnostics, timeouts, process-group cancellation. |
+| `src-tauri/src/services/jobs.rs` | Create | Single heavy-job queue, progress/state transitions, pause boundaries, retry, revision-safe result commits. |
+| `src-tauri/src/services/llm.rs` | Create | Minimal text-provider interface, llama-cli and Ollama adapters, request limits, response cleanup and cancellation. |
+| `src-tauri/src/services/speech.rs` | Create | Installed macOS voice enumeration and `say` generation adapter. |
+| `src-tauri/src/services/audio.rs` | Create | Audio import/probing, take/chapter assembly, compatibility checks, safe concat/fallback, waveform peak generation, verified export commit. |
+| `src-tauri/src/services/audio_protocol.rs` | Create | Validated asset-ID playback, byte-range requests, MIME types, closed-project rejection. |
+| `src-tauri/src/services/logger.rs` | Create | Bounded operational logs without manuscript text or model prompts. |
+| `src/renderer/src/native.ts` | Create | Typed command wrappers and listener cleanup, without generic raw capabilities. |
 | `src/renderer/index.html` | Create | Clean local entry document and CSP; no hosted scripts/assets. |
 | `src/renderer/src/main.tsx` | Create | React mount and stylesheet imports. |
 | `src/renderer/src/App.tsx` | Create | Hash-router equivalents of prototype routes, application state provider, error boundary. |
@@ -207,7 +206,7 @@ Paths below are relative to the workspace root. These are planned source/configu
 | `tests/jobs.test.ts` | Create | Queue transitions, boundary pause, retries, cancellation cleanup and restart recovery. |
 | `tests/audio.test.ts` | Create | Probe parsing, command arguments, concat compatibility/escaping, protocol range/path checks and timestamp-source selection. |
 | `tests/audio.integration.test.ts` | Create | Generated tiny audio fixtures, copy/fallback exports, measured boundaries, missing input and cancellation. |
-| `tests/desktop.smoke.spec.ts` | Create | Electron offline launch, persisted project flow, IPC isolation, real asset playback and export visibility. |
+| `tests/desktop.smoke.md` | Create | Recorded Tauri offline launch, persisted project flow, command isolation, real asset playback and export visibility. |
 | `scripts/verify-release.mjs` | Create | Shared tag/version validation and architecture/signature/package checks invoked by npm/CI. |
 | `.github/workflows/ci.yml` | Create | Push/PR checks on actual macOS arm64. |
 | `.github/workflows/release-macos.yml` | Create | Validated `v*` tag packaging, artifact upload and GitHub Release attachment. |
@@ -223,7 +222,7 @@ Paths below are relative to the workspace root. These are planned source/configu
 
 Implement in dependency order and keep each group suitable for a small focused commit. Do not automatically commit/push without the user's workflow authorization.
 
-1. **Establish the shell and recover the visual foundation.** Create root package/build/type configs, `src/main/index.ts`, preload, renderer entry/App/layout, and both stylesheets. Recover the supplied sidebar/screen structure before adding new controls. Verify an offline arm64 Electron launch, isolated renderer, routing, and side-by-side layout comparison with the supplied markup/reference. Keep all screens explicit about unconnected functionality until subsequent steps land.
+1. **Establish the shell and recover the visual foundation.** Create root package/build/type configs, the Tauri Rust application/capability, renderer entry/App/layout, and both stylesheets. Recover the supplied sidebar/screen structure before adding new controls. Verify an offline arm64 Tauri launch, restricted commands, routing, and side-by-side layout comparison with the supplied markup/reference. Keep all screens explicit about unconnected functionality until subsequent steps land.
 2. **Define contracts and durable chapters.** Implement `contracts.ts`, `chapters.ts`, `project-store.ts`, settings storage, IPC, state provider, Projects/Import/Project pages, and their unit/filesystem tests. Verify create/open/edit/reorder/reopen, empty/malformed input, safe paths, revisions, and recovery. Publish the version-1 contract in the compact docs.
 3. **Add bounded process execution and job control.** Implement process runner, logger, jobs, Queue page, events, and tests. Verify real cancellation against a disposable test child process, pause-at-boundary behavior, restart recovery, and preservation of old outputs. Display operational errors immediately.
 4. **Connect local text models and configuration.** Implement `llm.ts`, tool/model checks, Settings and editor candidate preview. Test both providers using fakes and a local test HTTP server; test bad model paths, unavailable Ollama, empty/oversized output, cancellation and CLI version differences. Run a real selected-model smoke test only if suitable installed weights are available; do not download one implicitly.
@@ -247,9 +246,9 @@ npm run pack:mac
 npm run package:mac
 ```
 
-- `npm run dev`: electron-vite development mode; `build`: production main/preload/renderer compilation.
+- `npm run dev`: Tauri/Vite development mode; `build`: TypeScript, tests, and production renderer compilation.
 - `test`: focused Vitest tests without real models; `test:integration`: required FFmpeg/FFprobe media tests, failing clearly when prerequisites are absent.
-- `test:smoke`: Playwright Electron launch against the built app with isolated temporary user/project directories; no mutation of the user's actual settings.
+- Packaged-app smoke testing launches the built Tauri app with isolated temporary user/project directories; no mutation of the user's actual settings.
 - `pack:mac`: unpacked arm64 application plus architecture/signature validation; `package:mac`: DMG/ZIP plus the same checks.
 - Timestamp acceptance: 272/378/235-second chapters give `00:00`, `04:32`, `10:50`; many fractional chapters demonstrate that no per-chapter rounding drift occurs; hour-long inputs format correctly.
 - Media acceptance: derive distinguishable tiny tone markers; verify their order and boundary locations in decoded output, plus FFprobe duration within codec-frame tolerance. Include enough short encoded chapters to expose accumulated encoder-padding errors. Store no large binary fixtures.

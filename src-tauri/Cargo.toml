@@ -1,0 +1,24 @@
+[package]
+name = "homer-studio"
+version = "0.1.0"
+description = "Local-first audiobook production studio"
+authors = ["Homer Studio contributors"]
+edition = "2024"
+
+[lib]
+name = "homer_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2", features = [] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

@@ -25,10 +25,10 @@
 - Model labels and audio operations are demonstration state, not working integrations.
 
 ## Approved technology
-- Electron desktop shell and isolated preload bridge.
+- Tauri 2 desktop shell with a narrow Rust command boundary.
 - React and TypeScript renderer reconstructed from prototype components.
 - Existing compiled CSS reused as the visual baseline.
-- Node filesystem and subprocess APIs in the desktop main process.
+- Rust filesystem and subprocess services in the native backend.
 - JSON project/configuration files; no database.
 - FFmpeg and FFprobe installed locally and selected through settings.
 - Replaceable local text providers: llama.cpp / GGUF and Ollama.
@@ -80,8 +80,8 @@
 
 ## Privacy and security
 - No Base44 authentication, badge, analytics, or hosted assets in the desktop runtime.
-- Renderer has no arbitrary filesystem or shell access.
-- Typed, validated IPC owns the UI/native boundary.
+- Renderer has no arbitrary filesystem or process access.
+- Typed, validated Tauri commands own the UI/native boundary.
 - Child processes receive argument arrays with shell execution disabled.
 - Local model requests default to loopback endpoints.
 - Logs contain operational metadata and errors, not full manuscripts.

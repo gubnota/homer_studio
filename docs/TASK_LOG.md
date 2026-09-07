@@ -4,6 +4,8 @@
 - User approved the saved plan and requested a human-readable commit after each verified stage.
 - Remote pushes are deferred until the user asks.
 - First delivery target is a locally tested macOS arm64 build.
+- User selected Tauri after reviewing the initial Electron choice; the uncommitted shell was migrated before its first source commit.
+- First Tauri checkpoint: renderer typecheck and tests pass, Rust check passes, and an ad-hoc signed 3.9 MB arm64 app launches at `tauri://localhost` with working navigation and native runtime information.
 
 ## 2026-09-07 — Desktop implementation planning
 - Request: inspect the attached specification and prototype; save a plan; wait for a later implementation prompt.
