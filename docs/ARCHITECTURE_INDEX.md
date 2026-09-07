@@ -19,11 +19,13 @@
 - `src-tauri/src/services/process_runner.rs`: argument-only child processes, timeout, cancellation, and bounded diagnostics.
 - `src-tauri/src/services/jobs.rs`: serialized heavy-work queue and pause/resume/cancel state.
 - `src-tauri/src/services/llm.rs`: bounded llama.cpp and loopback Ollama text processing with candidate-only results.
+- `src-tauri/src/services/speech.rs`: macOS voice discovery, narration, audio import, FFmpeg normalization, duration probing, and waveform peaks.
+- `src-tauri/src/services/audio_protocol.rs`: registry-backed project audio delivery with byte-range support.
 - `src-tauri/src/commands/system.rs`: settings, diagnostics, and job-control commands.
-- `src-tauri/src/commands/production.rs`: text candidate generation and explicit acceptance commands.
+- `src-tauri/src/commands/production.rs`: text candidates, queued narration/import, audio playback, waveforms, and chapter review.
 - `src/shared/`: serializable contracts and pure chapter/time logic.
 - `src/renderer/src/native.ts`: typed renderer bridge to native commands and file dialogs.
-- `src/renderer/`: React project library, importer, source/candidate chapter editor, live queue, settings/tool status, shared controls, and prototype-derived styles.
+- `src/renderer/`: React project library, importer, source/candidate chapter editor, voice selection, narration/review, live queue, settings/tool status, shared controls, and prototype-derived styles.
 - `tests/`: focused unit, filesystem, media-integration, and desktop smoke tests.
 - Root npm/Vite/TypeScript configuration: renderer development, checks, and Tauri arm64 packaging.
 - `docs/IMPLEMENTATION_PLAN.md`: exact planned filenames and verification commands.

@@ -2,11 +2,16 @@ mod commands;
 mod services;
 
 use serde::Serialize;
-use std::sync::Mutex;
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Mutex, RwLock},
+};
 
 pub struct AppState {
-    pub project_write_lock: Mutex<()>,
+    pub project_write_lock: Arc<Mutex<()>>,
     pub jobs: services::jobs::JobStore,
+    pub audio_assets: Arc<RwLock<HashMap<String, PathBuf>>>,
 }
 
 #[derive(Serialize)]
@@ -28,11 +33,17 @@ fn desktop_info() -> DesktopInfo {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let audio_assets = Arc::new(RwLock::new(HashMap::new()));
+    let protocol_assets = audio_assets.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .register_uri_scheme_protocol("audio", move |_context, request| {
+            services::audio_protocol::respond(&protocol_assets, request)
+        })
         .manage(AppState {
-            project_write_lock: Mutex::new(()),
+            project_write_lock: Arc::new(Mutex::new(())),
             jobs: services::jobs::JobStore::new(),
+            audio_assets,
         })
         .invoke_handler(tauri::generate_handler![
             desktop_info,
@@ -47,7 +58,13 @@ pub fn run() {
             commands::system::list_jobs,
             commands::system::control_job,
             commands::production::process_text,
-            commands::production::accept_processed_text
+            commands::production::accept_processed_text,
+            commands::production::list_voices,
+            commands::production::generate_chapter_audio,
+            commands::production::import_chapter_audio,
+            commands::production::set_chapter_review,
+            commands::production::audio_url,
+            commands::production::audio_waveform
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Homer Studio");

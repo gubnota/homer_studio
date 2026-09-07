@@ -12,6 +12,8 @@
 - Seven Rust tests now pass, including cancellation of a real disposable child and pause-at-boundary behavior; renderer typecheck, tests, and production build also pass.
 - Local-text checkpoint: connected llama.cpp and loopback Ollama through bounded native calls, added candidate review/accept/discard controls, and kept accepted narration text separate from the manuscript source.
 - Nine Rust tests and two renderer tests pass; renderer typecheck and production build pass.
+- Narration/review checkpoint: added installed macOS voice selection, queued speech generation and audio import, canonical M4A conversion, measured durations, registered range-capable playback, waveform peaks, stale-audio invalidation, and approve/changes-requested state.
+- Twelve Rust tests and two renderer tests pass. Renderer typecheck/build pass, and a 1.25-second synthetic import produced a measured M4A and 5,015 decoded waveform samples.
 
 ## 2026-09-07 — Desktop implementation planning
 - Request: inspect the attached specification and prototype; save a plan; wait for a later implementation prompt.

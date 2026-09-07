@@ -18,6 +18,9 @@ export interface Chapter {
   segments: Segment[]
   audioPath: string | null
   audioStale: boolean
+  audioDurationMs: number | null
+  audioOrigin: string | null
+  reviewStatus: 'pending' | 'approved' | 'changes_requested' | null
 }
 
 export interface ProjectSnapshot {
@@ -36,6 +39,8 @@ export interface TextCandidate {
   provider: string
   model: string
 }
+
+export interface Voice { id: string; language: string; sample: string }
 
 export type LlmSettings =
   | { provider: 'none' }

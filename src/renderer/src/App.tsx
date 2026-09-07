@@ -3,7 +3,7 @@ import { isRouteId, routes, type RouteId } from '../../shared/navigation'
 import type { ProjectSnapshot } from '../../shared/contracts'
 import { AudioPlayer } from './components/AudioPlayer'
 import { StudioLayout } from './components/StudioLayout'
-import { EditorPage, ExportsPage, ImportPage, ProjectsPage, QueuePage, SettingsPage, StudioPage } from './pages'
+import { EditorPage, ExportsPage, ImportPage, ProjectsPage, QueuePage, ReviewPage, SettingsPage, StudioPage, VoicesPage } from './pages'
 import { chooseFolder, errorMessage, isDesktop, projectApi } from './native'
 
 function initialRoute(): RouteId {
@@ -41,6 +41,8 @@ export function App(): JSX.Element {
       case 'projects': return <ProjectsPage project={project} busy={busy} onImport={() => navigate('import')} onOpen={openExisting} onEdit={() => navigate('editor')} onProjectChange={remember} />
       case 'import': return <ImportPage onCreated={(created) => { remember(created); navigate('projects') }} />
       case 'editor': return <EditorPage project={project} onProjectChange={remember} />
+      case 'review': return <ReviewPage project={project} onProjectChange={remember} />
+      case 'voices': return <VoicesPage />
       case 'queue': return <QueuePage />
       case 'exports': return <ExportsPage />
       case 'settings': return <SettingsPage />

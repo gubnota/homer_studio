@@ -59,6 +59,12 @@ pub struct Chapter {
     pub segments: Vec<Segment>,
     pub audio_path: Option<String>,
     pub audio_stale: bool,
+    #[serde(default)]
+    pub audio_duration_ms: Option<u64>,
+    #[serde(default)]
+    pub audio_origin: Option<String>,
+    #[serde(default)]
+    pub review_status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,10 +187,19 @@ pub fn update_chapter(
         .find(|chapter| chapter.id == chapter_id)
         .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
     let source_path = owned_path(&root, &chapter.source_path)?;
+    let source_changed = fs::read_to_string(&source_path)
+        .map(|current| current != source_text)
+        .unwrap_or(true);
     atomic_write(&source_path, source_text.as_bytes())?;
     chapter.title = title;
     chapter.segments = segment_text(source_text);
     chapter.audio_stale = chapter.audio_path.is_some();
+    if source_changed {
+        if let Some(processed_path) = chapter.processed_path.take() {
+            let _ = fs::remove_file(owned_path(&root, &processed_path)?);
+        }
+        chapter.review_status = chapter.audio_path.as_ref().map(|_| "pending".into());
+    }
     manifest.revision += 1;
     manifest.updated_at_ms = now_ms();
     write_manifest(&root, &manifest)?;
@@ -212,10 +227,98 @@ pub fn accept_processed(
     chapter.processed_path = Some(relative_path);
     chapter.segments = segment_text(text);
     chapter.audio_stale = chapter.audio_path.is_some();
+    chapter.review_status = chapter.audio_path.as_ref().map(|_| "pending".into());
     manifest.revision += 1;
     manifest.updated_at_ms = now_ms();
     write_manifest(&root, &manifest)?;
     snapshot(&root, manifest)
+}
+
+pub fn commit_chapter_audio(
+    root_path: &str,
+    expected_revision: u64,
+    chapter_id: &str,
+    staged_audio: &Path,
+    duration_ms: u64,
+    origin: &str,
+) -> Result<ProjectSnapshot, CommandError> {
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let mut manifest = read_manifest(&root)?;
+    require_revision(&manifest, expected_revision)?;
+    let chapter = manifest
+        .chapters
+        .iter_mut()
+        .find(|chapter| chapter.id == chapter_id)
+        .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
+    let relative_path = format!("chapters/{chapter_id}/audio.m4a");
+    let destination = owned_path(&root, &relative_path)?;
+    fs::rename(staged_audio, &destination)
+        .or_else(|_| fs::copy(staged_audio, &destination).map(|_| ()))
+        .map_err(|error| CommandError::io("Cannot store chapter audio", error))?;
+    if staged_audio.exists() {
+        let _ = fs::remove_file(staged_audio);
+    }
+    chapter.audio_path = Some(relative_path);
+    chapter.audio_stale = false;
+    chapter.audio_duration_ms = Some(duration_ms);
+    chapter.audio_origin = Some(origin.to_string());
+    chapter.review_status = Some("pending".into());
+    manifest.revision += 1;
+    manifest.updated_at_ms = now_ms();
+    write_manifest(&root, &manifest)?;
+    snapshot(&root, manifest)
+}
+
+pub fn set_review_status(
+    root_path: &str,
+    expected_revision: u64,
+    chapter_id: &str,
+    status: &str,
+) -> Result<ProjectSnapshot, CommandError> {
+    if !matches!(status, "pending" | "approved" | "changes_requested") {
+        return Err(CommandError::new(
+            "INVALID_REVIEW_STATUS",
+            "Choose pending, approved, or changes requested.",
+        ));
+    }
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let mut manifest = read_manifest(&root)?;
+    require_revision(&manifest, expected_revision)?;
+    let chapter = manifest
+        .chapters
+        .iter_mut()
+        .find(|chapter| chapter.id == chapter_id)
+        .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
+    if chapter.audio_path.is_none() || chapter.audio_stale {
+        return Err(CommandError::new(
+            "AUDIO_NOT_CURRENT",
+            "Generate or import current audio before reviewing it.",
+        ));
+    }
+    chapter.review_status = Some(status.into());
+    manifest.revision += 1;
+    manifest.updated_at_ms = now_ms();
+    write_manifest(&root, &manifest)?;
+    snapshot(&root, manifest)
+}
+
+pub fn chapter_audio_path(root_path: &str, chapter_id: &str) -> Result<PathBuf, CommandError> {
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let manifest = read_manifest(&root)?;
+    let chapter = manifest
+        .chapters
+        .iter()
+        .find(|chapter| chapter.id == chapter_id)
+        .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
+    let relative = chapter
+        .audio_path
+        .as_deref()
+        .ok_or_else(|| CommandError::new("AUDIO_NOT_FOUND", "This chapter does not have audio."))?;
+    let path = owned_path(&root, relative)?;
+    fs::canonicalize(path).map_err(|error| CommandError::io("Cannot open chapter audio", error))
 }
 
 pub fn reorder(
@@ -335,6 +438,9 @@ fn write_new_chapter(
         segments: segment_text(&parsed.text),
         audio_path: None,
         audio_stale: false,
+        audio_duration_ms: None,
+        audio_origin: None,
+        review_status: None,
     })
 }
 

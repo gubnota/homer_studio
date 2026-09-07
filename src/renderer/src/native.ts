@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { JobRecord, ProjectSnapshot, Settings, TextCandidate, ToolDiagnostic } from '../../shared/contracts'
+import type { JobRecord, ProjectSnapshot, Settings, TextCandidate, ToolDiagnostic, Voice } from '../../shared/contracts'
 
 export function isDesktop(): boolean {
   return '__TAURI_INTERNALS__' in window
@@ -22,6 +22,17 @@ export async function chooseManuscript(): Promise<{ name: string; text: string }
   })
   if (typeof selected !== 'string') return null
   return invoke('read_manuscript', { path: selected })
+}
+
+export async function chooseAudio(): Promise<string | null> {
+  if (!isDesktop()) return null
+  const selected = await open({
+    directory: false,
+    multiple: false,
+    title: 'Choose chapter audio',
+    filters: [{ name: 'Audio', extensions: ['m4a', 'mp3', 'wav', 'aiff', 'aif', 'flac', 'ogg'] }]
+  })
+  return typeof selected === 'string' ? selected : null
 }
 
 export const projectApi = {
@@ -53,7 +64,18 @@ export const productionApi = {
       expectedRevision: project.revision,
       chapterId,
       text
-    })
+    }),
+  voices: () => invoke<Voice[]>('list_voices'),
+  generateAudio: (project: ProjectSnapshot, chapterId: string) =>
+    invoke<string>('generate_chapter_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId }),
+  importAudio: (project: ProjectSnapshot, chapterId: string, sourcePath: string) =>
+    invoke<string>('import_chapter_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId, sourcePath }),
+  review: (project: ProjectSnapshot, chapterId: string, status: 'approved' | 'changes_requested') =>
+    invoke<ProjectSnapshot>('set_chapter_review', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId, status }),
+  audioUrl: (project: ProjectSnapshot, chapterId: string) =>
+    invoke<string>('audio_url', { rootPath: project.rootPath, chapterId }),
+  waveform: (project: ProjectSnapshot, chapterId: string) =>
+    invoke<number[]>('audio_waveform', { rootPath: project.rootPath, chapterId })
 }
 
 export const systemApi = {

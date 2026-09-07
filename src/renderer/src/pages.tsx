@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { Chapter, JobRecord, ProjectSnapshot, Settings, ToolDiagnostic } from '../../shared/contracts'
+import type { Chapter, JobRecord, ProjectSnapshot, Settings, ToolDiagnostic, Voice } from '../../shared/contracts'
 import type { RouteId } from '../../shared/navigation'
-import { chooseFolder, chooseManuscript, errorMessage, productionApi, projectApi, systemApi } from './native'
+import { chooseAudio, chooseFolder, chooseManuscript, errorMessage, productionApi, projectApi, systemApi } from './native'
 
 interface DesktopInfo { platform: string; architecture: string; runtime: string }
 
@@ -123,14 +123,75 @@ function ChapterEditor({ project, chapter, onProjectChange }: { project: Project
   </section>
 }
 
-const labels = {
-  review: ['Review', 'Listen to selected takes and flag corrections.'],
-  voices: ['Voices', 'Choose from voices installed on this Mac.']
-} as const
+const labels = {} as const
 
-export function StudioPage({ route, project }: { route: 'editor' | keyof typeof labels; project: ProjectSnapshot | null }): JSX.Element {
-  const [title, copy] = route === 'editor' ? ['Chapter editor', 'Edit and prepare each spoken segment.'] : labels[route]
+export function StudioPage({ route, project }: { route: 'editor'; project: ProjectSnapshot | null }): JSX.Element {
+  const [title, copy] = ['Chapter editor', 'Edit and prepare each spoken segment.']
   return <div className="page"><Header eyebrow="Production" title={title} copy={copy} /><section className="panel placeholder"><span>{project ? project.title : 'Ready for a project'}</span><h2>{project ? 'This workflow connects in the next stage' : 'Import a manuscript to begin'}</h2><p>{project ? 'Your project is saved and ready for local audio operations.' : 'Create or open a project from the Projects screen.'}</p></section></div>
+}
+
+export function ReviewPage({ project, onProjectChange }: { project: ProjectSnapshot | null; onProjectChange: (project: ProjectSnapshot) => void }): JSX.Element {
+  const [busyId, setBusyId] = useState('')
+  const [error, setError] = useState('')
+  if (!project) return <div className="page"><Header eyebrow="Production" title="Review" copy="Listen to chapter audio and approve it." /><section className="panel placeholder"><h2>Open a project first</h2></section></div>
+  const activeProject = project
+  async function waitForJob(jobId: string): Promise<void> {
+    for (;;) {
+      await new Promise((resolve) => window.setTimeout(resolve, 400))
+      const job = (await systemApi.jobs()).find((item) => item.id === jobId)
+      if (!job || ['completed', 'failed', 'cancelled'].includes(job.status)) {
+        if (job?.status === 'failed') throw new Error(job.message ?? 'Audio processing failed.')
+        if (job?.status === 'cancelled') throw new Error('Audio processing was cancelled.')
+        onProjectChange(await projectApi.open(activeProject.rootPath))
+        return
+      }
+    }
+  }
+  async function generate(chapterId: string): Promise<void> {
+    setBusyId(chapterId); setError('')
+    try { await waitForJob(await productionApi.generateAudio(activeProject, chapterId)) } catch (cause) { setError(errorMessage(cause)) } finally { setBusyId('') }
+  }
+  async function importAudio(chapterId: string): Promise<void> {
+    const source = await chooseAudio(); if (!source) return
+    setBusyId(chapterId); setError('')
+    try { await waitForJob(await productionApi.importAudio(activeProject, chapterId, source)) } catch (cause) { setError(errorMessage(cause)) } finally { setBusyId('') }
+  }
+  async function review(chapterId: string, status: 'approved' | 'changes_requested'): Promise<void> {
+    setError('')
+    try { onProjectChange(await productionApi.review(activeProject, chapterId, status)) } catch (cause) { setError(errorMessage(cause)) }
+  }
+  return <div className="page"><Header eyebrow={project.title} title="Narrate and review" copy="Generate with the selected macOS voice or import existing chapter audio." />
+    {error && <div className="inline-error">{error}</div>}
+    <section className="review-list">{project.chapters.map((chapter) => <article className="panel review-card" key={chapter.id}><div className="review-copy"><small>Chapter {chapter.order + 1}</small><h2>{chapter.title}</h2><span>{chapter.audioPath ? `${formatDuration(chapter.audioDurationMs)} · ${chapter.audioOrigin}${chapter.audioStale ? ' · stale' : ''}` : `${chapter.segments.length} text segments`}</span></div><div className="review-controls">{chapter.audioPath && !chapter.audioStale && <ChapterAudio project={project} chapter={chapter} />}<div className="actions"><button disabled={Boolean(busyId)} onClick={() => void importAudio(chapter.id)}>Import audio</button><button className="primary" disabled={Boolean(busyId)} onClick={() => void generate(chapter.id)}>{busyId === chapter.id ? 'Processing…' : chapter.audioPath ? 'Regenerate' : 'Generate audio'}</button></div>{chapter.audioPath && !chapter.audioStale && <div className="review-actions"><button className={chapter.reviewStatus === 'changes_requested' ? 'selected' : ''} onClick={() => void review(chapter.id, 'changes_requested')}>Needs changes</button><button className={chapter.reviewStatus === 'approved' ? 'selected approved' : ''} onClick={() => void review(chapter.id, 'approved')}>Approve</button></div>}</div></article>)}</section>
+  </div>
+}
+
+function ChapterAudio({ project, chapter }: { project: ProjectSnapshot; chapter: Chapter }): JSX.Element {
+  const [url, setUrl] = useState('')
+  const [waveform, setWaveform] = useState<number[]>([])
+  useEffect(() => { void productionApi.audioUrl(project, chapter.id).then(setUrl).catch(() => setUrl('')) }, [project.rootPath, chapter.id, chapter.audioPath])
+  useEffect(() => { void productionApi.waveform(project, chapter.id).then(setWaveform).catch(() => setWaveform([])) }, [project.rootPath, chapter.id, chapter.audioPath])
+  return url ? <div className="chapter-player">{waveform.length > 0 && <div className="waveform" aria-hidden="true">{waveform.map((peak, index) => <i key={index} style={{ height: `${Math.max(8, peak * 100)}%` }} />)}</div>}<audio controls preload="metadata" src={url} /></div> : <span>Preparing player…</span>
+}
+
+function formatDuration(value: number | null): string {
+  if (!value) return 'Duration unavailable'
+  const seconds = Math.round(value / 1000)
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+}
+
+export function VoicesPage(): JSX.Element {
+  const [voices, setVoices] = useState<Voice[]>([])
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const [message, setMessage] = useState('Loading installed voices…')
+  useEffect(() => { void Promise.all([productionApi.voices(), systemApi.settings()]).then(([found, current]) => { setVoices(found); setSettings(current); setMessage('') }).catch((cause) => setMessage(errorMessage(cause))) }, [])
+  async function select(voiceId: string): Promise<void> {
+    if (!settings) return
+    const next = { ...settings, speech: { ...settings.speech, voiceId } }
+    setSettings(next); setMessage('Saving…')
+    try { setSettings(await systemApi.saveSettings(next)); setMessage('Voice saved') } catch (cause) { setMessage(errorMessage(cause)) }
+  }
+  return <div className="page"><Header eyebrow="Production" title="Installed voices" copy="These voices are provided by macOS and work fully offline." />{message && <div className="status-banner">{message}</div>}<section className="voice-grid">{voices.map((voice) => <button className={settings?.speech.voiceId === voice.id ? 'voice-card selected' : 'voice-card'} key={`${voice.id}-${voice.language}`} onClick={() => void select(voice.id)}><strong>{voice.id}</strong><span>{voice.language}</span><small>{voice.sample || 'Installed macOS voice'}</small></button>)}</section></div>
 }
 
 export function QueuePage(): JSX.Element {
