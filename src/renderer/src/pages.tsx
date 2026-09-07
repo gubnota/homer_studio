@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { Chapter, JobRecord, ProjectSnapshot, Settings, ToolDiagnostic, Voice } from '../../shared/contracts'
 import type { RouteId } from '../../shared/navigation'
-import { chooseAudio, chooseFolder, chooseManuscript, chooseTool, errorMessage, productionApi, projectApi, systemApi } from './native'
+import { chooseAudio, chooseFolder, chooseManuscript, chooseTool, errorMessage, isDesktop, loadDroppedManuscript, productionApi, projectApi, systemApi } from './native'
 
 interface DesktopInfo { platform: string; architecture: string; runtime: string }
 
@@ -45,14 +46,36 @@ export function ImportPage({ onCreated }: { onCreated: (project: ProjectSnapshot
   const [parentPath, setParentPath] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [dragging, setDragging] = useState(false)
+
+  function applyManuscript(selected: { name: string; text: string }): void {
+    setSourceName(selected.name)
+    setManuscript(selected.text)
+    setTitle((current) => current || selected.name.replace(/\.(txt|md|markdown)$/i, ''))
+    setError('')
+  }
+
+  useEffect(() => {
+    if (!isDesktop()) return
+    let disposed = false
+    let stop: (() => void) | undefined
+    void getCurrentWebview().onDragDropEvent((event) => {
+      if (disposed) return
+      if (event.payload.type === 'enter' || event.payload.type === 'over') setDragging(true)
+      if (event.payload.type === 'leave') setDragging(false)
+      if (event.payload.type === 'drop') {
+        setDragging(false)
+        void loadDroppedManuscript(event.payload.paths).then(applyManuscript).catch((cause) => setError(errorMessage(cause)))
+      }
+    }).then((unlisten) => { if (disposed) unlisten(); else stop = unlisten }).catch((cause) => setError(errorMessage(cause)))
+    return () => { disposed = true; stop?.() }
+  }, [])
 
   async function pickManuscript(): Promise<void> {
     try {
       const selected = await chooseManuscript()
       if (!selected) return
-      setSourceName(selected.name)
-      setManuscript(selected.text)
-      if (!title) setTitle(selected.name.replace(/\.(txt|md|markdown)$/i, ''))
+      applyManuscript(selected)
     } catch (cause) { setError(errorMessage(cause)) }
   }
 
@@ -71,7 +94,7 @@ export function ImportPage({ onCreated }: { onCreated: (project: ProjectSnapshot
 
   return <div className="page"><Header eyebrow="New project" title="Import a manuscript" copy="TXT and Markdown are supported." action={<button onClick={() => void pickManuscript()}>Choose file</button>} />
     {error && <div className="inline-error" role="alert">{error}</div>}
-    <div className="split"><section className="panel"><label>Project title<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="My audiobook" /></label><label>Manuscript <span className="field-note">{sourceName}</span><textarea value={manuscript} onChange={(event) => { setManuscript(event.target.value); setSourceName('Pasted text') }} placeholder="# Chapter One&#10;&#10;Paste your manuscript here…" /></label><label>Project location<div className="path-picker"><input value={parentPath} readOnly placeholder="Choose a parent folder" /><button onClick={() => void pickLocation()}>Choose</button></div></label><button className="primary" disabled={busy || !title.trim() || !manuscript.trim() || !parentPath} onClick={() => void create()}>{busy ? 'Creating…' : 'Create project'}</button></section><aside className="panel tip"><h3>Chapter detection</h3><p>Markdown headings and lines beginning with “Chapter” or “Part” become separate chapters. Text before the first heading becomes an introduction.</p><p className="status">Source text remains readable inside the project folder.</p></aside></div>
+    <div className="split"><section className="panel"><label>Project title<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="My audiobook" /></label><label className={dragging ? 'manuscript-drop active' : 'manuscript-drop'}>Manuscript <span className="field-note">{dragging ? 'Drop the file to load it' : `${sourceName} · Drop a TXT or Markdown file here`}</span><textarea value={manuscript} onChange={(event) => { setManuscript(event.target.value); setSourceName('Pasted text') }} placeholder="# Chapter One&#10;&#10;Paste your manuscript here…" /></label><label>Project location<div className="path-picker"><input value={parentPath} readOnly placeholder="Choose a parent folder" /><button onClick={() => void pickLocation()}>Choose</button></div></label><button className="primary" disabled={busy || !title.trim() || !manuscript.trim() || !parentPath} onClick={() => void create()}>{busy ? 'Creating…' : 'Create project'}</button></section><aside className="panel tip"><h3>Chapter detection</h3><p>Markdown headings and lines beginning with “Chapter” or “Part” become separate chapters. Text before the first heading becomes an introduction.</p><p className="status">Source text remains readable inside the project folder.</p></aside></div>
   </div>
 }
 

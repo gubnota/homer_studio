@@ -21,7 +21,18 @@ export async function chooseManuscript(): Promise<{ name: string; text: string }
     filters: [{ name: 'Manuscript', extensions: ['txt', 'md', 'markdown'] }]
   })
   if (typeof selected !== 'string') return null
-  return invoke('read_manuscript', { path: selected })
+  return loadDroppedManuscript([selected])
+}
+
+export function validateDroppedManuscript(paths: string[]): string {
+  if (paths.length !== 1) throw new Error(paths.length === 0 ? 'Drop one manuscript file.' : 'Drop only one manuscript at a time.')
+  const path = paths[0]!
+  if (!/\.(txt|md|markdown)$/i.test(path)) throw new Error('Choose a TXT, MD, or Markdown manuscript.')
+  return path
+}
+
+export function loadDroppedManuscript(paths: string[]): Promise<{ name: string; text: string }> {
+  return invoke('read_manuscript', { path: validateDroppedManuscript(paths) })
 }
 
 export async function chooseAudio(): Promise<string | null> {

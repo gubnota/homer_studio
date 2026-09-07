@@ -38,6 +38,7 @@ label { display: grid; gap: 8px; margin-bottom: 20px; font-size: 12px; font-weig
 input, textarea { width: 100%; padding: 11px 12px; border: 1px solid #dcdad4; border-radius: 7px; color: #222; background: #fcfcfb; outline: none; }
 input:focus, textarea:focus { border-color: #8a8982; box-shadow: 0 0 0 3px #efeee9; }
 textarea { min-height: 280px; resize: vertical; line-height: 1.55; }
+.manuscript-drop { margin: -8px -10px 20px; padding: 8px 10px 10px; border: 1px dashed transparent; border-radius: 10px; transition: background .15s, border-color .15s; }.manuscript-drop.active { border-color: #78987d; background: #f3f8f3; }.manuscript-drop.active textarea { border-color: #78987d; }
 .tip h3, .panel h2 { margin: 0 0 12px; font-size: 14px; }
 .status { display: inline-flex !important; margin: 8px 0 0 !important; padding: 6px 9px; border-radius: 6px; color: #65645d !important; background: #f0efe9; font-size: 11px !important; }
 .placeholder { padding: 84px 24px; text-align: center; }

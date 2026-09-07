@@ -5,7 +5,7 @@ The automated smoke check launches the packaged application executable with isol
 For a release candidate, also check these actions manually:
 
 1. Open the app and create a project in a temporary folder.
-2. Import a short Markdown file with two headings.
+2. Drag a short Markdown file with two headings onto the manuscript area and confirm its title and text appear.
 3. Edit and save one chapter.
 4. Open Settings and confirm FFmpeg and FFprobe are available.
 5. Import or generate audio for both chapters, listen, and approve them.
