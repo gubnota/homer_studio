@@ -1,38 +1,29 @@
 # Project context
 
 ## Identity
-- Project: Audio Studio (prototype labels: Audiobook Studio / VoxEdit).
+- Project: Homer Studio (prototype labels: Audiobook Studio / VoxEdit).
 - Workspace/repository directory: `homer_studio`.
 - Repository: `https://github.com/gubnota/homer_studio.git` (supplied by the user).
-- Local Git is initialized on `main` with no commits and the supplied GitHub URL as `origin`; remote inspection returned no HEAD, branches, or tags.
+- Local Git uses `main` with the supplied GitHub URL as `origin`; implementation commits remain local until the user requests a push.
 - Purpose: turn source chapters into local chapter audio, a combined audiobook, and YouTube timestamps.
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
-- Implementation authorized on 2026-09-07.
-- Build the first working local arm64 desktop package, then complete the approved workflow in small verified commits.
-- No runnable desktop source project is present.
-- The only application material is a downloaded prototype in `audio_studio_ui/`.
-- The six context documents were absent and have been initialized during planning.
+- Version 0.1.0 implements the complete local manuscript-to-audiobook workflow.
+- The Tauri app, durable project storage, optional local text providers, narration/import, review, export, and packaging are implemented.
+- The release target is a locally verified Apple Silicon app, DMG, and ZIP with GitHub CI/release automation.
+- Remote pushes remain deferred until the user asks.
 
-## Observed technology
-- Prototype JavaScript embeds React 18.3.1.
-- Client routing and utility CSS are present in compiled assets.
-- A Vite-style module preload wrapper is present; original build configuration is absent.
-- No package manifest, lockfile, source map, tests, native shell, or CI files exist.
-- All downloaded HTML pages are identical SPA entry documents.
-- Base44 authentication, tracking, and badge scripts are present.
-- Model labels and audio operations are demonstration state, not working integrations.
-
-## Approved technology
+## Technology
 - Tauri 2 desktop shell with a narrow Rust command boundary.
-- React and TypeScript renderer reconstructed from prototype components.
-- Existing compiled CSS reused as the visual baseline.
+- React 18, TypeScript, Vite, and Vitest renderer reconstructed from prototype components.
+- Prototype-derived styling maintained as the visual baseline.
 - Rust filesystem and subprocess services in the native backend.
 - JSON project/configuration files; no database.
 - FFmpeg and FFprobe installed locally and selected through settings.
 - Replaceable local text providers: llama.cpp / GGUF and Ollama.
-- Initial speech uses installed macOS voices plus imported audio; CI targets GitHub on macOS arm64.
+- Speech uses installed macOS voices plus imported audio.
+- GitHub Actions builds and verifies packages on macOS arm64.
 
 ## Hard constraints
 - Primary target is macOS arm64 / Apple Silicon.
@@ -44,6 +35,7 @@
 - Do not download model weights automatically.
 - No mandatory Apple Developer credentials for test packages.
 - No Intel or universal-build requirement for the first milestone.
+- Development packages use ad-hoc signing; public Developer ID signing/notarization is a later distribution concern.
 
 ## Core workflow
 1. Create/open a project in a user-selected directory.
@@ -109,8 +101,8 @@
 
 ## Navigation
 - `docs/ARCHITECTURE_INDEX.md`: repository map.
-- `docs/MODULE_OWNERSHIP.md`: proposed boundaries and dependencies.
-- `docs/API_CONTRACTS.md`: current contract status and proposed baseline.
-- `docs/DECISIONS.md`: decisions and proposals.
+- `docs/MODULE_OWNERSHIP.md`: accepted boundaries and dependencies.
+- `docs/API_CONTRACTS.md`: persisted, command, provider, media, and export contracts.
+- `docs/DECISIONS.md`: accepted architecture decisions.
 - `docs/TASK_LOG.md`: progress and verification status.
 - `docs/IMPLEMENTATION_PLAN.md`: implementation handoff once written.

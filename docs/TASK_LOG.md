@@ -16,6 +16,10 @@
 - Twelve Rust tests and two renderer tests pass. Renderer typecheck/build pass, and a 1.25-second synthetic import produced a measured M4A and 5,015 decoded waveform samples.
 - Export checkpoint: added current/approved eligibility, export history, re-probing, verified concat-copy with canonical AAC fallback, cumulative timestamps, range playback, copyable saved chapter marks, and transactional publication of the output pair.
 - Fifteen Rust tests and two renderer tests pass. The media test covers copy and mixed-format fallback using real FFmpeg fixtures in a Unicode/quoted path; renderer typecheck and production build pass.
+- Release checkpoint: added architecture/signature/package verification, isolated packaged-app smoke testing, Apple Silicon CI and tagged-release workflows, setup documentation, and the release checklist.
+- Full local verification passed: renderer typecheck/build and two tests, all 15 Rust tests, the real FFmpeg integration fixture, arm64/signature checks, and a four-second packaged startup smoke test.
+- Installed-voice verification also passed with normal macOS speech-service access: Samantha generated a non-empty 90,968-byte AIFF measured at 1.970 seconds.
+- Created the ad-hoc signed `Homer Studio.app`, `Homer Studio_0.1.0_aarch64.dmg`, and `Homer Studio_0.1.0_aarch64.zip`. DMG assembly required normal macOS mount/Finder access outside the restricted command sandbox.
 
 ## 2026-09-07 — Desktop implementation planning
 - Request: inspect the attached specification and prototype; save a plan; wait for a later implementation prompt.

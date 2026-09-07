@@ -27,7 +27,12 @@
 - `src/shared/`: serializable contracts and pure chapter/time logic.
 - `src/renderer/src/native.ts`: typed renderer bridge to native commands and file dialogs.
 - `src/renderer/`: React project library, importer, source/candidate chapter editor, voice selection, narration/review, verified export history/timestamps, live queue, settings/tool status, shared controls, and prototype-derived styles.
-- `tests/`: focused unit, filesystem, media-integration, and desktop smoke tests.
+- `tests/DESKTOP_SMOKE.md`: automated and manual packaged-app smoke procedure.
+- `scripts/verify-release.mjs`: version, architecture, signature, and package verification plus ZIP creation.
+- `scripts/smoke-app.mjs`: isolated packaged-app startup check.
+- `.github/workflows/ci.yml`: push/PR checks and Apple Silicon app build.
+- `.github/workflows/release.yml`: version-tagged DMG/ZIP release publishing.
+- `README.md`: user setup, local engine configuration, workflow, checks, and packaging.
 - Root npm/Vite/TypeScript configuration: renderer development, checks, and Tauri arm64 packaging.
 - `docs/IMPLEMENTATION_PLAN.md`: exact planned filenames and verification commands.
 
@@ -38,4 +43,7 @@
 - `src-tauri/capabilities/default.json`: renderer permission allowlist.
 - `npm run dev`: Tauri development app.
 - `npm run build`: typecheck, renderer tests, and renderer production bundle.
-- `npm run pack:mac`: release `.app` bundle for the current macOS architecture.
+- `npm run test:integration`: real FFmpeg export fixture.
+- `npm run pack:mac`: release `.app` bundle plus arm64/signature verification.
+- `npm run test:smoke`: packaged app startup check.
+- `npm run package:mac`: verified Apple Silicon app, DMG, and ZIP.

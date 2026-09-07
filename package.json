@@ -9,8 +9,10 @@
     "test": "vitest run",
     "build": "npm run typecheck && npm test && npm run build:web",
     "build:web": "vite build",
-    "pack:mac": "tauri build --bundles app",
-    "package:mac": "tauri build --bundles app,dmg"
+    "test:integration": "cargo test services::exports::tests::ffmpeg_exports_quoted_unicode_paths_and_mixed_audio --manifest-path src-tauri/Cargo.toml",
+    "test:smoke": "node scripts/smoke-app.mjs",
+    "pack:mac": "tauri build --bundles app && node scripts/verify-release.mjs --app",
+    "package:mac": "tauri build --bundles app,dmg && node scripts/verify-release.mjs --package --create-zip"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",

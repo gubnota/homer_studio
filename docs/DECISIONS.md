@@ -27,3 +27,13 @@ Context: The requested workflow is local-first and needs interchangeable text mo
 Decision: Use versioned JSON/files, llama.cpp and Ollama text adapters, a separate speech interface, installed macOS voices, imported audio, and local FFmpeg/FFprobe executables.
 Consequences: No database or hosted backend; external executable availability and schema validation need explicit handling.
 Related files: `docs/API_CONTRACTS.md`, `docs/IMPLEMENTATION_PLAN.md`.
+
+# ADR-0004: Verified Apple Silicon development packages
+
+Date: 2026-09-07
+Status: Accepted
+
+Context: The first release must run locally on Apple Silicon without requiring paid Apple distribution credentials.
+Decision: Build arm64 app, DMG, and ZIP artifacts, apply Tauri's ad-hoc signature, and verify the executable architecture, signature, media integration, and packaged startup. Repeat these checks on GitHub's macOS arm64 runner and publish only version-matching tags.
+Consequences: Local test packages are reproducible and reviewable. Public distribution can add Developer ID signing and notarization without changing the application architecture.
+Related files: `scripts/verify-release.mjs`, `scripts/smoke-app.mjs`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`.
