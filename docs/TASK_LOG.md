@@ -6,6 +6,8 @@
 - First delivery target is a locally tested macOS arm64 build.
 - User selected Tauri after reviewing the initial Electron choice; the uncommitted shell was migrated before its first source commit.
 - First Tauri checkpoint: renderer typecheck and tests pass, Rust check passes, and an ad-hoc signed 3.9 MB arm64 app launches at `tauri://localhost` with working navigation and native runtime information.
+- Durable-project checkpoint: implemented versioned local projects, TXT/Markdown import, heading detection, bounded segmentation, chapter editing/reordering, revision conflict checks, safe relative paths, manifest backup, and atomic saves.
+- Verified the project layer with four Rust tests, renderer typecheck/tests, a production bundle, and a reopened arm64 packaged app showing the native project library.
 
 ## 2026-09-07 — Desktop implementation planning
 - Request: inspect the attached specification and prototype; save a plan; wait for a later implementation prompt.
