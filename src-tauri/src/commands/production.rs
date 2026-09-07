@@ -191,3 +191,81 @@ pub fn audio_waveform(
     let path = project_store::chapter_audio_path(&root_path, &chapter_id)?;
     crate::services::speech::waveform(&path, &settings::load(&app)?)
 }
+
+#[tauri::command]
+pub fn export_project(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    root_path: String,
+    expected_revision: u64,
+) -> Result<String, CommandError> {
+    let snapshot = project_store::open(&root_path)?;
+    if snapshot.revision != expected_revision {
+        return Err(CommandError::new(
+            "REVISION_CONFLICT",
+            "The project changed. Reload it before exporting.",
+        ));
+    }
+    let title = snapshot.title.clone();
+    let settings = settings::load(&app)?;
+    let lock = state.project_write_lock.clone();
+    let queued_root = root_path.clone();
+    Ok(state.jobs.enqueue(
+        "export",
+        format!("Export {title}"),
+        move |control, progress| {
+            control.boundary()?;
+            progress(10);
+            let prepared = crate::services::exports::assemble(
+                &queued_root,
+                &snapshot,
+                &settings,
+                control.cancelled.clone(),
+            )?;
+            control.boundary()?;
+            progress(90);
+            let _guard = lock
+                .lock()
+                .map_err(|_| CommandError::internal("project lock is unavailable"))?;
+            let committed = project_store::commit_export(
+                &queued_root,
+                expected_revision,
+                &prepared.audio_path,
+                &prepared.timestamps_path,
+                prepared.duration_ms,
+            );
+            if committed.is_err() {
+                if let Some(work) = prepared.audio_path.parent() {
+                    let _ = std::fs::remove_dir_all(work);
+                }
+            }
+            committed.map(|_| ())
+        },
+    ))
+}
+
+#[tauri::command]
+pub fn export_audio_url(
+    state: State<'_, AppState>,
+    root_path: String,
+    export_id: String,
+) -> Result<String, CommandError> {
+    let (path, _) = project_store::export_paths(&root_path, &export_id)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    state
+        .audio_assets
+        .write()
+        .map_err(|_| CommandError::internal("audio registry is unavailable"))?
+        .insert(id.clone(), path);
+    Ok(format!("audio://localhost/{id}"))
+}
+
+#[tauri::command]
+pub fn read_export_timestamps(
+    root_path: String,
+    export_id: String,
+) -> Result<String, CommandError> {
+    let (_, path) = project_store::export_paths(&root_path, &export_id)?;
+    std::fs::read_to_string(path)
+        .map_err(|error| CommandError::io("Cannot read exported timestamps", error))
+}

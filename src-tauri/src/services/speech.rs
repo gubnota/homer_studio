@@ -88,6 +88,10 @@ pub fn generate(
             "aac".into(),
             "-b:a".into(),
             "128k".into(),
+            "-ar".into(),
+            "48000".into(),
+            "-ac".into(),
+            "2".into(),
             path_string(output),
         ],
         Duration::from_secs(3600),
@@ -132,6 +136,10 @@ pub fn import(
             "aac".into(),
             "-b:a".into(),
             "128k".into(),
+            "-ar".into(),
+            "48000".into(),
+            "-ac".into(),
+            "2".into(),
             path_string(output),
         ],
         Duration::from_secs(3600),
@@ -227,7 +235,7 @@ fn waveform_from_raw(path: &Path, bins: usize) -> Result<Vec<f32>, CommandError>
         .collect())
 }
 
-fn probe_duration(path: &Path, settings: &Settings) -> Result<u64, CommandError> {
+pub fn probe_duration(path: &Path, settings: &Settings) -> Result<u64, CommandError> {
     let ffprobe = process_runner::resolve_executable("ffprobe", settings.ffprobe_path.as_deref())
         .ok_or_else(|| {
         CommandError::new(

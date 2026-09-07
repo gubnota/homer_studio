@@ -64,7 +64,10 @@ pub fn run() {
             commands::production::import_chapter_audio,
             commands::production::set_chapter_review,
             commands::production::audio_url,
-            commands::production::audio_waveform
+            commands::production::audio_waveform,
+            commands::production::export_project,
+            commands::production::export_audio_url,
+            commands::production::read_export_timestamps
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Homer Studio");

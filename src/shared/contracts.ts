@@ -23,6 +23,16 @@ export interface Chapter {
   reviewStatus: 'pending' | 'approved' | 'changes_requested' | null
 }
 
+export interface ExportRecord {
+  id: string
+  audioPath: string
+  timestampsPath: string
+  durationMs: number
+  createdAtMs: number
+  sourceRevision: number
+  sourceUpdatedAtMs: number
+}
+
 export interface ProjectSnapshot {
   schemaVersion: 1
   id: string
@@ -32,6 +42,7 @@ export interface ProjectSnapshot {
   updatedAtMs: number
   rootPath: string
   chapters: Chapter[]
+  exports: ExportRecord[]
 }
 
 export interface TextCandidate {

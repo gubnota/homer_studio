@@ -210,8 +210,52 @@ export function QueuePage(): JSX.Element {
   return <div className="page"><Header eyebrow="Production" title="Render queue" copy="Heavy local work runs one job at a time." />{error && <div className="inline-error">{error}</div>}<section className="panel">{jobs.length === 0 ? <div className="table-empty">No jobs yet.</div> : <div className="job-list">{jobs.map((job) => <article className="job-row" key={job.id}><div><strong>{job.label}</strong><small>{job.kind} · {job.status}{job.message ? ` · ${job.message}` : ''}</small></div><progress value={job.progress} max="100" /><span>{job.progress}%</span>{['queued', 'running'].includes(job.status) && <div className="actions"><button onClick={() => void control(job, 'pause')}>Pause</button><button onClick={() => void control(job, 'resume')}>Resume</button><button onClick={() => void control(job, 'cancel')}>Cancel</button></div>}</article>)}</div>}</section></div>
 }
 
-export function ExportsPage(): JSX.Element {
-  return <div className="page"><Header eyebrow="Output" title="Exports" copy="Combine approved chapters and create measured timestamps." /><section className="panel placeholder"><span>Final assembly</span><h2>No complete project</h2><p>Exports appear here after every chapter has a current audio take.</p></section></div>
+export function ExportsPage({ project, onProjectChange }: { project: ProjectSnapshot | null; onProjectChange: (project: ProjectSnapshot) => void }): JSX.Element {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  if (!project) return <div className="page"><Header eyebrow="Output" title="Exports" copy="Combine approved chapters and create measured timestamps." /><section className="panel placeholder"><h2>Open a project first</h2></section></div>
+  const activeProject = project
+  const ready = activeProject.chapters.filter((chapter) => chapter.audioPath && !chapter.audioStale && chapter.reviewStatus === 'approved').length
+  const youtubeNote = youtubeEligibility(activeProject)
+  async function createExport(): Promise<void> {
+    setBusy(true); setError('')
+    try {
+      const jobId = await productionApi.exportProject(activeProject)
+      for (;;) {
+        await new Promise((resolve) => window.setTimeout(resolve, 500))
+        const job = (await systemApi.jobs()).find((item) => item.id === jobId)
+        if (!job || ['completed', 'failed', 'cancelled'].includes(job.status)) {
+          if (job?.status === 'failed') throw new Error(job.message ?? 'Export failed.')
+          if (job?.status === 'cancelled') throw new Error('Export was cancelled.')
+          onProjectChange(await projectApi.open(activeProject.rootPath)); break
+        }
+      }
+    } catch (cause) { setError(errorMessage(cause)) } finally { setBusy(false) }
+  }
+  return <div className="page"><Header eyebrow={project.title} title="Exports" copy="Combine approved chapters and create measured timestamps." action={<button className="primary" disabled={busy || ready !== project.chapters.length} onClick={() => void createExport()}>{busy ? 'Exporting…' : 'Export audiobook'}</button>} />
+    {error && <div className="inline-error">{error}</div>}
+    {ready !== project.chapters.length && <div className="status-banner">{ready} of {project.chapters.length} chapters have current, approved audio.</div>}
+    {ready === project.chapters.length && youtubeNote && <div className="status-banner">The audiobook can be exported. YouTube may not activate chapter marks because {youtubeNote}.</div>}
+    <section className="panel export-history"><h2>Export history</h2>{project.exports.length === 0 ? <div className="table-empty">No exports yet.</div> : [...project.exports].reverse().map((item) => <ExportItem key={item.id} project={project} item={item} stale={item.sourceUpdatedAtMs !== project.updatedAtMs} />)}</section>
+  </div>
+}
+
+function youtubeEligibility(project: ProjectSnapshot): string {
+  if (project.chapters.length < 3) return 'it has fewer than three chapters'
+  if (project.chapters.some((chapter) => (chapter.audioDurationMs ?? 0) < 10_000)) return 'one or more chapters are shorter than ten seconds'
+  let elapsed = 0
+  const starts = project.chapters.map((chapter) => { const value = Math.floor(elapsed / 1000); elapsed += chapter.audioDurationMs ?? 0; return value })
+  if (new Set(starts).size !== starts.length) return 'two chapter marks have the same whole-second start'
+  return ''
+}
+
+function ExportItem({ project, item, stale }: { project: ProjectSnapshot; item: ProjectSnapshot['exports'][number]; stale: boolean }): JSX.Element {
+  const [url, setUrl] = useState('')
+  const [timestamps, setTimestamps] = useState('')
+  const [copied, setCopied] = useState(false)
+  useEffect(() => { void Promise.all([productionApi.exportAudioUrl(project, item.id), productionApi.exportTimestamps(project, item.id)]).then(([audio, text]) => { setUrl(audio); setTimestamps(text) }).catch(() => {}) }, [project.rootPath, item.id])
+  async function copy(): Promise<void> { await navigator.clipboard.writeText(timestamps); setCopied(true); window.setTimeout(() => setCopied(false), 1500) }
+  return <article className="export-row"><div><strong>{new Date(item.createdAtMs).toLocaleString()}</strong><small>{formatDuration(item.durationMs)} · {stale ? 'Project changed since export' : 'Current project content'}</small></div>{url && <audio controls preload="metadata" src={url} />}<textarea readOnly value={timestamps} aria-label="YouTube chapter timestamps" /><button disabled={!timestamps} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy timestamps'}</button></article>
 }
 
 export function SettingsPage(): JSX.Element {

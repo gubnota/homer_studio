@@ -75,7 +75,13 @@ export const productionApi = {
   audioUrl: (project: ProjectSnapshot, chapterId: string) =>
     invoke<string>('audio_url', { rootPath: project.rootPath, chapterId }),
   waveform: (project: ProjectSnapshot, chapterId: string) =>
-    invoke<number[]>('audio_waveform', { rootPath: project.rootPath, chapterId })
+    invoke<number[]>('audio_waveform', { rootPath: project.rootPath, chapterId }),
+  exportProject: (project: ProjectSnapshot) =>
+    invoke<string>('export_project', { rootPath: project.rootPath, expectedRevision: project.revision }),
+  exportAudioUrl: (project: ProjectSnapshot, exportId: string) =>
+    invoke<string>('export_audio_url', { rootPath: project.rootPath, exportId }),
+  exportTimestamps: (project: ProjectSnapshot, exportId: string) =>
+    invoke<string>('read_export_timestamps', { rootPath: project.rootPath, exportId })
 }
 
 export const systemApi = {

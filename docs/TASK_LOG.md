@@ -14,6 +14,8 @@
 - Nine Rust tests and two renderer tests pass; renderer typecheck and production build pass.
 - Narration/review checkpoint: added installed macOS voice selection, queued speech generation and audio import, canonical M4A conversion, measured durations, registered range-capable playback, waveform peaks, stale-audio invalidation, and approve/changes-requested state.
 - Twelve Rust tests and two renderer tests pass. Renderer typecheck/build pass, and a 1.25-second synthetic import produced a measured M4A and 5,015 decoded waveform samples.
+- Export checkpoint: added current/approved eligibility, export history, re-probing, verified concat-copy with canonical AAC fallback, cumulative timestamps, range playback, copyable saved chapter marks, and transactional publication of the output pair.
+- Fifteen Rust tests and two renderer tests pass. The media test covers copy and mixed-format fallback using real FFmpeg fixtures in a Unicode/quoted path; renderer typecheck and production build pass.
 
 ## 2026-09-07 — Desktop implementation planning
 - Request: inspect the attached specification and prototype; save a plan; wait for a later implementation prompt.

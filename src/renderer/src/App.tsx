@@ -44,7 +44,7 @@ export function App(): JSX.Element {
       case 'review': return <ReviewPage project={project} onProjectChange={remember} />
       case 'voices': return <VoicesPage />
       case 'queue': return <QueuePage />
-      case 'exports': return <ExportsPage />
+      case 'exports': return <ExportsPage project={project} onProjectChange={remember} />
       case 'settings': return <SettingsPage />
       default: return <StudioPage route={route} project={project} />
     }

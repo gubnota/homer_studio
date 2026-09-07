@@ -69,6 +69,20 @@ pub struct Chapter {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ExportRecord {
+    pub id: String,
+    pub audio_path: String,
+    pub timestamps_path: String,
+    pub duration_ms: u64,
+    pub created_at_ms: u64,
+    #[serde(default)]
+    pub source_revision: u64,
+    #[serde(default)]
+    pub source_updated_at_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectManifest {
     pub schema_version: u32,
     pub id: String,
@@ -77,6 +91,8 @@ pub struct ProjectManifest {
     pub created_at_ms: u64,
     pub updated_at_ms: u64,
     pub chapters: Vec<Chapter>,
+    #[serde(default)]
+    pub exports: Vec<ExportRecord>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -99,6 +115,7 @@ pub struct ProjectSnapshot {
     pub updated_at_ms: u64,
     pub root_path: String,
     pub chapters: Vec<ChapterSnapshot>,
+    pub exports: Vec<ExportRecord>,
 }
 
 #[derive(Debug)]
@@ -151,6 +168,7 @@ pub fn create(
             created_at_ms: now,
             updated_at_ms: now,
             chapters,
+            exports: Vec::new(),
         };
         write_manifest(&root, &manifest)?;
         snapshot(&root, manifest)
@@ -321,6 +339,67 @@ pub fn chapter_audio_path(root_path: &str, chapter_id: &str) -> Result<PathBuf, 
     fs::canonicalize(path).map_err(|error| CommandError::io("Cannot open chapter audio", error))
 }
 
+pub fn commit_export(
+    root_path: &str,
+    expected_revision: u64,
+    staged_audio: &Path,
+    staged_timestamps: &Path,
+    duration_ms: u64,
+) -> Result<ProjectSnapshot, CommandError> {
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let mut manifest = read_manifest(&root)?;
+    require_revision(&manifest, expected_revision)?;
+    let id = Uuid::new_v4().to_string();
+    let stem = format!("{}-{}", project_folder_name(&manifest.title), &id[..8]);
+    let audio_path = format!("output/{stem}.m4a");
+    let timestamps_path = format!("output/{stem}-timestamps.txt");
+    let audio_destination = owned_path(&root, &audio_path)?;
+    let timestamps_destination = owned_path(&root, &timestamps_path)?;
+    fs::copy(staged_audio, &audio_destination)
+        .map_err(|error| CommandError::io("Cannot store audiobook", error))?;
+    if let Err(error) = fs::copy(staged_timestamps, &timestamps_destination) {
+        let _ = fs::remove_file(&audio_destination);
+        return Err(CommandError::io("Cannot store timestamps", error));
+    }
+    manifest.exports.push(ExportRecord {
+        id,
+        audio_path,
+        timestamps_path,
+        duration_ms,
+        created_at_ms: now_ms(),
+        source_revision: expected_revision,
+        source_updated_at_ms: manifest.updated_at_ms,
+    });
+    manifest.revision += 1;
+    if let Err(error) = write_manifest(&root, &manifest) {
+        let _ = fs::remove_file(&audio_destination);
+        let _ = fs::remove_file(&timestamps_destination);
+        return Err(error);
+    }
+    if let Some(work) = staged_audio.parent() {
+        let _ = fs::remove_dir_all(work);
+    }
+    snapshot(&root, manifest)
+}
+
+pub fn export_paths(root_path: &str, export_id: &str) -> Result<(PathBuf, PathBuf), CommandError> {
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let manifest = read_manifest(&root)?;
+    let record = manifest
+        .exports
+        .iter()
+        .find(|record| record.id == export_id)
+        .ok_or_else(|| CommandError::new("EXPORT_NOT_FOUND", "The export no longer exists."))?;
+    Ok((
+        fs::canonicalize(owned_path(&root, &record.audio_path)?)
+            .map_err(|error| CommandError::io("Cannot open exported audiobook", error))?,
+        fs::canonicalize(owned_path(&root, &record.timestamps_path)?)
+            .map_err(|error| CommandError::io("Cannot open exported timestamps", error))?,
+    ))
+}
+
 pub fn reorder(
     root_path: &str,
     expected_revision: u64,
@@ -414,6 +493,7 @@ fn snapshot(root: &Path, manifest: ProjectManifest) -> Result<ProjectSnapshot, C
         updated_at_ms: manifest.updated_at_ms,
         root_path: root.to_string_lossy().into_owned(),
         chapters,
+        exports: manifest.exports,
     })
 }
 
