@@ -1,6 +1,6 @@
 # Inputs, local tools, and voice presets plan
 
-Status: Proposed for user approval
+Status: Implemented; final verification recorded in `docs/TASK_LOG.md`
 Date: 2026-09-07
 
 ## Goal

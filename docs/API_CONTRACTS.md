@@ -17,11 +17,12 @@
 - `reorder_chapters(rootPath, expectedRevision, chapterIds) -> ProjectSnapshot`.
 - `desktop_info() -> { platform, architecture, runtime }`.
 - `get_settings()`, `save_settings(settings) -> SettingsV1`; settings are stored atomically in the app configuration folder.
-- `tool_diagnostics() -> ToolDiagnostic[]`; resolution checks explicit overrides, process PATH, then standard Homebrew/system paths without a shell.
+- `tool_diagnostics() -> ToolDiagnostic[]`; resolution checks explicit overrides, process PATH, then bounded system and user Homebrew paths without a shell. Each result exposes `key`, `name`, effective `path`, `available`, `status`, `configuredPath`, and `detectedPath`. Ollama CLI and loopback server health are separate results.
 - `list_jobs() -> JobRecord[]`, `control_job(jobId, action)` where action is `pause`, `resume`, or `cancel` for an active job.
 - `process_text(instruction, text) -> TextCandidate`; uses the configured local llama.cpp or loopback Ollama provider and does not mutate project files.
 - `accept_processed_text(rootPath, expectedRevision, chapterId, text) -> ProjectSnapshot`; stores a reviewed candidate separately from source text and regenerates segments.
 - `list_voices() -> Voice[]`; reads installed macOS voices.
+- `preview_voice(voiceId, rate) -> audio://localhost/<opaque-id>`; validates an installed voice and 80–500 WPM, synthesizes a disposable local M4A through the normal FFmpeg/FFprobe path, registers it for playback, and removes older previews.
 - `generate_chapter_audio(...) -> jobId` and `import_chapter_audio(...) -> jobId`; queue conversion to canonical AAC/M4A and only commit a measured, valid result.
 - `set_chapter_review(...) -> ProjectSnapshot`; accepts `approved` or `changes_requested` for current chapter audio.
 - `audio_url(...) -> audio://localhost/<opaque-id>` and `audio_waveform(...) -> number[]`; expose only registered project audio, with byte-range playback and bounded peak data.
@@ -31,7 +32,9 @@
 ## Settings v1
 - `llm`: `none`, `llama_cpp`, or `ollama`. Ollama URLs must use loopback HTTP.
 - `speech`: `macos_say`, installed voice ID, and 80–500 words per minute.
-- Optional explicit FFmpeg and FFprobe executable paths.
+- `voicePresets`: ordered `{ id, name, voiceId, rate, builtIn }` records. IDs are non-empty and unique; rates are 80–500 WPM. Curated Samantha, Daniel, and Karen presets are added only when those voices are installed.
+- `selectedVoicePresetId`: nullable preset ID. Selecting or saving a preset also updates the effective `speech.voiceId` and `speech.rate` for backward-compatible generation.
+- Optional explicit FFmpeg, FFprobe, and Ollama executable paths. llama.cpp keeps its executable and GGUF model paths in its provider settings.
 
 ## Job states
 - `queued -> running -> completed | failed | cancelled`.
@@ -45,7 +48,7 @@
 - `INVALID_TITLE`, `EMPTY_MANUSCRIPT`, `MANUSCRIPT_TOO_LARGE`, `UNSUPPORTED_FILE`.
 - `INVALID_PROJECT`, `UNSUPPORTED_PROJECT_VERSION`, `CHAPTER_NOT_FOUND`, `INVALID_CHAPTER_ORDER`.
 - `REVISION_CONFLICT`, `IO_ERROR`, `INTERNAL`.
-- `INVALID_SETTINGS`, `UNSUPPORTED_SETTINGS_VERSION`, `INVALID_SPEECH_RATE`, `UNSAFE_OLLAMA_URL`.
+- `INVALID_SETTINGS`, `UNSUPPORTED_SETTINGS_VERSION`, `INVALID_SPEECH_RATE`, `INVALID_VOICE_PRESET`, `VOICE_NOT_INSTALLED`, `UNSAFE_OLLAMA_URL`.
 - `JOB_NOT_ACTIVE`, `INVALID_JOB_ACTION`, `JOB_CANCELLED`, `PROCESS_TIMEOUT`.
 - `LLM_DISABLED`, `LLAMA_NOT_FOUND`, `MODEL_NOT_FOUND`, `MODEL_NOT_CONFIGURED`, `OLLAMA_UNAVAILABLE`.
 - `EMPTY_INSTRUCTION`, `EMPTY_TEXT`, `LLM_INPUT_TOO_LARGE`, `EMPTY_LLM_OUTPUT`, `LLM_OUTPUT_TOO_LARGE`, `LLM_PROCESS_FAILED`, `INVALID_LLM_RESPONSE`.

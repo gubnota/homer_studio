@@ -10,7 +10,7 @@
 
 ## Current milestone
 - Version 0.1.0 implements the complete local manuscript-to-audiobook workflow.
-- The Tauri app, durable project storage, optional local text providers, narration/import, review, export, and packaging are implemented.
+- The Tauri app, durable project storage, drag-and-drop import, optional local text providers, reusable voice presets, narration/import, review, export, and packaging are implemented.
 - The release target is a locally verified Apple Silicon app, DMG, and ZIP with GitHub CI/release automation.
 - Remote pushes remain deferred until the user asks.
 
@@ -20,7 +20,7 @@
 - Prototype-derived styling maintained as the visual baseline.
 - Rust filesystem and subprocess services in the native backend.
 - JSON project/configuration files; no database.
-- FFmpeg and FFprobe installed locally and selected through settings.
+- FFmpeg, FFprobe, llama.cpp, and Ollama executables are discovered in bounded system and user Homebrew locations or selected explicitly in Settings.
 - Replaceable local text providers: llama.cpp / GGUF and Ollama.
 - Speech uses installed macOS voices plus imported audio.
 - GitHub Actions builds and verifies packages on macOS arm64.
@@ -39,11 +39,11 @@
 
 ## Core workflow
 1. Create/open a project in a user-selected directory.
-2. Import TXT/Markdown or paste text.
+2. Choose, drop, or paste a TXT/Markdown manuscript.
 3. Inspect chapter boundaries and ordering.
 4. Edit chapter/segment text.
 5. Optionally process text using a selected local LLM.
-6. Generate speech or import chapter audio.
+6. Select or create a local macOS voice preset, preview it, then generate speech or import chapter audio.
 7. Listen, flag, approve, and retry items.
 8. Combine complete chapter audio using FFmpeg.
 9. Save the final audio and measured chapter timestamps.

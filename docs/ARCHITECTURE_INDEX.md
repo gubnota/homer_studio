@@ -15,7 +15,7 @@
 - `src-tauri/`: Tauri lifecycle, permissions, Rust commands, icons, build configuration, and future native services.
 - `src-tauri/src/commands/project.rs`: native project and manuscript commands.
 - `src-tauri/src/services/project_store.rs`: schema v1 persistence, parsing, segmentation, atomic saves, and filesystem tests.
-- `src-tauri/src/services/settings.rs`: validated app settings, atomic persistence, and local tool diagnostics.
+- `src-tauri/src/services/settings.rs`: validated app settings, voice-preset migration, atomic persistence, and local tool/service diagnostics.
 - `src-tauri/src/services/process_runner.rs`: argument-only child processes, timeout, cancellation, and bounded diagnostics.
 - `src-tauri/src/services/jobs.rs`: serialized heavy-work queue and pause/resume/cancel state.
 - `src-tauri/src/services/llm.rs`: bounded llama.cpp and loopback Ollama text processing with candidate-only results.
@@ -23,10 +23,12 @@
 - `src-tauri/src/services/audio_protocol.rs`: registry-backed project audio delivery with byte-range support.
 - `src-tauri/src/services/exports.rs`: re-probed chapter assembly, copy/re-encode fallback, duration verification, and timestamp generation.
 - `src-tauri/src/commands/system.rs`: settings, diagnostics, and job-control commands.
-- `src-tauri/src/commands/production.rs`: text candidates, queued narration/import/export, audio playback, waveforms, chapter review, and export retrieval.
+- `src-tauri/src/commands/production.rs`: text candidates, disposable voice previews, queued narration/import/export, audio playback, waveforms, chapter review, and export retrieval.
 - `src/shared/`: serializable contracts and pure chapter/time logic.
-- `src/renderer/src/native.ts`: typed renderer bridge to native commands and file dialogs.
-- `src/renderer/`: React project library, importer, source/candidate chapter editor, voice selection, narration/review, verified export history/timestamps, live queue, settings/tool status, shared controls, and prototype-derived styles.
+- `src/renderer/src/native.ts`: typed renderer bridge to native commands, validated dropped manuscripts, and file dialogs.
+- `src/renderer/src/voice-presets.ts`: pure preset selection, creation, update, deletion, and built-in reset rules.
+- `src/renderer/`: React project library, drop-enabled importer, source/candidate chapter editor, voice presets and previews, narration/review, verified export history/timestamps, live queue, settings/tool status, shared controls, and prototype-derived styles.
+- `tests/manuscript-drop.test.ts` and `tests/voice-presets.test.ts`: focused renderer behavior tests.
 - `tests/DESKTOP_SMOKE.md`: automated and manual packaged-app smoke procedure.
 - `scripts/verify-release.mjs`: version, architecture, signature, and package verification plus ZIP creation.
 - `scripts/smoke-app.mjs`: isolated packaged-app startup check.
@@ -35,6 +37,7 @@
 - `README.md`: user setup, local engine configuration, workflow, checks, and packaging.
 - Root npm/Vite/TypeScript configuration: renderer development, checks, and Tauri arm64 packaging.
 - `docs/IMPLEMENTATION_PLAN.md`: exact planned filenames and verification commands.
+- `docs/IMPLEMENTATION_PLAN_INPUTS_AND_VOICES.md`: completed local-tool, manuscript-drop, and voice-preset plan.
 
 ## Entry points and build
 - `src/renderer/main.tsx`: renderer entry.

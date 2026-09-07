@@ -18,7 +18,15 @@ npm ci
 npm run dev
 ```
 
-Create a project in a folder you control, then import a TXT or Markdown manuscript. Homer Studio stores a readable `homer-project.json` manifest and generated files inside that project folder.
+Create a project in a folder you control, then choose, drop, or paste a TXT or Markdown manuscript. Homer Studio stores a readable `project.json` manifest and generated files inside that project folder.
+
+## Local tool locations
+
+Open **Settings** to see each tool's detected and configured location. Homer Studio checks the app environment and common Apple Silicon locations including `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/homebrew/bin`, and `~/local/homebrew/bin`.
+
+If a tool still shows **Not found**, enter its full path or use **Choose**. When automatic discovery succeeds, **Use detected path** saves that location. FFmpeg and FFprobe are required for narration and export. llama.cpp and Ollama are optional text-processing providers.
+
+Ollama has two separate checks: the CLI location and the local server at the configured loopback URL. A found CLI does not mean the server is running.
 
 ## Local text processing
 
@@ -31,7 +39,9 @@ Generated text is always presented as a candidate. Accepting it changes narratio
 
 ## Narration and export
 
-The Voices screen lists installed macOS voices. Additional voices can be installed in macOS System Settings. You can also import existing chapter audio. FFmpeg converts chapter media to 48 kHz stereo AAC/M4A and FFprobe measures its real duration.
+The Voices screen starts with reusable presets. Built-in presets appear only when their macOS voices are installed. You can create a preset with a name, an installed voice, and a speaking rate, then preview or select it for narration. These are macOS voice settings; they do not clone a person's voice. Additional voices can be installed in macOS System Settings.
+
+You can also import existing chapter audio. FFmpeg converts chapter media to 48 kHz stereo AAC/M4A and FFprobe measures its real duration.
 
 Approve every current chapter recording before export. Homer Studio rechecks the media, joins it, verifies the final duration, and writes both the M4A and timestamp text file to the project.
 

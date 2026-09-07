@@ -1,5 +1,15 @@
 # Task log
 
+## 2026-09-07 — Tool setup, manuscript drop, and voice presets
+- User approved `docs/IMPLEMENTATION_PLAN_INPUTS_AND_VOICES.md`; implementation remained on local `main`, with pushes deferred.
+- Tool setup checkpoint (`a8a7be1`): added packaged-app discovery for bounded system and user Homebrew locations, visible FFmpeg/FFprobe/llama.cpp/GGUF/Ollama path controls, detected-path actions, and separate Ollama CLI/server diagnostics.
+- Manuscript checkpoint (`878d6d3`): added Tauri drag/drop handling, scoped listener cleanup, supported-file validation, title population, and focused renderer tests.
+- Voice checkpoint (`8d0b86d`): added installed-only built-in presets, migration of saved speech settings, custom preset create/edit/delete/select behavior, real local preview synthesis, and preview cleanup.
+- Final validation passed with three renderer test files containing seven tests, 20 Rust tests, and the real FFmpeg integration fixture.
+- The packaged app found FFmpeg, FFprobe, llama.cpp, and Ollama in the user's local Homebrew prefix; Ollama CLI detection remained separate from the stopped loopback service.
+- Packaged-app checks created, selected, and removed a custom Samantha preset, produced a four-second preview, and generated chapter 7 as a valid 60.251-second M4A. The built-in Warm narrator preset was restored afterward.
+- Built, ad-hoc signed, and verified the arm64 app, DMG, and ZIP. The isolated packaged-app startup smoke test remained healthy for four seconds.
+
 ## 2026-09-07 — Implementation authorized
 - User approved the saved plan and requested a human-readable commit after each verified stage.
 - Remote pushes are deferred until the user asks.
