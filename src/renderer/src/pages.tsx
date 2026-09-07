@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
-import type { Chapter, JobRecord, ProjectSnapshot, Settings, ToolDiagnostic, Voice } from '../../shared/contracts'
+import type { Chapter, JobRecord, ProjectSnapshot, Settings, ToolDiagnostic, Voice, VoicePreset } from '../../shared/contracts'
 import type { RouteId } from '../../shared/navigation'
 import { chooseAudio, chooseFolder, chooseManuscript, chooseTool, errorMessage, isDesktop, loadDroppedManuscript, productionApi, projectApi, systemApi } from './native'
+import { activateVoicePreset, deleteVoicePreset, resetBuiltInPreset, upsertVoicePreset } from './voice-presets'
 
 interface DesktopInfo { platform: string; architecture: string; runtime: string }
 
@@ -207,14 +208,56 @@ export function VoicesPage(): JSX.Element {
   const [voices, setVoices] = useState<Voice[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [message, setMessage] = useState('Loading installed voices…')
+  const [name, setName] = useState('')
+  const [voiceId, setVoiceId] = useState('')
+  const [rate, setRate] = useState(180)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState('')
   useEffect(() => { void Promise.all([productionApi.voices(), systemApi.settings()]).then(([found, current]) => { setVoices(found); setSettings(current); setMessage('') }).catch((cause) => setMessage(errorMessage(cause))) }, [])
-  async function select(voiceId: string): Promise<void> {
-    if (!settings) return
-    const next = { ...settings, speech: { ...settings.speech, voiceId } }
+  async function persist(next: Settings, success = 'Voice preset saved'): Promise<void> {
     setSettings(next); setMessage('Saving…')
-    try { setSettings(await systemApi.saveSettings(next)); setMessage('Voice saved') } catch (cause) { setMessage(errorMessage(cause)) }
+    try { setSettings(await systemApi.saveSettings(next)); setMessage(success) } catch (cause) { setMessage(errorMessage(cause)) }
   }
-  return <div className="page"><Header eyebrow="Production" title="Installed voices" copy="These voices are provided by macOS and work fully offline." />{message && <div className="status-banner">{message}</div>}<section className="voice-grid">{voices.map((voice) => <button className={settings?.speech.voiceId === voice.id ? 'voice-card selected' : 'voice-card'} key={`${voice.id}-${voice.language}`} onClick={() => void select(voice.id)}><strong>{voice.id}</strong><span>{voice.language}</span><small>{voice.sample || 'Installed macOS voice'}</small></button>)}</section></div>
+  async function select(preset: VoicePreset): Promise<void> {
+    if (settings) await persist(activateVoicePreset(settings, preset), `${preset.name} selected`)
+  }
+  function edit(preset?: VoicePreset): void {
+    setEditorOpen(true)
+    setEditingId(preset?.id || null)
+    setName(preset?.name ?? '')
+    setVoiceId(preset?.voiceId ?? settings?.speech.voiceId ?? voices[0]?.id ?? '')
+    setRate(preset?.rate ?? settings?.speech.rate ?? 180)
+  }
+  function closeEditor(): void {
+    setEditorOpen(false)
+    setEditingId(null)
+    setName('')
+    setVoiceId('')
+  }
+  async function savePreset(): Promise<void> {
+    if (!settings || !name.trim() || !voiceId) return
+    const preset: VoicePreset = { id: editingId ?? `custom-${Date.now()}`, name: name.trim(), voiceId, rate, builtIn: false }
+    await persist(upsertVoicePreset(settings, preset))
+    closeEditor()
+  }
+  async function remove(preset: VoicePreset): Promise<void> {
+    if (!settings) return
+    try { await persist(deleteVoicePreset(settings, preset.id), 'Voice preset deleted') } catch (cause) { setMessage(errorMessage(cause)) }
+  }
+  async function preview(selectedVoice: string, selectedRate: number): Promise<void> {
+    setMessage('Creating voice preview…'); setPreviewUrl('')
+    try { setPreviewUrl(await productionApi.previewVoice(selectedVoice, selectedRate)); setMessage('Preview ready') } catch (cause) { setMessage(errorMessage(cause)) }
+  }
+  const installed = new Set(voices.map((voice) => voice.id))
+  const presets = settings?.voicePresets.filter((preset) => installed.has(preset.voiceId)) ?? []
+  return <div className="page"><Header eyebrow="Production" title="Voice presets" copy="Combine an installed macOS voice with a narration speed. Everything stays offline." action={<button onClick={() => edit()}>Create preset</button>} />
+    {message && <div className="status-banner">{message}</div>}
+    {previewUrl && <section className="voice-preview"><audio controls autoPlay src={previewUrl} /><button onClick={() => setPreviewUrl('')}>Close</button></section>}
+    <section className="voice-section"><h2>Presets</h2><div className="voice-grid">{presets.map((preset) => <article className={settings?.selectedVoicePresetId === preset.id ? 'voice-card selected' : 'voice-card'} key={preset.id}><button className="voice-select" onClick={() => void select(preset)}><strong>{preset.name}</strong><span>{preset.voiceId} · {preset.rate} wpm</span><small>{preset.builtIn ? 'Built-in preset' : 'Custom preset'}</small></button><div className="voice-actions"><button onClick={() => void preview(preset.voiceId, preset.rate)}>Preview</button>{preset.builtIn ? <button onClick={() => settings && void persist(resetBuiltInPreset(settings, preset.id), 'Preset reset')}>Reset</button> : <><button onClick={() => edit(preset)}>Edit</button><button onClick={() => void remove(preset)}>Delete</button></>}</div></article>)}</div></section>
+    {editorOpen && <section className="panel preset-editor"><h2>{editingId ? 'Edit voice preset' : 'Create voice preset'}</h2><label>Preset name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Evening narrator" /></label><label>Installed macOS voice<select value={voiceId} onChange={(event) => setVoiceId(event.target.value)}><option value="">Choose a voice</option>{voices.map((voice) => <option key={`${voice.id}-${voice.language}`} value={voice.id}>{voice.id} · {voice.language}</option>)}</select></label><label>Words per minute<input type="number" min="80" max="500" value={rate} onChange={(event) => setRate(Number(event.target.value))} /></label><div className="actions"><button disabled={!voiceId} onClick={() => void preview(voiceId, rate)}>Preview</button><button onClick={closeEditor}>Cancel</button><button className="primary" disabled={!name.trim() || !voiceId || rate < 80 || rate > 500} onClick={() => void savePreset()}>Save preset</button></div></section>}
+    <section className="voice-section"><h2>Installed voices</h2><p>Use these macOS voices when creating a preset.</p><div className="voice-grid installed-voices">{voices.map((voice) => <button className="voice-card" key={`${voice.id}-${voice.language}`} onClick={() => edit({ id: '', name: '', voiceId: voice.id, rate: settings?.speech.rate ?? 180, builtIn: false })}><strong>{voice.id}</strong><span>{voice.language}</span><small>{voice.sample || 'Installed macOS voice'}</small></button>)}</div></section>
+  </div>
 }
 
 export function QueuePage(): JSX.Element {

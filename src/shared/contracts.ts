@@ -52,6 +52,7 @@ export interface TextCandidate {
 }
 
 export interface Voice { id: string; language: string; sample: string }
+export interface VoicePreset { id: string; name: string; voiceId: string; rate: number; builtIn: boolean }
 
 export type LlmSettings =
   | { provider: 'none' }
@@ -65,6 +66,8 @@ export interface Settings {
   ffmpegPath: string | null
   ffprobePath: string | null
   ollamaPath: string | null
+  voicePresets: VoicePreset[]
+  selectedVoicePresetId: string | null
 }
 
 export interface ToolDiagnostic {

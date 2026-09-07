@@ -4,8 +4,11 @@ use crate::services::{
     project_store::{self, CommandError, ProjectSnapshot},
     settings,
 };
-use std::path::Path;
-use tauri::{AppHandle, State};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
+use tauri::{AppHandle, Manager, State};
 
 #[tauri::command]
 pub fn process_text(
@@ -29,6 +32,61 @@ pub fn accept_processed_text(
 #[tauri::command]
 pub fn list_voices() -> Result<Vec<crate::services::speech::Voice>, CommandError> {
     crate::services::speech::list_voices()
+}
+
+#[tauri::command]
+pub fn preview_voice(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    voice_id: String,
+    rate: u16,
+) -> Result<String, CommandError> {
+    crate::services::speech::ensure_installed_voice(&voice_id)?;
+    if !(80..=500).contains(&rate) {
+        return Err(CommandError::new(
+            "INVALID_SPEECH_RATE",
+            "Speech rate must be between 80 and 500 words per minute.",
+        ));
+    }
+    let directory = app
+        .path()
+        .app_cache_dir()
+        .map_err(|error| CommandError::internal(format!("Cannot locate preview cache: {error}")))?
+        .join("voice-previews");
+    let mut assets = state
+        .audio_assets
+        .write()
+        .map_err(|_| CommandError::internal("audio registry is unavailable"))?;
+    prepare_preview_directory(&directory, &mut assets)?;
+    drop(assets);
+    let output = directory.join(format!("{}.m4a", uuid::Uuid::new_v4()));
+    let settings = settings::load(&app)?;
+    crate::services::speech::generate(
+        "Welcome to Homer Studio. This is a preview of your audiobook voice.",
+        &voice_id,
+        rate,
+        &output,
+        &settings,
+        Default::default(),
+    )?;
+    let id = uuid::Uuid::new_v4().to_string();
+    state
+        .audio_assets
+        .write()
+        .map_err(|_| CommandError::internal("audio registry is unavailable"))?
+        .insert(id.clone(), output);
+    Ok(format!("audio://localhost/{id}"))
+}
+
+fn prepare_preview_directory(
+    directory: &Path,
+    assets: &mut HashMap<String, PathBuf>,
+) -> Result<(), CommandError> {
+    let _ = std::fs::remove_dir_all(directory);
+    std::fs::create_dir_all(directory)
+        .map_err(|error| CommandError::io("Cannot create preview cache", error))?;
+    assets.retain(|_, path| !path.starts_with(directory));
+    Ok(())
 }
 
 #[tauri::command]
@@ -268,4 +326,32 @@ pub fn read_export_timestamps(
     let (_, path) = project_store::export_paths(&root_path, &export_id)?;
     std::fs::read_to_string(path)
         .map_err(|error| CommandError::io("Cannot read exported timestamps", error))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn removes_old_preview_files_and_registry_entries() {
+        let root = std::env::temp_dir().join(format!("homer-preview-{}", uuid::Uuid::new_v4()));
+        let directory = root.join("voice-previews");
+        let old_preview = directory.join("old.m4a");
+        let other_audio = root.join("chapter.m4a");
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(&old_preview, b"old").unwrap();
+        std::fs::write(&other_audio, b"chapter").unwrap();
+        let mut assets = HashMap::from([
+            ("preview".into(), old_preview.clone()),
+            ("chapter".into(), other_audio.clone()),
+        ]);
+
+        prepare_preview_directory(&directory, &mut assets).unwrap();
+
+        assert!(!old_preview.exists());
+        assert!(directory.is_dir());
+        assert!(!assets.contains_key("preview"));
+        assert_eq!(assets.get("chapter"), Some(&other_audio));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

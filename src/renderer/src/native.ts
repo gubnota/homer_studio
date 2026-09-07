@@ -88,6 +88,7 @@ export const productionApi = {
       text
     }),
   voices: () => invoke<Voice[]>('list_voices'),
+  previewVoice: (voiceId: string, rate: number) => invoke<string>('preview_voice', { voiceId, rate }),
   generateAudio: (project: ProjectSnapshot, chapterId: string) =>
     invoke<string>('generate_chapter_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId }),
   importAudio: (project: ProjectSnapshot, chapterId: string, sourcePath: string) =>

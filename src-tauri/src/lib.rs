@@ -60,6 +60,7 @@ pub fn run() {
             commands::production::process_text,
             commands::production::accept_processed_text,
             commands::production::list_voices,
+            commands::production::preview_voice,
             commands::production::generate_chapter_audio,
             commands::production::import_chapter_audio,
             commands::production::set_chapter_review,

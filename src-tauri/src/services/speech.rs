@@ -29,6 +29,21 @@ pub fn list_voices() -> Result<Vec<Voice>, CommandError> {
     Ok(parse_voices(&output.stdout))
 }
 
+pub fn ensure_installed_voice(voice_id: &str) -> Result<(), CommandError> {
+    if voice_is_installed(voice_id, &list_voices()?) {
+        Ok(())
+    } else {
+        Err(CommandError::new(
+            "VOICE_NOT_INSTALLED",
+            format!("The macOS voice ‘{voice_id}’ is not installed."),
+        ))
+    }
+}
+
+fn voice_is_installed(voice_id: &str, voices: &[Voice]) -> bool {
+    voices.iter().any(|voice| voice.id == voice_id)
+}
+
 pub fn generate(
     text: &str,
     voice: &str,
@@ -328,6 +343,8 @@ mod tests {
         let voices = parse_voices("Samantha             en_US    # Hello! My name is Samantha.\n");
         assert_eq!(voices[0].id, "Samantha");
         assert_eq!(voices[0].language, "en_US");
+        assert!(voice_is_installed("Samantha", &voices));
+        assert!(!voice_is_installed("Unavailable Voice", &voices));
     }
 
     #[test]
