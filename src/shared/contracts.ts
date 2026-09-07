@@ -30,3 +30,19 @@ export interface ProjectSnapshot {
   rootPath: string
   chapters: Chapter[]
 }
+
+export type LlmSettings =
+  | { provider: 'none' }
+  | { provider: 'llama_cpp'; executable_path: string; model_path: string; context_size: number; max_tokens: number; gpu_layers: number }
+  | { provider: 'ollama'; base_url: string; model: string; context_size: number; max_tokens: number }
+
+export interface Settings {
+  schemaVersion: 1
+  llm: LlmSettings
+  speech: { provider: 'macos_say'; voiceId: string; rate: number }
+  ffmpegPath: string | null
+  ffprobePath: string | null
+}
+
+export interface ToolDiagnostic { name: string; path: string | null; available: boolean }
+export interface JobRecord { id: string; kind: string; label: string; status: 'queued' | 'running' | 'completed' | 'cancelled' | 'failed'; progress: number; message: string | null; createdAtMs: number }

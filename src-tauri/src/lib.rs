@@ -6,6 +6,7 @@ use std::sync::Mutex;
 
 pub struct AppState {
     pub project_write_lock: Mutex<()>,
+    pub jobs: services::jobs::JobStore,
 }
 
 #[derive(Serialize)]
@@ -31,6 +32,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             project_write_lock: Mutex::new(()),
+            jobs: services::jobs::JobStore::new(),
         })
         .invoke_handler(tauri::generate_handler![
             desktop_info,
@@ -38,7 +40,12 @@ pub fn run() {
             commands::project::open_project,
             commands::project::update_chapter,
             commands::project::reorder_chapters,
-            commands::project::read_manuscript
+            commands::project::read_manuscript,
+            commands::system::get_settings,
+            commands::system::save_settings,
+            commands::system::tool_diagnostics,
+            commands::system::list_jobs,
+            commands::system::control_job
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Homer Studio");

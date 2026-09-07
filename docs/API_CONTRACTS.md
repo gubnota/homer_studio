@@ -15,6 +15,19 @@
 - `update_chapter(rootPath, expectedRevision, chapterId, title, sourceText) -> ProjectSnapshot`.
 - `reorder_chapters(rootPath, expectedRevision, chapterIds) -> ProjectSnapshot`.
 - `desktop_info() -> { platform, architecture, runtime }`.
+- `get_settings()`, `save_settings(settings) -> SettingsV1`; settings are stored atomically in the app configuration folder.
+- `tool_diagnostics() -> ToolDiagnostic[]`; resolution checks explicit overrides, process PATH, then standard Homebrew/system paths without a shell.
+- `list_jobs() -> JobRecord[]`, `control_job(jobId, action)` where action is `pause`, `resume`, or `cancel` for an active job.
+
+## Settings v1
+- `llm`: `none`, `llama_cpp`, or `ollama`. Ollama URLs must use loopback HTTP.
+- `speech`: `macos_say`, installed voice ID, and 80–500 words per minute.
+- Optional explicit FFmpeg and FFprobe executable paths.
+
+## Job states
+- `queued -> running -> completed | failed | cancelled`.
+- One heavy worker runs at a time. Pause takes effect at the next task boundary; cancellation is cooperative and native child processes are killed.
+- Process output retained by the runner is bounded to the newest 64 KiB.
 
 `ProjectSnapshot` adds the absolute `rootPath` and chapter source/processed text to the persisted manifest fields.
 
@@ -23,6 +36,8 @@
 - `INVALID_TITLE`, `EMPTY_MANUSCRIPT`, `MANUSCRIPT_TOO_LARGE`, `UNSUPPORTED_FILE`.
 - `INVALID_PROJECT`, `UNSUPPORTED_PROJECT_VERSION`, `CHAPTER_NOT_FOUND`, `INVALID_CHAPTER_ORDER`.
 - `REVISION_CONFLICT`, `IO_ERROR`, `INTERNAL`.
+- `INVALID_SETTINGS`, `UNSUPPORTED_SETTINGS_VERSION`, `INVALID_SPEECH_RATE`, `UNSAFE_OLLAMA_URL`.
+- `JOB_NOT_ACTIVE`, `INVALID_JOB_ACTION`, `JOB_CANCELLED`, `PROCESS_TIMEOUT`.
 
 ## Accepted baseline
 - Versioned project manifest containing project identity, ordered chapters, segment records, audio references, and export history.

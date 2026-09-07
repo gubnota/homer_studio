@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { ProjectSnapshot } from '../../shared/contracts'
+import type { JobRecord, ProjectSnapshot, Settings, ToolDiagnostic } from '../../shared/contracts'
 
 export function isDesktop(): boolean {
   return '__TAURI_INTERNALS__' in window
@@ -42,6 +42,14 @@ export const projectApi = {
       expectedRevision: project.revision,
       chapterIds
     })
+}
+
+export const systemApi = {
+  settings: () => invoke<Settings>('get_settings'),
+  saveSettings: (settings: Settings) => invoke<Settings>('save_settings', { settings }),
+  diagnostics: () => invoke<ToolDiagnostic[]>('tool_diagnostics'),
+  jobs: () => invoke<JobRecord[]>('list_jobs'),
+  controlJob: (jobId: string, action: 'pause' | 'resume' | 'cancel') => invoke<void>('control_job', { jobId, action })
 }
 
 export function errorMessage(error: unknown): string {

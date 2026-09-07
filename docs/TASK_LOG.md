@@ -8,6 +8,8 @@
 - First Tauri checkpoint: renderer typecheck and tests pass, Rust check passes, and an ad-hoc signed 3.9 MB arm64 app launches at `tauri://localhost` with working navigation and native runtime information.
 - Durable-project checkpoint: implemented versioned local projects, TXT/Markdown import, heading detection, bounded segmentation, chapter editing/reordering, revision conflict checks, safe relative paths, manifest backup, and atomic saves.
 - Verified the project layer with four Rust tests, renderer typecheck/tests, a production bundle, and a reopened arm64 packaged app showing the native project library.
+- Process/settings checkpoint: added schema-v1 settings in the native app configuration folder, loopback validation, real executable discovery, bounded subprocess execution, serialized job state, pause/resume/cancel controls, and live Queue/Settings screens.
+- Seven Rust tests now pass, including cancellation of a real disposable child and pause-at-boundary behavior; renderer typecheck, tests, and production build also pass.
 
 ## 2026-09-07 — Desktop implementation planning
 - Request: inspect the attached specification and prototype; save a plan; wait for a later implementation prompt.

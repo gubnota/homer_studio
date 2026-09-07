@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { Chapter, ProjectSnapshot } from '../../shared/contracts'
+import type { Chapter, JobRecord, ProjectSnapshot, Settings, ToolDiagnostic } from '../../shared/contracts'
 import type { RouteId } from '../../shared/navigation'
-import { chooseFolder, chooseManuscript, errorMessage, projectApi } from './native'
+import { chooseFolder, chooseManuscript, errorMessage, projectApi, systemApi } from './native'
 
 interface DesktopInfo { platform: string; architecture: string; runtime: string }
 
@@ -108,7 +108,19 @@ export function StudioPage({ route, project }: { route: 'editor' | keyof typeof 
 }
 
 export function QueuePage(): JSX.Element {
-  return <div className="page"><Header eyebrow="Production" title="Render queue" copy="Track local jobs and cancel work safely." /><section className="panel table-empty">No jobs yet.</section></div>
+  const [jobs, setJobs] = useState<JobRecord[]>([])
+  const [error, setError] = useState('')
+  useEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return
+    const refresh = (): void => { void systemApi.jobs().then(setJobs).catch((cause) => setError(errorMessage(cause))) }
+    refresh()
+    const timer = window.setInterval(refresh, 750)
+    return () => window.clearInterval(timer)
+  }, [])
+  async function control(job: JobRecord, action: 'pause' | 'resume' | 'cancel'): Promise<void> {
+    try { await systemApi.controlJob(job.id, action); setJobs(await systemApi.jobs()) } catch (cause) { setError(errorMessage(cause)) }
+  }
+  return <div className="page"><Header eyebrow="Production" title="Render queue" copy="Heavy local work runs one job at a time." />{error && <div className="inline-error">{error}</div>}<section className="panel">{jobs.length === 0 ? <div className="table-empty">No jobs yet.</div> : <div className="job-list">{jobs.map((job) => <article className="job-row" key={job.id}><div><strong>{job.label}</strong><small>{job.kind} · {job.status}{job.message ? ` · ${job.message}` : ''}</small></div><progress value={job.progress} max="100" /><span>{job.progress}%</span>{['queued', 'running'].includes(job.status) && <div className="actions"><button onClick={() => void control(job, 'pause')}>Pause</button><button onClick={() => void control(job, 'resume')}>Resume</button><button onClick={() => void control(job, 'cancel')}>Cancel</button></div>}</article>)}</div>}</section></div>
 }
 
 export function ExportsPage(): JSX.Element {
@@ -117,6 +129,40 @@ export function ExportsPage(): JSX.Element {
 
 export function SettingsPage(): JSX.Element {
   const [desktop, setDesktop] = useState<DesktopInfo>({ platform: 'macOS', architecture: 'arm64', runtime: 'Browser preview' })
-  useEffect(() => { if ('__TAURI_INTERNALS__' in window) void invoke<DesktopInfo>('desktop_info').then(setDesktop) }, [])
-  return <div className="page"><Header eyebrow="System" title="Settings" copy="Configure local tools and model providers." /><div className="settings-grid"><section className="panel"><h2>Desktop runtime</h2><dl><div><dt>Platform</dt><dd>{desktop.platform}</dd></div><div><dt>Architecture</dt><dd>{desktop.architecture}</dd></div><div><dt>Runtime</dt><dd>{desktop.runtime}</dd></div></dl></section><section className="panel"><h2>Local tools</h2><p>FFmpeg, llama.cpp, and Ollama diagnostics connect in a later stage.</p><span className="status">No network account required</span></section></div></div>
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const [tools, setTools] = useState<ToolDiagnostic[]>([])
+  const [message, setMessage] = useState('')
+  useEffect(() => { if ('__TAURI_INTERNALS__' in window) { void invoke<DesktopInfo>('desktop_info').then(setDesktop); void Promise.all([systemApi.settings(), systemApi.diagnostics()]).then(([value, found]) => { setSettings(value); setTools(found) }).catch((cause) => setMessage(errorMessage(cause))) } }, [])
+  async function save(): Promise<void> {
+    if (!settings) return
+    setMessage('Saving…')
+    try { setSettings(await systemApi.saveSettings(settings)); setTools(await systemApi.diagnostics()); setMessage('Settings saved') } catch (cause) { setMessage(errorMessage(cause)) }
+  }
+  return <div className="page">
+    <Header eyebrow="System" title="Settings" copy="Configure local tools and model providers." action={<button className="primary" disabled={!settings} onClick={() => void save()}>Save settings</button>} />
+    {message && <div className="status-banner">{message}</div>}
+    <div className="settings-grid">
+      <section className="panel">
+        <h2>Desktop runtime</h2>
+        <dl><div><dt>Platform</dt><dd>{desktop.platform}</dd></div><div><dt>Architecture</dt><dd>{desktop.architecture}</dd></div><div><dt>Runtime</dt><dd>{desktop.runtime}</dd></div></dl>
+        <h2>Local tools</h2>
+        <div className="tool-list">{tools.map((tool) => <div key={tool.name}><span className={tool.available ? 'dot available' : 'dot'} /><strong>{tool.name}</strong><small>{tool.path ?? 'Not found'}</small></div>)}</div>
+      </section>
+      {settings && <SettingsForm settings={settings} onChange={setSettings} />}
+    </div>
+  </div>
+}
+
+function SettingsForm({ settings, onChange }: { settings: Settings; onChange: (value: Settings) => void }): JSX.Element {
+  const ollama = settings.llm.provider === 'ollama' ? settings.llm : null
+  const llama = settings.llm.provider === 'llama_cpp' ? settings.llm : null
+  return <section className="panel settings-form">
+    <h2>Speech</h2>
+    <label>Installed voice<input value={settings.speech.voiceId} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, voiceId: event.target.value } })} /></label>
+    <label>Words per minute<input type="number" min="80" max="500" value={settings.speech.rate} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, rate: Number(event.target.value) } })} /></label>
+    <h2>Text processing</h2>
+    <label>Provider<select value={settings.llm.provider} onChange={(event) => onChange({ ...settings, llm: event.target.value === 'ollama' ? { provider: 'ollama', base_url: 'http://127.0.0.1:11434', model: '', context_size: 8192, max_tokens: 2048 } : event.target.value === 'llama_cpp' ? { provider: 'llama_cpp', executable_path: '', model_path: '', context_size: 8192, max_tokens: 2048, gpu_layers: 99 } : { provider: 'none' } })}><option value="none">Disabled</option><option value="llama_cpp">llama.cpp / GGUF</option><option value="ollama">Ollama</option></select></label>
+    {ollama && <div><label>Loopback URL<input value={ollama.base_url} onChange={(event) => onChange({ ...settings, llm: { ...ollama, base_url: event.target.value } })} /></label><label>Model<input value={ollama.model} onChange={(event) => onChange({ ...settings, llm: { ...ollama, model: event.target.value } })} /></label></div>}
+    {llama && <div><label>llama-cli path<input value={llama.executable_path} onChange={(event) => onChange({ ...settings, llm: { ...llama, executable_path: event.target.value } })} /></label><label>GGUF model path<input value={llama.model_path} onChange={(event) => onChange({ ...settings, llm: { ...llama, model_path: event.target.value } })} /></label></div>}
+  </section>
 }

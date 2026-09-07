@@ -15,9 +15,13 @@
 - `src-tauri/`: Tauri lifecycle, permissions, Rust commands, icons, build configuration, and future native services.
 - `src-tauri/src/commands/project.rs`: native project and manuscript commands.
 - `src-tauri/src/services/project_store.rs`: schema v1 persistence, parsing, segmentation, atomic saves, and filesystem tests.
+- `src-tauri/src/services/settings.rs`: validated app settings, atomic persistence, and local tool diagnostics.
+- `src-tauri/src/services/process_runner.rs`: argument-only child processes, timeout, cancellation, and bounded diagnostics.
+- `src-tauri/src/services/jobs.rs`: serialized heavy-work queue and pause/resume/cancel state.
+- `src-tauri/src/commands/system.rs`: settings, diagnostics, and job-control commands.
 - `src/shared/`: serializable contracts and pure chapter/time logic.
 - `src/renderer/src/native.ts`: typed renderer bridge to native commands and file dialogs.
-- `src/renderer/`: React project library, importer, chapter editor, shared controls, and prototype-derived styles.
+- `src/renderer/`: React project library, importer, chapter editor, live queue, settings/tool status, shared controls, and prototype-derived styles.
 - `tests/`: focused unit, filesystem, media-integration, and desktop smoke tests.
 - Root npm/Vite/TypeScript configuration: renderer development, checks, and Tauri arm64 packaging.
 - `docs/IMPLEMENTATION_PLAN.md`: exact planned filenames and verification commands.
