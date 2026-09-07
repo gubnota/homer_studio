@@ -31,6 +31,12 @@ export interface ProjectSnapshot {
   chapters: Chapter[]
 }
 
+export interface TextCandidate {
+  text: string
+  provider: string
+  model: string
+}
+
 export type LlmSettings =
   | { provider: 'none' }
   | { provider: 'llama_cpp'; executable_path: string; model_path: string; context_size: number; max_tokens: number; gpu_layers: number }

@@ -45,7 +45,9 @@ pub fn run() {
             commands::system::save_settings,
             commands::system::tool_diagnostics,
             commands::system::list_jobs,
-            commands::system::control_job
+            commands::system::control_job,
+            commands::production::process_text,
+            commands::production::accept_processed_text
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Homer Studio");

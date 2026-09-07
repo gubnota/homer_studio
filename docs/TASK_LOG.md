@@ -10,6 +10,8 @@
 - Verified the project layer with four Rust tests, renderer typecheck/tests, a production bundle, and a reopened arm64 packaged app showing the native project library.
 - Process/settings checkpoint: added schema-v1 settings in the native app configuration folder, loopback validation, real executable discovery, bounded subprocess execution, serialized job state, pause/resume/cancel controls, and live Queue/Settings screens.
 - Seven Rust tests now pass, including cancellation of a real disposable child and pause-at-boundary behavior; renderer typecheck, tests, and production build also pass.
+- Local-text checkpoint: connected llama.cpp and loopback Ollama through bounded native calls, added candidate review/accept/discard controls, and kept accepted narration text separate from the manuscript source.
+- Nine Rust tests and two renderer tests pass; renderer typecheck and production build pass.
 
 ## 2026-09-07 — Desktop implementation planning
 - Request: inspect the attached specification and prototype; save a plan; wait for a later implementation prompt.

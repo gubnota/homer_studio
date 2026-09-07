@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { JobRecord, ProjectSnapshot, Settings, ToolDiagnostic } from '../../shared/contracts'
+import type { JobRecord, ProjectSnapshot, Settings, TextCandidate, ToolDiagnostic } from '../../shared/contracts'
 
 export function isDesktop(): boolean {
   return '__TAURI_INTERNALS__' in window
@@ -41,6 +41,18 @@ export const projectApi = {
       rootPath: project.rootPath,
       expectedRevision: project.revision,
       chapterIds
+    })
+}
+
+export const productionApi = {
+  processText: (instruction: string, text: string) =>
+    invoke<TextCandidate>('process_text', { instruction, text }),
+  acceptProcessed: (project: ProjectSnapshot, chapterId: string, text: string) =>
+    invoke<ProjectSnapshot>('accept_processed_text', {
+      rootPath: project.rootPath,
+      expectedRevision: project.revision,
+      chapterId,
+      text
     })
 }
 

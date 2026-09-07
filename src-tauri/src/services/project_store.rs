@@ -191,6 +191,33 @@ pub fn update_chapter(
     snapshot(&root, manifest)
 }
 
+pub fn accept_processed(
+    root_path: &str,
+    expected_revision: u64,
+    chapter_id: &str,
+    text: &str,
+) -> Result<ProjectSnapshot, CommandError> {
+    validate_manuscript(text)?;
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let mut manifest = read_manifest(&root)?;
+    require_revision(&manifest, expected_revision)?;
+    let chapter = manifest
+        .chapters
+        .iter_mut()
+        .find(|chapter| chapter.id == chapter_id)
+        .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
+    let relative_path = format!("chapters/{chapter_id}/processed.txt");
+    atomic_write(&owned_path(&root, &relative_path)?, text.as_bytes())?;
+    chapter.processed_path = Some(relative_path);
+    chapter.segments = segment_text(text);
+    chapter.audio_stale = chapter.audio_path.is_some();
+    manifest.revision += 1;
+    manifest.updated_at_ms = now_ms();
+    write_manifest(&root, &manifest)?;
+    snapshot(&root, manifest)
+}
+
 pub fn reorder(
     root_path: &str,
     expected_revision: u64,
@@ -605,6 +632,22 @@ mod tests {
         let conflict = update_chapter(&created.root_path, 1, &chapter_id, "Old", "Stale")
             .expect_err("reject stale revision");
         assert_eq!(conflict.code, "REVISION_CONFLICT");
+
+        let processed = accept_processed(&created.root_path, 2, &chapter_id, "Spoken version")
+            .expect("accept processed text");
+        assert_eq!(processed.revision, 3);
+        assert_eq!(processed.chapters[0].source_text, "Updated");
+        assert_eq!(
+            processed.chapters[0].processed_text.as_deref(),
+            Some("Spoken version")
+        );
+        assert!(
+            Path::new(&processed.root_path)
+                .join("chapters")
+                .join(&chapter_id)
+                .join("processed.txt")
+                .is_file()
+        );
         fs::remove_dir_all(parent).expect("remove temporary project");
     }
 }

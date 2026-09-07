@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Chapter, JobRecord, ProjectSnapshot, Settings, ToolDiagnostic } from '../../shared/contracts'
 import type { RouteId } from '../../shared/navigation'
-import { chooseFolder, chooseManuscript, errorMessage, projectApi, systemApi } from './native'
+import { chooseFolder, chooseManuscript, errorMessage, productionApi, projectApi, systemApi } from './native'
 
 interface DesktopInfo { platform: string; architecture: string; runtime: string }
 
@@ -87,6 +87,9 @@ export function EditorPage({ project, onProjectChange }: { project: ProjectSnaps
 function ChapterEditor({ project, chapter, onProjectChange }: { project: ProjectSnapshot; chapter: Chapter; onProjectChange: (project: ProjectSnapshot) => void }): JSX.Element {
   const [title, setTitle] = useState(chapter.title)
   const [text, setText] = useState(chapter.sourceText)
+  const [instruction, setInstruction] = useState('Improve narration flow while preserving meaning and factual details.')
+  const [candidate, setCandidate] = useState(chapter.processedText ?? '')
+  const [processing, setProcessing] = useState(false)
   const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = useState('')
   async function save(): Promise<void> {
@@ -94,7 +97,30 @@ function ChapterEditor({ project, chapter, onProjectChange }: { project: Project
     try { onProjectChange(await projectApi.updateChapter(project, chapter.id, title, text)); setState('saved') }
     catch (cause) { setState('idle'); setError(errorMessage(cause)) }
   }
-  return <section className="panel chapter-editor">{error && <div className="inline-error">{error}</div>}<label>Chapter title<input value={title} onChange={(event) => { setTitle(event.target.value); setState('idle') }} /></label><label>Source text<textarea value={text} onChange={(event) => { setText(event.target.value); setState('idle') }} /></label><div className="editor-footer"><span>{text.length.toLocaleString()} characters · {chapter.segments.length} segments</span><button className="primary" disabled={state === 'saving'} onClick={() => void save()}>{state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved' : 'Save chapter'}</button></div></section>
+  async function process(): Promise<void> {
+    setProcessing(true); setError('')
+    try { setCandidate((await productionApi.processText(instruction, text)).text) }
+    catch (cause) { setError(errorMessage(cause)) }
+    finally { setProcessing(false) }
+  }
+  async function accept(): Promise<void> {
+    setProcessing(true); setError('')
+    try { onProjectChange(await productionApi.acceptProcessed(project, chapter.id, candidate)) }
+    catch (cause) { setError(errorMessage(cause)) }
+    finally { setProcessing(false) }
+  }
+  return <section className="panel chapter-editor">
+    {error && <div className="inline-error">{error}</div>}
+    <label>Chapter title<input value={title} onChange={(event) => { setTitle(event.target.value); setState('idle') }} /></label>
+    <label>Source text<textarea value={text} onChange={(event) => { setText(event.target.value); setState('idle') }} /></label>
+    <div className="editor-footer"><span>{text.length.toLocaleString()} characters · {chapter.segments.length} segments</span><button className="primary" disabled={state === 'saving'} onClick={() => void save()}>{state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved' : 'Save chapter'}</button></div>
+    <div className="processing-panel">
+      <div><h2>Local text processing</h2><span>{chapter.processedText ? 'An accepted version is saved.' : 'Create a candidate without changing the source.'}</span></div>
+      <label>Instruction<input value={instruction} onChange={(event) => setInstruction(event.target.value)} /></label>
+      <button disabled={processing || !instruction.trim() || !text.trim()} onClick={() => void process()}>{processing ? 'Working locally…' : 'Create candidate'}</button>
+      {candidate && <div className="candidate"><label>Candidate<textarea value={candidate} onChange={(event) => setCandidate(event.target.value)} /></label><div className="candidate-actions"><button onClick={() => setCandidate('')}>Discard</button><button className="primary" disabled={processing || !candidate.trim()} onClick={() => void accept()}>Accept candidate</button></div></div>}
+    </div>
+  </section>
 }
 
 const labels = {

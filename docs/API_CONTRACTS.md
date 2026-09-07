@@ -18,6 +18,8 @@
 - `get_settings()`, `save_settings(settings) -> SettingsV1`; settings are stored atomically in the app configuration folder.
 - `tool_diagnostics() -> ToolDiagnostic[]`; resolution checks explicit overrides, process PATH, then standard Homebrew/system paths without a shell.
 - `list_jobs() -> JobRecord[]`, `control_job(jobId, action)` where action is `pause`, `resume`, or `cancel` for an active job.
+- `process_text(instruction, text) -> TextCandidate`; uses the configured local llama.cpp or loopback Ollama provider and does not mutate project files.
+- `accept_processed_text(rootPath, expectedRevision, chapterId, text) -> ProjectSnapshot`; stores a reviewed candidate separately from source text and regenerates segments.
 
 ## Settings v1
 - `llm`: `none`, `llama_cpp`, or `ollama`. Ollama URLs must use loopback HTTP.
@@ -38,6 +40,8 @@
 - `REVISION_CONFLICT`, `IO_ERROR`, `INTERNAL`.
 - `INVALID_SETTINGS`, `UNSUPPORTED_SETTINGS_VERSION`, `INVALID_SPEECH_RATE`, `UNSAFE_OLLAMA_URL`.
 - `JOB_NOT_ACTIVE`, `INVALID_JOB_ACTION`, `JOB_CANCELLED`, `PROCESS_TIMEOUT`.
+- `LLM_DISABLED`, `LLAMA_NOT_FOUND`, `MODEL_NOT_FOUND`, `MODEL_NOT_CONFIGURED`, `OLLAMA_UNAVAILABLE`.
+- `EMPTY_INSTRUCTION`, `EMPTY_TEXT`, `LLM_INPUT_TOO_LARGE`, `EMPTY_LLM_OUTPUT`, `LLM_OUTPUT_TOO_LARGE`, `LLM_PROCESS_FAILED`, `INVALID_LLM_RESPONSE`.
 
 ## Accepted baseline
 - Versioned project manifest containing project identity, ordered chapters, segment records, audio references, and export history.
