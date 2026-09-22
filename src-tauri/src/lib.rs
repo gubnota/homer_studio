@@ -48,6 +48,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             desktop_info,
             commands::project::create_project,
+            commands::project::default_project_parent,
             commands::project::open_project,
             commands::project::update_chapter,
             commands::project::reorder_chapters,

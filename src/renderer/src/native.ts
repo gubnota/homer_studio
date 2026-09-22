@@ -12,6 +12,10 @@ export async function chooseFolder(title: string): Promise<string | null> {
   return typeof selected === 'string' ? selected : null
 }
 
+export async function defaultProjectParent(): Promise<string> {
+  return invoke<string>('default_project_parent')
+}
+
 export async function chooseManuscript(): Promise<{ name: string; text: string } | null> {
   if (!isDesktop()) return null
   const selected = await open({

@@ -1,7 +1,14 @@
 use crate::{AppState, services::project_store};
 use serde::Serialize;
 use std::{fs, path::Path};
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
+
+#[tauri::command]
+pub fn default_project_parent(app: AppHandle) -> Result<String, project_store::CommandError> {
+    app.path().document_dir()
+        .map(|path| path.to_string_lossy().into_owned())
+        .map_err(|error| project_store::CommandError::new("PATH_UNAVAILABLE", format!("Cannot find the Documents folder: {error}")))
+}
 
 #[derive(Serialize)]
 pub struct ManuscriptFile {
