@@ -98,4 +98,5 @@ export interface ToolDiagnostic {
   configuredPath: string | null
   detectedPath: string | null
 }
-export interface JobRecord { id: string; kind: string; label: string; status: 'queued' | 'running' | 'completed' | 'cancelled' | 'failed'; progress: number; message: string | null; createdAtMs: number }
+export interface JobEvent { atMs: number; status: string; progress: number; message: string }
+export interface JobRecord { id: string; kind: string; label: string; status: 'queued' | 'running' | 'completed' | 'cancelled' | 'failed'; progress: number; message: string | null; createdAtMs: number; events: JobEvent[] }

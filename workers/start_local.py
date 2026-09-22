@@ -60,6 +60,6 @@ if __name__ == "__main__":
               ROOT / "chatterbox/server.py")
     if "sfx" in requested:
         start("sfx", int(os.environ.get("HOMER_SFX_PORT", "8766")),
-              Path(os.environ.get("HOMER_SFX_MODEL_DIR", ROOT / "sfx/models/audioldm2")),
+              Path(os.environ.get("HOMER_SFX_MODEL_DIR", ROOT / "sfx/models/stable-audio-open-1.0")),
               Path(os.environ.get("HOMER_SFX_PYTHON", ROOT / "sfx/.venv/bin/python")),
               ROOT / "sfx/server.py")

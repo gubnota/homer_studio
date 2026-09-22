@@ -1,0 +1,22 @@
+.queue-toolbar, .queue-job-top, .sound-job-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.queue-toolbar { padding-bottom: 14px; border-bottom: 1px solid #ecebe7; }
+.queue-job { padding: 14px 0; border-bottom: 1px solid #ecebe7; }
+.queue-job-top { align-items: flex-start; justify-content: flex-start; }
+.queue-select { padding-top: 2px; }
+.queue-job-detail { flex: 1; display: grid; gap: 4px; min-width: 0; }
+.queue-job-detail small { color: #77766f; }
+.queue-job-detail p { margin: 3px 0; overflow-wrap: anywhere; }
+.queue-job-detail .queue-error { color: #a05143; }
+.queue-job-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; margin-left: auto; }
+.queue-job > progress { width: 100%; margin-top: 12px; }
+.queue-job details { margin-top: 8px; font-size: 12px; }
+.queue-job summary { cursor: pointer; }
+.queue-log { display: grid; gap: 5px; max-height: 210px; overflow: auto; padding-left: 22px; }
+.queue-log li { display: flex; gap: 12px; }
+.queue-log time { flex: 0 0 75px; color: #77766f; }
+.sound-job-row { min-height: 30px; }
+.sound-job-row button { margin-left: auto; }
+.kind-field { display: grid; gap: 7px; font-size: 12px; font-weight: 650; }
+.kind-field button { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #d7d6d0; border-radius: 7px; background: #fff; text-align: left; }
+.gesture-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.gesture-list button { padding: 6px 9px; border: 1px solid #deddd7; border-radius: 6px; background: #fff; font-size: 11px; }

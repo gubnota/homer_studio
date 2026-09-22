@@ -67,9 +67,10 @@ class WorkerTests(unittest.TestCase):
 
     def test_effect_checkpoint_selects_supported_engine(self):
         model_index = Path(self.folder.name, "model_index.json")
-        for checkpoint, engine in (("AudioLDM2Pipeline", "audioldm2"), ("StableAudioPipeline", "stable_audio_open")):
-            model_index.write_text('{"_class_name": "' + checkpoint + '"}')
-            self.assertEqual(engine_for(Path(self.folder.name)), engine)
+        model_index.write_text('{"_class_name": "StableAudioPipeline"}')
+        self.assertEqual(engine_for(Path(self.folder.name)), "stable_audio_open")
+        model_index.write_text('{"_class_name": "AudioLDM2Pipeline"}')
+        self.assertIsNone(engine_for(Path(self.folder.name)))
         model_index.write_text('{"_class_name": "UnrelatedPipeline"}')
         self.assertIsNone(engine_for(Path(self.folder.name)))
 

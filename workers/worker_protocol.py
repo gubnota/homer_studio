@@ -90,6 +90,9 @@ class Worker:
                 audio = self.generate(request, self.model_dir)
                 if not isinstance(audio, bytes) or not audio.startswith(b"RIFF") or len(audio) > MAX_WAV:
                     raise ValueError("Engine did not return a bounded WAV file.")
+                reference_path = request.get("referencePath")
+                if reference_path:
+                    Path(reference_path).unlink(missing_ok=True)
                 with self.lock:
                     if not job["cancelled"]:
                         job.update(status="completed", audio=audio)

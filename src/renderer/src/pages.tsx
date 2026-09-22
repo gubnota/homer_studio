@@ -193,6 +193,15 @@ export function ReviewPage({ project, onProjectChange }: { project: ProjectSnaps
     setError('')
     try { onProjectChange(await productionApi.review(activeProject, chapterId, status)) } catch (cause) { setError(errorMessage(cause)) }
   }
+  async function exportAudio(chapter: Chapter): Promise<void> {
+    setError('')
+    try { await productionApi.exportChapterAudio(activeProject, chapter.id, chapter.title) } catch (cause) { setError(errorMessage(cause)) }
+  }
+  async function deleteAudio(chapter: Chapter): Promise<void> {
+    if (!window.confirm(`Delete the current generated audio for “${chapter.title}”?`)) return
+    setError('')
+    try { onProjectChange(await productionApi.deleteGeneratedAudio(activeProject, chapter.id)) } catch (cause) { setError(errorMessage(cause)) }
+  }
   const selectedVoice = voices.find((voice) => voice.id === settings?.speech.voiceId)
   async function selectVoice(voice: Voice): Promise<void> {
     if (!settings) return
@@ -201,7 +210,7 @@ export function ReviewPage({ project, onProjectChange }: { project: ProjectSnaps
   return <div className="page"><Header eyebrow={project.title} title="Narrate and review" copy="Generate with a local Chatterbox voice or import existing chapter audio." />
     {error && <div className="inline-error">{error}</div>}
     <section className="panel review-voice"><div><strong>Narration voice</strong><span>{selectedVoice?.name ?? 'Loading voices…'}</span></div><button onClick={() => setPickerOpen(true)} disabled={!settings}>Choose voice</button></section>
-    <section className="review-list">{project.chapters.map((chapter) => <article className="panel review-card" key={chapter.id}><div className="review-copy"><small>Chapter {chapter.order + 1}</small><h2>{chapter.title}</h2><span>{chapter.audioPath ? `${formatDuration(chapter.audioDurationMs)} · ${chapter.audioOrigin}${chapter.audioStale ? ' · stale' : ''}` : `${chapter.segments.length} text segments`}</span></div><div className="review-controls">{chapter.audioPath && !chapter.audioStale && <ChapterAudio project={project} chapter={chapter} />}<div className="actions"><button disabled={Boolean(busyId)} onClick={() => void importAudio(chapter.id)}>Import audio</button><button className="primary" disabled={Boolean(busyId)} onClick={() => void generate(chapter.id)}>{busyId === chapter.id ? 'Processing…' : chapter.audioPath ? 'Regenerate' : 'Generate audio'}</button></div>{chapter.audioPath && !chapter.audioStale && <div className="review-actions"><button className={chapter.reviewStatus === 'changes_requested' ? 'selected' : ''} onClick={() => void review(chapter.id, 'changes_requested')}>Needs changes</button><button className={chapter.reviewStatus === 'approved' ? 'selected approved' : ''} onClick={() => void review(chapter.id, 'approved')}>Approve</button></div>}</div></article>)}</section>
+    <section className="review-list">{project.chapters.map((chapter) => <article className="panel review-card" key={chapter.id}><div className="review-copy"><small>Chapter {chapter.order + 1}</small><h2>{chapter.title}</h2><span>{chapter.audioPath ? `${formatDuration(chapter.audioDurationMs)} · ${chapter.audioOrigin}${chapter.audioStale ? ' · stale' : ''}` : `${chapter.segments.length} text segments`}</span></div><div className="review-controls">{chapter.audioPath && !chapter.audioStale && <ChapterAudio project={project} chapter={chapter} />}<div className="actions"><button disabled={Boolean(busyId)} onClick={() => void importAudio(chapter.id)}>Import audio</button><button className="primary" disabled={Boolean(busyId)} onClick={() => void generate(chapter.id)}>{busyId === chapter.id ? 'Processing…' : chapter.audioPath ? 'Regenerate' : 'Generate audio'}</button>{chapter.audioPath && <button disabled={Boolean(busyId)} onClick={() => void exportAudio(chapter)}>Export audio</button>}{chapter.audioOrigin === 'generated' && <button disabled={Boolean(busyId)} onClick={() => void deleteAudio(chapter)}>Delete generation</button>}</div>{chapter.audioPath && !chapter.audioStale && <div className="review-actions"><button className={chapter.reviewStatus === 'changes_requested' ? 'selected' : ''} onClick={() => void review(chapter.id, 'changes_requested')}>Needs changes</button><button className={chapter.reviewStatus === 'approved' ? 'selected approved' : ''} onClick={() => void review(chapter.id, 'approved')}>Approve</button></div>}</div></article>)}</section>
     <VoicePicker open={pickerOpen} voices={voices} selectedId={selectedVoice?.id ?? ''} onSelect={(voice) => void selectVoice(voice)} onClose={() => setPickerOpen(false)} />
   </div>
 }
@@ -314,6 +323,7 @@ export function VoicesPage(): JSX.Element {
 export function QueuePage(): JSX.Element {
   const [jobs, setJobs] = useState<JobRecord[]>([])
   const [error, setError] = useState('')
+  const [selected, setSelected] = useState<string[]>([])
   useEffect(() => {
     if (!('__TAURI_INTERNALS__' in window)) return
     const refresh = (): void => { void systemApi.jobs().then(setJobs).catch((cause) => setError(errorMessage(cause))) }
@@ -324,7 +334,11 @@ export function QueuePage(): JSX.Element {
   async function control(job: JobRecord, action: 'pause' | 'resume' | 'cancel'): Promise<void> {
     try { await systemApi.controlJob(job.id, action); setJobs(await systemApi.jobs()) } catch (cause) { setError(errorMessage(cause)) }
   }
-  return <div className="page"><Header eyebrow="Production" title="Render queue" copy="Heavy local work runs one job at a time." />{error && <div className="inline-error">{error}</div>}<section className="panel">{jobs.length === 0 ? <div className="table-empty">No jobs yet.</div> : <div className="job-list">{jobs.map((job) => <article className="job-row" key={job.id}><div><strong>{job.label}</strong><small>{job.kind} · {job.status}{job.message ? ` · ${job.message}` : ''}</small></div><progress value={job.progress} max="100" /><span>{job.progress}%</span>{['queued', 'running'].includes(job.status) && <div className="actions"><button onClick={() => void control(job, 'pause')}>Pause</button><button onClick={() => void control(job, 'resume')}>Resume</button><button onClick={() => void control(job, 'cancel')}>Cancel</button></div>}</article>)}</div>}</section></div>
+  const terminal = jobs.filter((job) => ['completed', 'failed', 'cancelled'].includes(job.status))
+  async function clean(): Promise<void> {
+    try { await systemApi.dismissJobs(selected); setSelected([]); setJobs(await systemApi.jobs()) } catch (cause) { setError(errorMessage(cause)) }
+  }
+  return <div className="page"><Header eyebrow="Production" title="Render queue" copy="Heavy local work runs one job at a time." />{error && <div className="inline-error" role="alert">{error}</div>}<section className="panel"><div className="queue-toolbar"><span>{selected.length} finished jobs selected</span><div className="actions"><button onClick={() => setSelected(terminal.map((job) => job.id))} disabled={!terminal.length}>Select all</button><button onClick={() => setSelected([])} disabled={!selected.length}>Deselect all</button><button onClick={() => void clean()} disabled={!selected.length}>Clean selected</button></div></div>{jobs.length === 0 ? <div className="table-empty">No jobs yet.</div> : <div className="job-list">{jobs.map((job) => <article className="queue-job" key={job.id}><div className="queue-job-top"><label className="queue-select"><input type="checkbox" aria-label={`Select ${job.label}`} disabled={!['completed', 'failed', 'cancelled'].includes(job.status)} checked={selected.includes(job.id)} onChange={(event) => setSelected((ids) => event.target.checked ? [...ids, job.id] : ids.filter((id) => id !== job.id))} /></label><div className="queue-job-detail"><strong>{job.label}</strong><small>{job.kind} · {job.status} · {job.progress}%</small>{job.message && <p className={job.status === 'failed' ? 'queue-error' : ''}>{job.message}</p>}</div><div className="queue-job-actions">{['queued', 'running'].includes(job.status) && <><button onClick={() => void control(job, 'pause')}>Pause</button><button onClick={() => void control(job, 'resume')}>Resume</button><button onClick={() => void control(job, 'cancel')}>Cancel</button></>}</div></div><progress value={job.progress} max="100" /><details><summary>Activity log</summary><ol className="queue-log">{(job.events ?? []).map((event, index) => <li key={index}><time>{new Date(event.atMs).toLocaleTimeString()}</time><span>{event.status} · {event.progress}% · {event.message}</span></li>)}</ol></details></article>)}</div>}</section></div>
 }
 
 export function ExportsPage({ project, onProjectChange }: { project: ProjectSnapshot | null; onProjectChange: (project: ProjectSnapshot) => void }): JSX.Element {

@@ -30,8 +30,8 @@ def generate(request, model_dir):
 
     category = request["category"]
     prompt = request["prompt"].strip()
-    if category == "vocal_gesture" and prompt.lower() not in ("[sigh]", "[gasp]", "[cough]", "[laugh]", "[chuckle]", "[groan]"):
-        raise ValueError("Use a supported vocal tag: [sigh], [gasp], [cough], [laugh], [chuckle], or [groan].")
+    if category == "vocal_gesture" and prompt.lower() not in ("[clear throat]", "[sigh]", "[shush]", "[cough]", "[groan]", "[sniff]", "[gasp]", "[chuckle]", "[laugh]"):
+        raise ValueError("Use one documented Chatterbox Turbo vocal tag.")
     device = "mps" if torch.backends.mps.is_available() else "cpu"
     if _model is None:
         _model = ChatterboxTurboTTS.from_local(str(model_dir), device=device)

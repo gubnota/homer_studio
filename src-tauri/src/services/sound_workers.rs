@@ -38,7 +38,7 @@ pub fn health(url: &str, expected_engine: &str) -> WorkerHealth {
     };
     match request(url, "GET", "/v2/health", None, MAX_JSON)
         .and_then(|body| serde_json::from_slice::<WorkerHealth>(&body).map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned invalid health data."))) {
-        Ok(value) if value.protocol_version == 2 && (value.engine == expected_engine || (expected_engine == "sound_effect" && matches!(value.engine.as_str(), "audioldm2" | "stable_audio_open"))) => value,
+        Ok(value) if value.protocol_version == 2 && (value.engine == expected_engine || (expected_engine == "sound_effect" && value.engine == "stable_audio_open")) => value,
         Ok(_) => fallback("Worker version is out of date. Restart the local workers from this repository.".into()),
         Err(error) => fallback(error.message),
     }

@@ -259,13 +259,14 @@ pub fn generate_chapter_audio(
             control.boundary()?;
             progress(10);
             let staged = crate::services::speech::staged_path(&queued_root, &queued_chapter);
-            let speech = crate::services::speech::generate(
+            let speech = crate::services::speech::generate_with_progress(
                 &app,
                 &text,
                 &settings.speech.voice_id,
                 &staged,
                 &settings,
                 &control,
+                &|done, total| progress((10 + done.saturating_mul(75) / total.max(1)).min(85) as u8),
             )?;
             control.boundary()?;
             progress(90);
@@ -384,6 +385,36 @@ pub fn audio_waveform(
 ) -> Result<Vec<f32>, CommandError> {
     let path = project_store::chapter_audio_path(&root_path, &chapter_id)?;
     crate::services::speech::waveform(&path, &settings::load(&app)?)
+}
+
+#[tauri::command]
+pub fn export_chapter_audio(
+    root_path: String,
+    chapter_id: String,
+    destination: String,
+) -> Result<(), CommandError> {
+    let target = Path::new(&destination);
+    if target.extension().and_then(|value| value.to_str()).map(|value| value.to_ascii_lowercase()) != Some("m4a".into()) {
+        return Err(CommandError::new("INVALID_EXPORT_PATH", "Choose an M4A destination."));
+    }
+    if !target.parent().is_some_and(Path::is_dir) {
+        return Err(CommandError::new("INVALID_EXPORT_PATH", "The destination folder does not exist."));
+    }
+    let source = project_store::chapter_audio_path(&root_path, &chapter_id)?;
+    std::fs::copy(source, target).map_err(|error| CommandError::io("Cannot export chapter audio", error))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_generated_chapter_audio(
+    state: State<'_, AppState>,
+    root_path: String,
+    expected_revision: u64,
+    chapter_id: String,
+) -> Result<ProjectSnapshot, CommandError> {
+    let _guard = state.project_write_lock.lock()
+        .map_err(|_| CommandError::internal("project lock is unavailable"))?;
+    project_store::delete_generated_audio(&root_path, expected_revision, &chapter_id)
 }
 
 #[tauri::command]

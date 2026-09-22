@@ -26,8 +26,8 @@ pub fn validate(request: &SoundRequest) -> Result<(), CommandError> {
     match request.category.as_str() {
         "speech" | "sound_effect" => (),
         "vocal_gesture" => {
-            if !["[sigh]", "[gasp]", "[cough]", "[laugh]", "[chuckle]", "[groan]"].contains(&request.prompt.trim().to_lowercase().as_str()) {
-                return Err(CommandError::new("INVALID_VOCAL_GESTURE", "Use [sigh], [gasp], [cough], [laugh], [chuckle], or [groan]."));
+            if !["[clear throat]", "[sigh]", "[shush]", "[cough]", "[groan]", "[sniff]", "[gasp]", "[chuckle]", "[laugh]"].contains(&request.prompt.trim().to_lowercase().as_str()) {
+                return Err(CommandError::new("INVALID_VOCAL_GESTURE", "Use one documented Chatterbox Turbo gesture tag."));
             }
         }
         _ => return Err(CommandError::new("INVALID_SOUND_CATEGORY", "Choose speech, vocal gesture, or sound effect.")),

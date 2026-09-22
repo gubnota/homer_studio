@@ -103,6 +103,14 @@ export const productionApi = {
     invoke<string>('generate_chapter_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId }),
   importAudio: (project: ProjectSnapshot, chapterId: string, sourcePath: string) =>
     invoke<string>('import_chapter_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId, sourcePath }),
+  exportChapterAudio: async (project: ProjectSnapshot, chapterId: string, title: string) => {
+    const name = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'chapter'
+    const destination = await save({ title: 'Export chapter audio', defaultPath: `${name}.m4a`, filters: [{ name: 'M4A audio', extensions: ['m4a'] }] })
+    if (destination) await invoke<void>('export_chapter_audio', { rootPath: project.rootPath, chapterId, destination })
+    return destination
+  },
+  deleteGeneratedAudio: (project: ProjectSnapshot, chapterId: string) =>
+    invoke<ProjectSnapshot>('delete_generated_chapter_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId }),
   review: (project: ProjectSnapshot, chapterId: string, status: 'approved' | 'changes_requested') =>
     invoke<ProjectSnapshot>('set_chapter_review', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId, status }),
   audioUrl: (project: ProjectSnapshot, chapterId: string) =>
@@ -122,7 +130,8 @@ export const systemApi = {
   saveSettings: (settings: Settings) => invoke<Settings>('save_settings', { settings }),
   diagnostics: () => invoke<ToolDiagnostic[]>('tool_diagnostics'),
   jobs: () => invoke<JobRecord[]>('list_jobs'),
-  controlJob: (jobId: string, action: 'pause' | 'resume' | 'cancel') => invoke<void>('control_job', { jobId, action })
+  controlJob: (jobId: string, action: 'pause' | 'resume' | 'cancel') => invoke<void>('control_job', { jobId, action }),
+  dismissJobs: (jobIds: string[]) => invoke<number>('dismiss_jobs', { jobIds })
 }
 
 export const soundsApi = {

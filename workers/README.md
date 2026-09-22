@@ -1,6 +1,6 @@
 # Local sound workers
 
-Sound Studio can make clips without a book. Its two Python workers are separate processes on this Mac. Chatterbox Turbo handles spoken text and its documented vocal tags. AudioLDM 2 or Stable Audio Open handles general sound effects, including fabric; panting is experimental and may be poor. The app reports each worker's status in Sound Studio and its address in Settings. FFmpeg and FFprobe are also required for finished clips.
+Sound Studio can make clips without a book. Its two Python workers are separate processes on this Mac. Chatterbox Turbo handles English speech and its documented vocal tags. Stable Audio Open handles general sound effects, including fabric; panting is experimental and may be poor. The app reports each worker's status in Sound Studio and its address in Settings. FFmpeg and FFprobe are also required for finished clips.
 
 The workers do not download checkpoints or install packages when the app starts or generates a clip. Use Python 3.10 for the currently pinned Chatterbox package; its NumPy dependency does not install reliably on Python 3.12. Install each worker in its own virtual environment. Run commands from the repository root.
 
@@ -15,21 +15,9 @@ workers/chatterbox/.venv/bin/python -m pip install -r workers/chatterbox/require
 HOMER_CHATTERBOX_MODEL_DIR=/absolute/path/to/chatterbox-turbo python3 workers/start_local.py chatterbox
 ```
 
-The default address is `http://127.0.0.1:8765`. Use `HOMER_CHATTERBOX_PORT` to change it, and set the matching address in Homer Studio Settings. Speech takes exact English text. Vocal gestures accept one tag: `[sigh]`, `[gasp]`, `[cough]`, `[laugh]`, `[chuckle]`, or `[groan]`. Chatterbox is not used for arbitrary fabric or ambience prompts.
+The default address is `http://127.0.0.1:8765`. Use `HOMER_CHATTERBOX_PORT` to change it, and set the matching address in Homer Studio Settings. Speech takes exact English text. Documented Turbo tags are `[clear throat]`, `[sigh]`, `[shush]`, `[cough]`, `[groan]`, `[sniff]`, `[gasp]`, `[chuckle]`, and `[laugh]`; they can appear inline with spoken words. Chatterbox is not used for arbitrary fabric or ambience prompts.
 
-## Sound effects: AudioLDM 2
-
-[AudioLDM 2](https://huggingface.co/cvssp/audioldm2) is publicly downloadable and supports general text-to-audio prompts. Its license is **CC BY-NC-SA 4.0 (noncommercial)**. Download its complete Diffusers checkpoint, including `model_index.json`, component configs, tokenizers, and safetensors weights. To keep files in the default folder, use `huggingface_hub.snapshot_download('cvssp/audioldm2', local_dir='workers/sfx/models/audioldm2')` in a Python environment with `huggingface_hub` installed. This is about 4 GB. The app does not download it for you.
-
-```sh
-python3.12 -m venv workers/sfx/.venv
-workers/sfx/.venv/bin/python -m pip install -r workers/sfx/requirements.txt
-python3 workers/start_local.py sfx
-```
-
-For a checkpoint elsewhere, set `HOMER_SFX_MODEL_DIR=/absolute/path/to/audioldm2` before running the launcher. The default address is `http://127.0.0.1:8766`. The worker uses Apple Silicon MPS when available and otherwise CPU; CPU generation can be slow. Make prompts concrete and describe the audible texture and setting. Try another seed if the result is strange.
-
-## Optional: Stable Audio Open
+## Sound effects: Stable Audio Open
 
 1. Request access to the [Stable Audio Open 1.0 checkpoint](https://huggingface.co/stabilityai/stable-audio-open-1.0), accept its terms, and download the complete Diffusers-format repository to a local folder. It must include `model_index.json` and the component weights. Check the model license and permitted uses yourself.
 2. Install and start the worker:
@@ -41,6 +29,7 @@ HOMER_SFX_MODEL_DIR=/absolute/path/to/stable-audio-open-1.0 python3 workers/star
 ```
 
 Change the sound worker port with `HOMER_SFX_PORT` and the matching Settings field. This model was designed for sound effects; realistic vocals are a known limitation. A panting prompt is an experiment, not a guaranteed result.
+The default address is `http://127.0.0.1:8766`. The worker uses Apple Silicon MPS when available and otherwise CPU; CPU generation can be slow. Make prompts concrete and describe the audible texture and setting. Try another seed if the result is strange.
 
 ## Check and use
 

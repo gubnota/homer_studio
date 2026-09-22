@@ -22,6 +22,18 @@ pub fn generate(
     settings: &Settings,
     control: &JobControl,
 ) -> Result<SpeechOutput, CommandError> {
+    generate_with_progress(app, text, voice_id, output, settings, control, &|_, _| {})
+}
+
+pub fn generate_with_progress(
+    app: &AppHandle,
+    text: &str,
+    voice_id: &str,
+    output: &Path,
+    settings: &Settings,
+    control: &JobControl,
+    on_chunk: &dyn Fn(usize, usize),
+) -> Result<SpeechOutput, CommandError> {
     if text.trim().is_empty() {
         return Err(CommandError::new(
             "EMPTY_TEXT",
@@ -73,6 +85,7 @@ pub fn generate(
         let mut files = Vec::new();
         let mut cues = Vec::new();
         let mut index = 0usize;
+        let mut completed_requests = 0usize;
         let mut elapsed_ms = 0u64;
         for (line_order, (line, line_parts)) in lines.iter().zip(parts).enumerate() {
             let line_start = files.len();
@@ -102,6 +115,8 @@ pub fn generate(
                                 CommandError::io("Cannot stage speech audio", error)
                             })?;
                             files.push(name);
+                            completed_requests += 1;
+                            on_chunk(completed_requests, request_count);
                         }
                     }
                     SpeechPart::Gesture(tag) => {
@@ -127,6 +142,8 @@ pub fn generate(
                             CommandError::io("Cannot stage vocal gesture", error)
                         })?;
                         files.push(name);
+                        completed_requests += 1;
+                        on_chunk(completed_requests, request_count);
                     }
                     SpeechPart::Pause(ms) => {
                         control.boundary()?;
@@ -240,7 +257,7 @@ fn display_line(line: &str) -> String {
             break;
         };
         let marker = after[..close].trim().to_lowercase();
-        if !["sigh", "gasp", "cough", "laugh", "chuckle", "groan"].contains(&marker.as_str())
+        if !["clear throat", "sigh", "shush", "cough", "groan", "sniff", "gasp", "chuckle", "laugh"].contains(&marker.as_str())
             && !marker.starts_with("pause:")
         {
             visible.push('[');
@@ -260,7 +277,7 @@ enum SpeechPart {
 }
 
 fn parse_markup(text: &str) -> Result<Vec<SpeechPart>, CommandError> {
-    const TAGS: &[&str] = &["sigh", "gasp", "cough", "laugh", "chuckle", "groan"];
+    const TAGS: &[&str] = &["clear throat", "sigh", "shush", "cough", "groan", "sniff", "gasp", "chuckle", "laugh"];
     let mut parts = Vec::new();
     let mut speech = String::new();
     let mut rest = text;

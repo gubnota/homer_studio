@@ -29,6 +29,7 @@
   "bundle": {
     "active": true,
     "targets": ["app", "dmg"],
+    "icon": ["icons/icon.png", "icons/icon.icns"],
     "category": "Productivity",
     "shortDescription": "Local-first audiobook production studio",
     "longDescription": "Create, edit, review, and export audiobook projects with local tools on Apple Silicon Macs.",

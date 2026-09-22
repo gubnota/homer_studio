@@ -21,6 +21,16 @@ pub struct JobRecord {
     pub progress: u8,
     pub message: Option<String>,
     pub created_at_ms: u64,
+    pub events: Vec<JobEvent>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobEvent {
+    pub at_ms: u64,
+    pub status: String,
+    pub progress: u8,
+    pub message: String,
 }
 
 #[derive(Clone)]
@@ -90,6 +100,7 @@ impl JobStore {
             progress: 0,
             message: None,
             created_at_ms: now_ms(),
+            events: vec![JobEvent { at_ms: now_ms(), status: "queued".into(), progress: 0, message: "Waiting for the local worker".into() }],
         });
         self.controls.lock().unwrap().insert(
             id.clone(),
@@ -150,6 +161,16 @@ impl JobStore {
         }
         Ok(())
     }
+
+    pub fn dismiss(&self, ids: &[String]) -> Result<usize, CommandError> {
+        let mut records = self.records.lock().map_err(|_| CommandError::internal("job records are unavailable"))?;
+        if ids.iter().any(|id| records.iter().any(|record| &record.id == id && !matches!(record.status.as_str(), "completed" | "failed" | "cancelled"))) {
+            return Err(CommandError::new("JOB_ACTIVE", "Cancel active jobs and wait for them to finish before cleaning the queue."));
+        }
+        let before = records.len();
+        records.retain(|record| !ids.contains(&record.id));
+        Ok(before - records.len())
+    }
 }
 
 fn update(
@@ -163,7 +184,17 @@ fn update(
         if let Some(record) = records.iter_mut().find(|record| record.id == id) {
             record.status = status.into();
             record.progress = progress;
-            record.message = message;
+            if let Some(message) = message { record.message = Some(message); }
+            let event_message = record.message.clone().unwrap_or_else(|| match status {
+                "running" => "Running locally".into(),
+                "completed" => "Finished".into(),
+                "cancelled" => "Cancelled".into(),
+                _ => "Queued".into(),
+            });
+            if record.events.last().is_none_or(|last| last.status != status || last.progress != progress || last.message != event_message) {
+                record.events.push(JobEvent { at_ms: now_ms(), status: status.into(), progress, message: event_message });
+                if record.events.len() > 100 { record.events.remove(0); }
+            }
         }
     }
 }

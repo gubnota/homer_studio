@@ -36,3 +36,8 @@ pub fn control_job(
 ) -> Result<(), CommandError> {
     state.jobs.control(&job_id, &action)
 }
+
+#[tauri::command]
+pub fn dismiss_jobs(state: State<'_, AppState>, job_ids: Vec<String>) -> Result<usize, CommandError> {
+    state.jobs.dismiss(&job_ids)
+}

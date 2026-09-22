@@ -281,7 +281,7 @@ pub fn commit_chapter_audio(
         .iter_mut()
         .find(|chapter| chapter.id == chapter_id)
         .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
-    let relative_path = format!("chapters/{chapter_id}/audio.m4a");
+    let relative_path = format!("chapters/{chapter_id}/audio-{}.m4a", Uuid::new_v4());
     let destination = owned_path(&root, &relative_path)?;
     fs::rename(staged_audio, &destination)
         .or_else(|_| fs::copy(staged_audio, &destination).map(|_| ()))
@@ -297,7 +297,39 @@ pub fn commit_chapter_audio(
     chapter.cues = cues;
     manifest.revision += 1;
     manifest.updated_at_ms = now_ms();
+    if let Err(error) = write_manifest(&root, &manifest) {
+        let _ = fs::remove_file(&destination);
+        return Err(error);
+    }
+    snapshot(&root, manifest)
+}
+
+pub fn delete_generated_audio(
+    root_path: &str,
+    expected_revision: u64,
+    chapter_id: &str,
+) -> Result<ProjectSnapshot, CommandError> {
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let mut manifest = read_manifest(&root)?;
+    require_revision(&manifest, expected_revision)?;
+    let chapter = manifest.chapters.iter_mut()
+        .find(|chapter| chapter.id == chapter_id)
+        .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
+    if chapter.audio_origin.as_deref() != Some("generated") || chapter.audio_path.is_none() {
+        return Err(CommandError::new("AUDIO_NOT_GENERATED", "This chapter has no generated audio to delete."));
+    }
+    let former_path = owned_path(&root, chapter.audio_path.as_deref().unwrap())?;
+    chapter.audio_path = None;
+    chapter.audio_duration_ms = None;
+    chapter.audio_origin = None;
+    chapter.audio_stale = false;
+    chapter.review_status = None;
+    chapter.cues.clear();
+    manifest.revision += 1;
+    manifest.updated_at_ms = now_ms();
     write_manifest(&root, &manifest)?;
+    let _ = fs::remove_file(former_path);
     snapshot(&root, manifest)
 }
 
