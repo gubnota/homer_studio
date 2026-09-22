@@ -12,7 +12,7 @@ The workers do not download checkpoints or install packages when the app starts 
 ```sh
 python3.10 -m venv workers/chatterbox/.venv
 workers/chatterbox/.venv/bin/python -m pip install -r workers/chatterbox/requirements.txt
-HOMER_CHATTERBOX_MODEL_DIR=/absolute/path/to/chatterbox-turbo python3 workers/start_local.py chatterbox
+python3 workers/start_local.py chatterbox
 ```
 
 The default address is `http://127.0.0.1:8765`. Use `HOMER_CHATTERBOX_PORT` to change it, and set the matching address in Homer Studio Settings. Speech takes exact English text. Documented Turbo tags are `[clear throat]`, `[sigh]`, `[shush]`, `[cough]`, `[groan]`, `[sniff]`, `[gasp]`, `[chuckle]`, and `[laugh]`; they can appear inline with spoken words. Chatterbox is not used for arbitrary fabric or ambience prompts.
@@ -24,7 +24,7 @@ The original Chatterbox model is an alternative speech engine. It provides exagg
 Download the [complete original checkpoint](https://huggingface.co/ResembleAI/chatterbox/tree/main) into a local folder containing `ve.safetensors`, `t3_cfg.safetensors`, `s3gen.safetensors`, `tokenizer.json`, and `conds.pt`. Install the Chatterbox requirements as above, then run:
 
 ```sh
-HOMER_CHATTERBOX_ORIGINAL_MODEL_DIR=/absolute/path/to/chatterbox workers/chatterbox/.venv/bin/python workers/start_local.py original
+python3 workers/start_local.py original
 ```
 
 The original worker listens at `http://127.0.0.1:8767` by default. Select **Original Chatterbox** in Settings and set that service address there. Its health check confirms the dependencies and files are present; the model loads when the first generation begins. A saved voice sample is copied into Homer Studio's local library when imported, so its original file can be moved afterward.
@@ -53,7 +53,7 @@ curl http://127.0.0.1:8767/v2/health
 
 Each response must report `protocolVersion: 2` and `ready: true`. This confirms checkpoint files and Python dependencies are present. The model is loaded on the first generation request; if that load fails, the job reports the error. Open **Sound Studio**, choose a category, enter a prompt, and generate. Finished clips appear in the independent Clip library, with a 48 kHz WAV master and M4A preview/export copy in the app data folder. Neither a manuscript nor a user voice sample is required.
 
-To start both installed workers in the background from the repository root, run `python3 workers/start_local.py`. You may set `HOMER_CHATTERBOX_MODEL_DIR`, `HOMER_SFX_MODEL_DIR`, `HOMER_CHATTERBOX_PYTHON`, or `HOMER_SFX_PYTHON` for custom locations. The launcher reports missing model/environment paths and writes worker logs beside each worker. Launch it again after a restart. Settings URLs point to the **running service**, not to checkpoint folders.
+Install Turbo and/or Original checkpoints explicitly from Settings first. Settings shows download progress in bytes and the actual disk use. On macOS the launcher picks up the app-managed checkpoints automatically; `HOMER_CHATTERBOX_MODEL_DIR` and `HOMER_CHATTERBOX_ORIGINAL_MODEL_DIR` override those locations. Install the Python requirements above separately. To start installed workers in the background from the repository root, run `python3 workers/start_local.py chatterbox original` (or name one). You may set `HOMER_SFX_MODEL_DIR` and `HOMER_CHATTERBOX_PYTHON` for custom locations. The launcher reports missing model/environment paths and writes worker logs beside each worker. Launch it again after a restart. Settings URLs point to the **running service**, not to checkpoint folders.
 
 The worker API is documented in `docs/API_CONTRACTS.md`. It is bound to loopback and the Mac app accepts loopback addresses only. A future Linux GPU worker can implement the same versioned API, but remote authentication and transport are not part of this release.
 

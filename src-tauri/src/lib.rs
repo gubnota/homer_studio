@@ -59,6 +59,8 @@ pub fn run() {
             commands::system::list_jobs,
             commands::system::control_job,
             commands::system::dismiss_jobs,
+            commands::system::model_status,
+            commands::system::install_model,
             commands::production::process_text,
             commands::production::accept_processed_text,
             commands::production::list_voices,

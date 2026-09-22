@@ -2,6 +2,7 @@ use crate::{
     AppState,
     services::{
         jobs::JobRecord,
+        model_install::{self, ModelStatus},
         project_store::CommandError,
         settings::{self, Settings, ToolDiagnostic},
     },
@@ -40,4 +41,17 @@ pub fn control_job(
 #[tauri::command]
 pub fn dismiss_jobs(state: State<'_, AppState>, job_ids: Vec<String>) -> Result<usize, CommandError> {
     state.jobs.dismiss(&job_ids)
+}
+
+#[tauri::command]
+pub fn model_status(app: AppHandle, model: String) -> Result<ModelStatus, CommandError> {
+    model_install::status(&app, &model)
+}
+
+#[tauri::command]
+pub fn install_model(app: AppHandle, state: State<'_, AppState>, model: String) -> Result<String, CommandError> {
+    model_install::status(&app, &model)?;
+    Ok(state.jobs.enqueue("model", format!("Install {model} checkpoint"), move |control, progress| {
+        model_install::install(&app, &model, &control, &*progress)
+    }))
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
-import type { Chapter, JobRecord, ProjectSnapshot, Settings, ToolDiagnostic, Voice } from '../../shared/contracts'
+import type { Chapter, JobRecord, ModelStatus, ProjectSnapshot, Settings, ToolDiagnostic, Voice } from '../../shared/contracts'
 import type { RouteId } from '../../shared/navigation'
 import { chooseAudio, chooseFolder, chooseManuscript, chooseTool, defaultProjectParent, errorMessage, isDesktop, loadDroppedManuscript, productionApi, projectApi, systemApi } from './native'
 import { VoicePicker } from './VoicePicker'
@@ -411,7 +411,15 @@ export function SettingsPage(): JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [tools, setTools] = useState<ToolDiagnostic[]>([])
   const [message, setMessage] = useState('')
+  const [models, setModels] = useState<ModelStatus[]>([])
+  const [installJobs, setInstallJobs] = useState<Partial<Record<'turbo' | 'original', string>>>({})
+  const [jobs, setJobs] = useState<JobRecord[]>([])
+  const refreshModels = async (): Promise<void> => { setModels(await Promise.all(['turbo', 'original'].map((model) => systemApi.modelStatus(model as 'turbo' | 'original')))) }
   useEffect(() => { if ('__TAURI_INTERNALS__' in window) { void invoke<DesktopInfo>('desktop_info').then(setDesktop); void Promise.all([systemApi.settings(), systemApi.diagnostics()]).then(([value, found]) => { setSettings(value); setTools(found) }).catch((cause) => setMessage(errorMessage(cause))) } }, [])
+  useEffect(() => { if (!isDesktop()) return; void refreshModels().catch((cause) => setMessage(errorMessage(cause))); const timer = window.setInterval(() => { void refreshModels().catch(() => {}); void systemApi.jobs().then(setJobs).catch(() => {}) }, 1000); return () => window.clearInterval(timer) }, [])
+  async function install(model: 'turbo' | 'original'): Promise<void> {
+    try { const id = await systemApi.installModel(model); setInstallJobs((previous) => ({ ...previous, [model]: id })); setJobs(await systemApi.jobs()) } catch (cause) { setMessage(errorMessage(cause)) }
+  }
   async function save(): Promise<void> {
     if (!settings) return
     setMessage('Saving…')
@@ -426,11 +434,23 @@ export function SettingsPage(): JSX.Element {
         <dl><div><dt>Platform</dt><dd>{desktop.platform}</dd></div><div><dt>Architecture</dt><dd>{desktop.architecture}</dd></div><div><dt>Runtime</dt><dd>{desktop.runtime}</dd></div></dl>
         <h2>Local tools</h2>
         <div className="tool-list">{tools.map((tool) => <div key={tool.name}><span className={tool.available ? 'dot available' : 'dot'} /><strong>{tool.name}</strong><span className="tool-result"><small>{toolStatus(tool.status)}</small>{tool.path && <small title={tool.path}>{tool.path}</small>}</span></div>)}</div>
+        <h2>Chatterbox checkpoints</h2>
+        <p className="field-note">Install only the models you use. Downloads stay on this Mac and can resume after cancellation. Start the local Python worker separately.</p>
+        {models.map((model) => { const job = jobs.find((item) => item.id === installJobs[model.model]); const active = job?.status === 'running' || job?.status === 'queued'; return <div className="model-install" key={model.model}>
+          <div className="model-install-heading"><strong>{model.model === 'turbo' ? 'Chatterbox Turbo' : 'Original Chatterbox'}</strong><span>{model.installed ? 'Installed' : active ? `${job?.progress ?? 0}%` : 'Not installed'}</span></div>
+          <small title={model.path}>{model.path}</small>
+          <small>{formatBytes(model.bytesOnDisk)} on disk{model.totalBytes ? ` · ${formatBytes(model.downloadedBytes)} of ${formatBytes(model.totalBytes)} downloaded` : ''}</small>
+          {active && <progress max={100} value={job?.progress ?? 0} />}
+          {job?.status === 'failed' && <small className="error-text">{job.message}</small>}
+          <div className="model-install-actions"><button type="button" disabled={active || model.installed} onClick={() => void install(model.model)}>{job?.status === 'failed' || job?.status === 'cancelled' ? 'Retry' : 'Install'}</button>{active && <button type="button" onClick={() => void systemApi.controlJob(job!.id, 'cancel').catch((cause) => setMessage(errorMessage(cause)))}>Cancel</button>}</div>
+        </div> })}
       </section>
       {settings && <SettingsForm settings={settings} tools={tools} onChange={setSettings} />}
     </div>
   </div>
 }
+
+function formatBytes(bytes: number): string { return bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(2)} GB` : bytes >= 1024 ** 2 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB` }
 
 function toolStatus(status: ToolDiagnostic['status']): string {
   return ({ invalid_configuration: 'Configured path is invalid', not_found: 'Not found', service_unavailable: 'Server API is unavailable', service_reachable: 'Server is reachable', service_ready: 'Ready', no_models: 'Running, but no models installed', model_not_installed: 'Selected model is not installed', configured: 'Configured', found_automatically: 'Found automatically' })[status]

@@ -53,9 +53,13 @@ if __name__ == "__main__":
     requested = set(sys.argv[1:]) or {"chatterbox", "sfx"}
     if not requested <= {"chatterbox", "original", "sfx"}:
         raise SystemExit("Usage: python3 workers/start_local.py [chatterbox] [original] [sfx]")
+    app_models = Path.home() / "Library/Application Support/com.gubnota.homerstudio/models" if sys.platform == "darwin" else Path.home() / ".local/share/com.gubnota.homerstudio/models"
+    def checkpoint(name: str, fallback: Path) -> Path:
+        installed = app_models / name
+        return installed if installed.is_dir() else fallback
     if "chatterbox" in requested:
         start("chatterbox", int(os.environ.get("HOMER_CHATTERBOX_PORT", "8765")),
-              Path(os.environ.get("HOMER_CHATTERBOX_MODEL_DIR", ROOT / "chatterbox/models/chatterbox-turbo")),
+              Path(os.environ.get("HOMER_CHATTERBOX_MODEL_DIR", checkpoint("chatterbox-turbo", ROOT / "chatterbox/models/chatterbox-turbo"))),
               Path(os.environ.get("HOMER_CHATTERBOX_PYTHON", ROOT / "chatterbox/.venv/bin/python")),
               ROOT / "chatterbox/server.py")
     if "sfx" in requested:
@@ -65,6 +69,6 @@ if __name__ == "__main__":
               ROOT / "sfx/server.py")
     if "original" in requested:
         start("original", int(os.environ.get("HOMER_CHATTERBOX_ORIGINAL_PORT", "8767")),
-              Path(os.environ.get("HOMER_CHATTERBOX_ORIGINAL_MODEL_DIR", ROOT / "chatterbox/models/chatterbox-original")),
+              Path(os.environ.get("HOMER_CHATTERBOX_ORIGINAL_MODEL_DIR", checkpoint("chatterbox-original", ROOT / "chatterbox/models/chatterbox-original"))),
               Path(os.environ.get("HOMER_CHATTERBOX_PYTHON", ROOT / "chatterbox/.venv/bin/python")),
               ROOT / "chatterbox/original.py")

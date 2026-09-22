@@ -1,6 +1,7 @@
 pub mod audio_protocol;
 pub mod exports;
 pub mod jobs;
+pub mod model_install;
 pub mod llm;
 pub mod process_runner;
 pub mod project_store;

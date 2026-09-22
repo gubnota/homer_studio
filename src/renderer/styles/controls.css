@@ -27,3 +27,9 @@
 .segment-row p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .segment-row span { color: #77766f; font-size: 12px; }
 @media (max-width: 720px) { .segment-row { grid-template-columns: 1fr; } }
+.model-install { display: grid; gap: .45rem; padding: .9rem 0; border-top: 1px solid var(--line, #ddd); }
+.model-install-heading, .model-install-actions { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.model-install small { overflow-wrap: anywhere; }
+.model-install progress { width: 100%; accent-color: #5145b5; }
+.model-install-actions { justify-content: flex-start; }
+.model-install .error-text { color: #b3263e; }
