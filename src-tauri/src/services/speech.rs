@@ -51,11 +51,7 @@ pub fn generate_with_progress(
         .join(format!("narration-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&work).map_err(|error| CommandError::io("Cannot stage narration", error))?;
     let result = (|| {
-        let lines: Vec<&str> = text
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .collect();
+        let lines = crate::services::spoken_text::lines(text);
         let parts = lines
             .iter()
             .map(|line| parse_markup(line))

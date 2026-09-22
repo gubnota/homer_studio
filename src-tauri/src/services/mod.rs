@@ -6,6 +6,7 @@ pub mod process_runner;
 pub mod project_store;
 pub mod settings;
 pub mod speech;
+pub mod spoken_text;
 pub mod sound_store;
 pub mod sound_workers;
 pub mod sound_render;
