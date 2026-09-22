@@ -37,7 +37,8 @@ def generate(request, model_dir):
         _model = ChatterboxTurboTTS.from_local(str(model_dir), device=device)
         if _model.conds is None:
             raise ValueError("This checkpoint has no default voice. Add conds.pt to the model folder.")
-    wave = _model.generate(prompt)
+    reference = request.get("referencePath")
+    wave = _model.generate(prompt, audio_prompt_path=reference) if reference else _model.generate(prompt)
     result = io.BytesIO()
     torchaudio.save(result, wave.cpu(), _model.sr, format="wav")
     return result.getvalue()

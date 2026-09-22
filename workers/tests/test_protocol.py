@@ -30,6 +30,7 @@ class WorkerTests(unittest.TestCase):
 
     def test_health_and_completed_job(self):
         self.assertTrue(self.worker.health()["ready"])
+        self.assertEqual(self.worker.health()["protocolVersion"], 2)
         job_id = self.worker.start({"prompt": "soft fabric rustle", "category": "sound_effect", "durationSeconds": 2})
         for _ in range(50):
             if self.worker.status(job_id)["status"] == "completed":
@@ -71,6 +72,32 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(engine_for(Path(self.folder.name)), engine)
         model_index.write_text('{"_class_name": "UnrelatedPipeline"}')
         self.assertIsNone(engine_for(Path(self.folder.name)))
+
+    def test_reference_is_transferred_once_and_cleaned_after_generation(self):
+        paths = []
+        def use_reference(request, _model_dir):
+            path = Path(request["referencePath"])
+            self.assertTrue(path.is_file())
+            paths.append(path)
+            return silence(request, _model_dir)
+        voice = Worker("chatterbox_turbo", self.folder.name, ["speech"], use_reference)
+        with self.assertRaises(ValueError):
+            voice.add_reference(b"not a wav")
+        reference_id = voice.add_reference(silence(None, None))
+        job_id = voice.start({"prompt": "Hello.", "category": "speech", "durationSeconds": 2, "referenceId": reference_id})
+        for _ in range(50):
+            if voice.status(job_id)["status"] == "completed":
+                break
+            time.sleep(0.01)
+        self.assertEqual(voice.status(job_id)["status"], "completed")
+        self.assertFalse(paths[0].exists())
+        with self.assertRaises(ValueError):
+            voice.start({"prompt": "Hello.", "category": "speech", "durationSeconds": 2, "referenceId": reference_id})
+
+    def test_negative_prompt_rejected_for_speech(self):
+        voice = Worker("chatterbox_turbo", self.folder.name, ["speech"], silence)
+        with self.assertRaises(ValueError):
+            voice.start({"prompt": "Hello.", "category": "speech", "durationSeconds": 2, "negativePrompt": "music"})
 
 
 if __name__ == "__main__":

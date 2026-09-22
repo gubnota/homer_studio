@@ -5,6 +5,7 @@ use super::{jobs::JobControl, project_store::CommandError, settings::validate_wo
 
 const MAX_JSON: usize = 64 * 1024;
 const MAX_WAV: usize = 32 * 1024 * 1024;
+const MAX_REFERENCE: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,7 +28,7 @@ struct RemoteError { error: String }
 
 pub fn health(url: &str, expected_engine: &str) -> WorkerHealth {
     let fallback = |message: String| WorkerHealth {
-        protocol_version: 1,
+        protocol_version: 2,
         engine: expected_engine.into(),
         model: "not loaded".into(),
         ready: false,
@@ -35,20 +36,20 @@ pub fn health(url: &str, expected_engine: &str) -> WorkerHealth {
         max_duration_seconds: 20,
         message,
     };
-    match request(url, "GET", "/v1/health", None, MAX_JSON)
+    match request(url, "GET", "/v2/health", None, MAX_JSON)
         .and_then(|body| serde_json::from_slice::<WorkerHealth>(&body).map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned invalid health data."))) {
-        Ok(value) if value.protocol_version == 1 && (value.engine == expected_engine || (expected_engine == "sound_effect" && matches!(value.engine.as_str(), "audioldm2" | "stable_audio_open"))) => value,
-        Ok(_) => fallback("Worker protocol or engine does not match.".into()),
+        Ok(value) if value.protocol_version == 2 && (value.engine == expected_engine || (expected_engine == "sound_effect" && matches!(value.engine.as_str(), "audioldm2" | "stable_audio_open"))) => value,
+        Ok(_) => fallback("Worker version is out of date. Restart the local workers from this repository.".into()),
         Err(error) => fallback(error.message),
     }
 }
 
 pub fn generate(url: &str, request_body: &serde_json::Value, control: &JobControl) -> Result<Vec<u8>, CommandError> {
     let body = serde_json::to_vec(request_body).map_err(|_| CommandError::internal("Cannot serialize sound request"))?;
-    let created: Created = serde_json::from_slice(&request(url, "POST", "/v1/jobs", Some(&body), MAX_JSON)?)
+    let created: Created = serde_json::from_slice(&request(url, "POST", "/v2/jobs", Some(&body), MAX_JSON)?)
         .map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned an invalid job ID."))?;
     uuid::Uuid::parse_str(&created.id).map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned an invalid job ID."))?;
-    let path = format!("/v1/jobs/{}", created.id);
+    let path = format!("/v2/jobs/{}", created.id);
     let start = Instant::now();
     loop {
         if control.cancelled.load(Ordering::SeqCst) {
@@ -80,6 +81,16 @@ pub fn generate(url: &str, request_body: &serde_json::Value, control: &JobContro
     }
 }
 
+pub fn upload_reference(url: &str, wav: &[u8]) -> Result<String, CommandError> {
+    if wav.len() > MAX_REFERENCE || wav.len() < 44 || !wav.starts_with(b"RIFF") || wav.get(8..12) != Some(b"WAVE") {
+        return Err(CommandError::new("INVALID_VOICE_SAMPLE", "Voice reference must be a WAV file smaller than 2 MB."));
+    }
+    let response = request(url, "POST", "/v2/references", Some(wav), MAX_JSON)?;
+    let created: Created = serde_json::from_slice(&response).map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned an invalid reference ID."))?;
+    uuid::Uuid::parse_str(&created.id).map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned an invalid reference ID."))?;
+    Ok(created.id)
+}
+
 fn request(url: &str, method: &str, path: &str, body: Option<&[u8]>, max_body: usize) -> Result<Vec<u8>, CommandError> {
     validate_worker_url(url)?;
     let port: u16 = url.rsplit(':').next().unwrap().parse().unwrap();
@@ -89,7 +100,8 @@ fn request(url: &str, method: &str, path: &str, body: Option<&[u8]>, max_body: u
     stream.set_read_timeout(Some(Duration::from_secs(15))).ok();
     stream.set_write_timeout(Some(Duration::from_secs(15))).ok();
     let payload = body.unwrap_or_default();
-    let headers = format!("{method} {path} HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", payload.len());
+    let content_type = if path == "/v2/references" { "audio/wav" } else { "application/json" };
+    let headers = format!("{method} {path} HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", payload.len());
     stream.write_all(headers.as_bytes()).and_then(|_| stream.write_all(payload))
         .map_err(|error| CommandError::io("Cannot send sound worker request", error))?;
     let mut bytes = Vec::new();

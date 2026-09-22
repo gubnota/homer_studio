@@ -52,7 +52,7 @@ def generate(request, model_dir):
     generator = torch.Generator(device="cpu")
     if request.get("seed") is not None:
         generator.manual_seed(request["seed"])
-    options = {"negative_prompt": "Low quality, distorted, music.", "num_inference_steps": 100, "generator": generator}
+    options = {"negative_prompt": request.get("negativePrompt") or "Low quality, distorted, music.", "num_inference_steps": 100, "generator": generator}
     if engine == "audioldm2":
         options["audio_length_in_s"] = float(request["durationSeconds"])
     else:

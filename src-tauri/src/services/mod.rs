@@ -9,3 +9,4 @@ pub mod speech;
 pub mod sound_store;
 pub mod sound_workers;
 pub mod sound_render;
+pub mod voice_store;
