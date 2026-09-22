@@ -12,6 +12,8 @@ describe('standalone sound studio', () => {
     const html = renderToStaticMarkup(createElement(SoundStudioPage))
     expect(html).toContain('No book or manuscript is needed')
     expect(html).toContain('Clip library')
+    expect(html).not.toContain('Sound effect')
+    expect(html).toContain('max="120"')
     expect(isRouteId('voice-lab')).toBe(true)
     const voiceLab = renderToStaticMarkup(createElement(VoiceLabPage))
     expect(voiceLab).toContain('No book is needed')
@@ -19,16 +21,14 @@ describe('standalone sound studio', () => {
   })
 
   it('checks prompt, duration, and seed before generation', () => {
-    const good = { prompt: 'Cotton fabric rustling', category: 'sound_effect' as const, durationSeconds: 5, seed: null }
+    const good = { prompt: 'Tomorrow, and tomorrow, and tomorrow.', category: 'speech' as const, durationSeconds: 5, seed: null }
     expect(isValidSoundRequest(good)).toBe(true)
     expect(isValidSoundRequest({ ...good, prompt: ' ' })).toBe(false)
     expect(isValidSoundRequest({ ...good, durationSeconds: 120 })).toBe(true)
     expect(isValidSoundRequest({ ...good, durationSeconds: 121 })).toBe(false)
-    expect(isValidSoundRequest({ ...good, category: 'speech', durationSeconds: 21 })).toBe(false)
-    expect(isValidSoundRequest({ ...good, negativePrompt: 'music, voices' })).toBe(true)
-    expect(isValidSoundRequest({ ...good, negativePrompt: 'x'.repeat(301) })).toBe(false)
+    expect(isValidSoundRequest({ ...good, category: 'sound_effect' })).toBe(false)
+    expect(isValidSoundRequest({ ...good, category: 'vocal_gesture', prompt: '[sigh]', durationSeconds: 120 })).toBe(false)
+    expect(isValidSoundRequest({ ...good, negativePrompt: 'music' })).toBe(false)
     expect(isValidSoundRequest({ ...good, seed: -1 })).toBe(false)
-    expect(isValidSoundRequest({ ...good, category: 'vocal_gesture', prompt: 'heavy breathing' })).toBe(false)
-    expect(isValidSoundRequest({ ...good, category: 'vocal_gesture', prompt: '[sigh]' })).toBe(true)
   })
 })

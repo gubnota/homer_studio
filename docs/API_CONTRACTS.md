@@ -36,20 +36,20 @@
 ## Standalone sound library v1
 - App data: `sound-assets/manifest.json`, `{ schemaVersion: 1, assets: SoundAsset[] }`. Each asset has UUID `id`, `prompt`, `category`, `provider`, `model`, `requestedDurationSeconds`, measured `durationMs`, optional `seed` and `negativePrompt`, `createdAtMs`, `masterPath`, and `previewPath`.
 - Paths are exactly `clips/<id>/master.wav` and `clips/<id>/preview.m4a`. Files are published only after WAV/M4A validation; manifest writes use a same-folder temporary file and rename.
-- `SoundRequest`: 1–500 nonblank prompt characters, category `speech | vocal_gesture | sound_effect`, duration 1–20 seconds, optional integer seed 0–2147483647, and optional sound-effect-only `negativePrompt` of at most 300 characters. Gestures accept one documented tag.
+- `SoundRequest`: 1–500 nonblank prompt characters, category `speech | vocal_gesture`, maximum duration 1–120 seconds, optional integer seed 0–2147483647. Inline gestures are available in speech; the dedicated gesture category accepts one documented tag. New sound-effect requests and `negativePrompt` are rejected. Existing sound-effect assets remain available for playback, export, and deletion.
 
 ## Local audio worker protocol v2
 - Each worker binds `127.0.0.1`. The Mac app accepts only `http://127.0.0.1:<port>`. `GET /v2/health` returns `protocolVersion`, `engine`, `model`, `ready`, `categories`, `maxDurationSeconds`, and `message`.
 - `POST /v2/jobs` takes the `SoundRequest` JSON and returns HTTP 202 `{id}`. `GET /v2/jobs/<id>` returns `{id,status,error,format}` with `queued | running | completed | failed | cancelled`; `DELETE` cancels. A completed job provides WAV bytes at `GET /v2/jobs/<id>/audio`.
-- `POST /v2/references` accepts a bounded WAV and returns an opaque reference ID. A Chatterbox speech or gesture job may include `referenceId`. Original voice conversion uses category `voice_conversion` plus both `sourceId` and `referenceId`; the worker consumes and deletes both temporary WAVs after the job. Effects jobs may include `negativePrompt`. No path from a worker request is trusted.
-- Chatterbox engine ID `chatterbox_turbo` supports speech and documented vocal tags. Original engine ID `chatterbox_original` supports English speech and voice conversion, while `stable_audio_open` is the sole effects engine. Worker errors use JSON `{error}`. Responses and audio are size bounded; model packages and checkpoints are never downloaded in request handling.
+- `POST /v2/references` accepts a bounded WAV and returns an opaque reference ID. A Chatterbox speech or gesture job may include `referenceId`. Original voice conversion uses category `voice_conversion` plus both `sourceId` and `referenceId`; the worker consumes and deletes both temporary WAVs after the job. No path from a worker request is trusted.
+- Chatterbox engine ID `chatterbox_turbo` supports speech and documented vocal tags. Original engine ID `chatterbox_original` supports English speech and voice conversion. The retired `stable_audio_open` worker source remains in the repository but is not offered by the app. Worker errors use JSON `{error}`. Responses and audio are size bounded; model packages and checkpoints are never downloaded in request handling.
 
 ## Settings v1
 - `llm`: `none`, `llama_cpp`, or `ollama`. Ollama URLs must use loopback HTTP.
 - `speech`: `chatterbox_turbo | chatterbox_original` and an app-data voice ID. Legacy `macos_say`, rate, `voicePresets`, and `selectedVoicePresetId` fields are accepted for migration, but macOS synthesis and preset selection are no longer offered. Custom voices need a selected sample.
 - Voice library: `voices/library.json` plus normalized, bounded local WAV sample files. One selected sample conditions each generation; distinct speakers are not blended.
 - Optional explicit FFmpeg, FFprobe, and Ollama executable paths. llama.cpp keeps its executable and GGUF model paths in its provider settings.
-- `sounds.chatterboxUrl`, `sounds.originalUrl`, and `sounds.sfxUrl` default to ports 8765, 8767, and 8766. Existing settings migrate through defaults. Worker URLs must be loopback HTTP.
+- `sounds.chatterboxUrl` and `sounds.originalUrl` default to ports 8765 and 8767. The legacy `sounds.sfxUrl` field remains in persisted settings for migration but is no longer shown or used for generation. Worker URLs must be loopback HTTP.
 
 ## Job states
 - `queued -> running -> completed | failed | cancelled`.
@@ -89,5 +89,5 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 - `delete_sounds(ids) -> SoundAsset[]` removes selected app-owned clips. `convert_voice_clip(voiceId, sourcePath?, bytes?) -> jobId` accepts one recording (1–120 seconds, at most 100 MB), splits it into worker-sized segments, and publishes one `voice_conversion` asset. The two input forms are mutually exclusive.
 - `audio_waveform_window(rootPath, chapterId, startMs, endMs) -> number[]` returns bounded peaks for a visible chapter range. The Review player keeps playback and selection within project-owned audio.
 - Review bulk actions delete generated chapter audio only. Export history bulk deletion removes project-owned M4A and timestamp pairs. Bulk saves copy selected outputs into a chosen folder; originals remain owned by the project.
-- Sound effects accept a 1–120 second request; Rust divides longer effects into worker jobs of at most 20 seconds and concatenates verified WAV segments. Speech and gesture requests stay at 1–20 seconds. Standalone conversion accepts up to 120 seconds by dividing source recordings into segments of at most 15 seconds.
+- Sound Studio accepts a 1–120 second maximum for all kinds. Rust divides effects and gestures into worker jobs of at most 20 seconds, splits longer speech at word boundaries into short prompts, and concatenates verified WAV segments. Chatterbox Turbo determines the actual spoken duration from the text; the requested maximum does not stretch a short prompt. Standalone conversion accepts up to 120 seconds by dividing source recordings into segments of at most 15 seconds.
 - The built-in Turbo narrator preview is a bundled model-generated M4A. Custom voice previews are cached per voice; when unavailable, the UI can play the copied selected sample and report the generation error.

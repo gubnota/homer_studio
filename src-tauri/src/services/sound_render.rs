@@ -20,20 +20,20 @@ pub fn validate(request: &SoundRequest) -> Result<(), CommandError> {
     if count == 0 || count > 500 || request.prompt.trim().is_empty() {
         return Err(CommandError::new("INVALID_SOUND_PROMPT", "Enter a prompt of 1–500 characters."));
     }
-    if !request.duration_seconds.is_finite() || !(1.0..=if request.category == "sound_effect" { 120.0 } else { 20.0 }).contains(&request.duration_seconds) {
-        return Err(CommandError::new("INVALID_SOUND_DURATION", "Choose 1–120 seconds for effects or 1–20 seconds for speech."));
+    if !request.duration_seconds.is_finite() || !(1.0..=120.0).contains(&request.duration_seconds) {
+        return Err(CommandError::new("INVALID_SOUND_DURATION", "Choose a maximum duration from 1 to 120 seconds."));
     }
     match request.category.as_str() {
-        "speech" | "sound_effect" => (),
+        "speech" => (),
         "vocal_gesture" => {
             if !["[clear throat]", "[sigh]", "[shush]", "[cough]", "[groan]", "[sniff]", "[gasp]", "[chuckle]", "[laugh]"].contains(&request.prompt.trim().to_lowercase().as_str()) {
                 return Err(CommandError::new("INVALID_VOCAL_GESTURE", "Use one documented Chatterbox Turbo gesture tag."));
             }
         }
-        _ => return Err(CommandError::new("INVALID_SOUND_CATEGORY", "Choose speech, vocal gesture, or sound effect.")),
+        _ => return Err(CommandError::new("INVALID_SOUND_CATEGORY", "Only speech and vocal gestures are supported.")),
     }
-    if request.negative_prompt.as_ref().is_some_and(|value| value.chars().count() > 300) {
-        return Err(CommandError::new("INVALID_NEGATIVE_PROMPT", "Keep the unwanted-sounds field under 300 characters."));
+    if request.negative_prompt.is_some() {
+        return Err(CommandError::new("INVALID_NEGATIVE_PROMPT", "Unwanted-sounds prompts are no longer supported."));
     }
     Ok(())
 }
@@ -41,17 +41,13 @@ pub fn validate(request: &SoundRequest) -> Result<(), CommandError> {
 pub fn render(app: &AppHandle, settings: &Settings, request: &SoundRequest, control: &JobControl, progress: &dyn Fn(u8)) -> Result<(), CommandError> {
     validate(request)?;
     control.boundary()?;
-    let (url, engine) = if request.category == "sound_effect" {
-        (&settings.sounds.sfx_url, "sound_effect")
-    } else { (&settings.sounds.chatterbox_url, "chatterbox_turbo") };
+    let url = &settings.sounds.chatterbox_url;
+    let engine = "chatterbox_turbo";
     let health = sound_workers::health(url, engine);
     if !health.ready { return Err(CommandError::new("WORKER_UNAVAILABLE", health.message)); }
     if !health.categories.contains(&request.category) { return Err(CommandError::new("WORKER_CAPABILITY", "The selected worker cannot generate this kind of sound.")); }
     progress(10);
-    let reference_id = if request.category != "sound_effect" {
-        super::voice_store::selected_sample(app, &settings.speech.voice_id)?
-            .map(|bytes| sound_workers::upload_reference(url, &bytes)).transpose()?
-    } else { None };
+    let reference = super::voice_store::selected_sample(app, &settings.speech.voice_id)?;
     let id = uuid::Uuid::new_v4().to_string();
     let root = sound_store::root(app)?;
     let stage = root.join("staging").join(&id);
@@ -59,12 +55,16 @@ pub fn render(app: &AppHandle, settings: &Settings, request: &SoundRequest, cont
     let result = (|| {
         let master = stage.join("master.wav");
         let preview = stage.join("preview.m4a");
-        let count = if request.category == "sound_effect" { (request.duration_seconds / 20.0).ceil() as u32 } else { 1 };
+        let prompts = if request.category == "speech" { split_speech(&request.prompt) } else { vec![request.prompt.clone()] };
+        let minimum_count = (request.duration_seconds / 20.0).ceil() as usize;
+        let count = if request.category == "speech" { prompts.len() } else { minimum_count };
         let mut list_entries = String::new();
         for index in 0..count {
             control.boundary()?;
-            let segment_seconds = request.duration_seconds / count as f32;
-            let payload = serde_json::json!({"prompt": request.prompt, "category": request.category, "durationSeconds": segment_seconds, "seed": request.seed.map(|seed| seed.wrapping_add(index) & 0x7fff_ffff), "referenceId": reference_id, "negativePrompt": request.negative_prompt});
+            let segment_seconds = (request.duration_seconds / count as f32).min(20.0).max(1.0);
+            let reference_id = reference.as_ref().map(|bytes| sound_workers::upload_reference(url, bytes)).transpose()?;
+            let prompt = if request.category == "speech" { &prompts[index] } else { &request.prompt };
+            let payload = serde_json::json!({"prompt": prompt, "category": request.category, "durationSeconds": segment_seconds, "seed": request.seed.map(|seed| seed.wrapping_add(index as u32) & 0x7fff_ffff), "referenceId": reference_id, "negativePrompt": request.negative_prompt});
             let wav = sound_workers::generate(url, &payload, control)?;
             let original = stage.join(format!("worker-{index}.wav"));
             let normalized = stage.join(format!("segment-{index}.wav"));
@@ -91,7 +91,7 @@ pub fn render(app: &AppHandle, settings: &Settings, request: &SoundRequest, cont
 
         convert(settings, &master, &preview, "aac", control)?;
         let duration_ms = super::speech::probe_duration(&master, settings)?;
-        if duration_ms == 0 || duration_ms > if request.category == "sound_effect" { (request.duration_seconds * 1100.0) as u64 + 2000 } else { 22000 } { return Err(CommandError::new("INVALID_WORKER_AUDIO", "Converted audio is empty or too long.")); }
+        if duration_ms == 0 || duration_ms > (request.duration_seconds * 1100.0) as u64 + 2000 { return Err(CommandError::new("INVALID_WORKER_AUDIO", "Converted audio is empty or too long.")); }
         let preview_ms = super::speech::probe_duration(&preview, settings)?;
         if preview_ms == 0 { return Err(CommandError::new("INVALID_WORKER_AUDIO", "Playback audio is empty.")); }
         control.boundary()?;
@@ -100,7 +100,7 @@ pub fn render(app: &AppHandle, settings: &Settings, request: &SoundRequest, cont
             id: id.clone(), prompt: request.prompt.trim().into(), category: request.category.clone(),
             provider: health.engine, model: health.model, requested_duration_seconds: request.duration_seconds,
             duration_ms, seed: request.seed, created_at_ms: sound_store::now_ms(),
-            voice_id: if request.category == "sound_effect" { None } else { Some(settings.speech.voice_id.clone()) },
+            voice_id: Some(settings.speech.voice_id.clone()),
             negative_prompt: request.negative_prompt.clone(),
             master_path: format!("clips/{id}/master.wav"), preview_path: format!("clips/{id}/preview.m4a"),
         };
@@ -108,6 +108,21 @@ pub fn render(app: &AppHandle, settings: &Settings, request: &SoundRequest, cont
     })();
     if result.is_err() { let _ = fs::remove_dir_all(&stage); }
     result
+}
+
+fn split_speech(prompt: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    for word in prompt.split_whitespace() {
+        let inside_tag = current.rfind('[').is_some_and(|open| current[open..].find(']').is_none());
+        if !inside_tag && !current.is_empty() && current.chars().count() + 1 + word.chars().count() > 80 {
+            parts.push(std::mem::take(&mut current));
+        }
+        if !current.is_empty() { current.push(' '); }
+        current.push_str(word);
+    }
+    if !current.is_empty() { parts.push(current); }
+    parts
 }
 
 fn convert(settings: &Settings, source: &Path, destination: &Path, codec: &str, control: &JobControl) -> Result<(), CommandError> {
@@ -132,10 +147,19 @@ mod tests {
         request.prompt = "[sigh]".into();
         assert!(validate(&request).is_ok());
         request.duration_seconds = 25.0;
-        assert!(validate(&request).is_err());
-        request.category = "sound_effect".into();
         assert!(validate(&request).is_ok());
+        request.category = "sound_effect".into();
+        assert!(validate(&request).is_err());
         request.duration_seconds = 121.0;
         assert!(validate(&request).is_err());
+    }
+
+    #[test]
+    fn speech_chunks_preserve_words_and_gesture_tags() {
+        let prompt = format!("{} [clear throat] {}", "Tomorrow returns. ".repeat(7), "A new day arrives. ".repeat(6));
+        let parts = split_speech(&prompt);
+        assert!(parts.len() > 1);
+        assert_eq!(parts.join(" "), prompt.split_whitespace().collect::<Vec<_>>().join(" "));
+        assert!(parts.iter().any(|part| part.contains("[clear throat]")));
     }
 }

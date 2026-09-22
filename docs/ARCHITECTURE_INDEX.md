@@ -38,7 +38,7 @@
 - `src/renderer/src/SoundStudioPage.tsx`: book-independent prompt, worker status, clip library, playback, retry, export, and deletion.
 - `src/renderer/src/VoiceLabPage.tsx`: standalone recording/import, Original Chatterbox conversion, and converted-clip library.
 - `src/renderer/public/`: bundled app icon for the sidebar and built-in Turbo voice preview.
-- `workers/`: local Turbo/Original Chatterbox and Stable Audio Open Python companions, shared versioned protocol, launcher, tests, and setup guide.
+- `workers/`: local Turbo/Original Chatterbox Python companions, shared versioned protocol, launcher, tests, and setup guide. Retired effects worker code remains for legacy reference and is not started by default.
 - `tests/standalone-audio.test.tsx`: no-project and sound request UI checks.
 - `tests/manuscript-drop.test.ts` and `tests/standalone-audio.test.tsx`: focused renderer behavior tests.
 - `tests/DESKTOP_SMOKE.md`: automated and manual packaged-app smoke procedure.

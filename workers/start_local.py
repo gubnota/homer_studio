@@ -50,7 +50,7 @@ def start(name, port, model, python, script):
 
 
 if __name__ == "__main__":
-    requested = set(sys.argv[1:]) or {"chatterbox", "sfx"}
+    requested = set(sys.argv[1:]) or {"chatterbox"}
     if not requested <= {"chatterbox", "original", "sfx"}:
         raise SystemExit("Usage: python3 workers/start_local.py [chatterbox] [original] [sfx]")
     app_models = Path.home() / "Library/Application Support/com.gubnota.homerstudio/models" if sys.platform == "darwin" else Path.home() / ".local/share/com.gubnota.homerstudio/models"

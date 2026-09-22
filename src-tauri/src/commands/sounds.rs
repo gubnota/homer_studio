@@ -5,10 +5,7 @@ use tauri::{AppHandle, State};
 #[tauri::command]
 pub fn sound_workers(app: AppHandle) -> Result<Vec<WorkerHealth>, CommandError> {
     let settings = settings::load(&app)?;
-    Ok(vec![
-        sound_workers::health(&settings.sounds.chatterbox_url, "chatterbox_turbo"),
-        sound_workers::health(&settings.sounds.sfx_url, "sound_effect"),
-    ])
+    Ok(vec![sound_workers::health(&settings.sounds.chatterbox_url, "chatterbox_turbo")])
 }
 
 #[tauri::command]

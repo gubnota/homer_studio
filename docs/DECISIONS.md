@@ -81,7 +81,7 @@ Related files: `src-tauri/src/services/voice_store.rs`, `src-tauri/src/services/
 # ADR-0009: Compare effects variations without a manuscript
 
 Date: 2026-09-22
-Status: Accepted
+Status: Deprecated (superseded by ADR-0012)
 
 Context: One fabric or panting generation can sound unrealistic and users need a way to compare alternatives.
 Decision: Keep Sound Studio independent of projects. Add an effects-only negative prompt and queue three neighboring seeds for comparison in the standalone clip library.
@@ -107,3 +107,13 @@ Context: Review, Exports, and standalone clips all store audio with different ow
 Decision: Validate and delete within each owning store. Review only deletes generated chapter audio; Exports removes project-owned audio/timestamp pairs; the standalone sound store removes its own WAV/M4A pairs. Extend the standalone store to voice-converted clips. Longer effect and voice-conversion requests are split into worker-sized jobs and joined locally.
 Consequences: Source manuscripts, imported chapter recordings, and copied voice samples are never deleted by library cleanup. Long renders can be cancelled between segments. Segment joins may have audible boundaries and should be reviewed before export.
 Related files: `src-tauri/src/services/project_store.rs`, `src-tauri/src/services/sound_store.rs`, `src-tauri/src/services/sound_render.rs`, `src-tauri/src/commands/sounds.rs`.
+
+# ADR-0012: Retire sound-effect generation
+
+Date: 2026-09-23
+Status: Accepted
+
+Context: The sound-effect generator no longer works reliably and its output does not meet the user's quality bar. Sound Studio still displayed unavailable effect controls and worker status.
+Decision: Remove effects controls and worker status from the app, reject new effect generation requests, and stop starting the effects worker by default. Keep previously generated effect clips in the independent library for playback, export, and deletion. Preserve the old settings field for migration; the worker source remains dormant.
+Consequences: Sound Studio now focuses on English speech with inline vocal gestures. ADR-0009's effects variations and the effects portion of ADR-0004 and ADR-0010 are superseded. Longer speech is split into bounded worker requests and joined locally; the duration control is a maximum, not a way to stretch short text.
+Related files: `src/renderer/src/SoundStudioPage.tsx`, `src/renderer/src/pages.tsx`, `src-tauri/src/services/sound_render.rs`, `src-tauri/src/commands/sounds.rs`, `workers/start_local.py`.

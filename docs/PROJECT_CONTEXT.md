@@ -23,7 +23,7 @@
 - FFmpeg, FFprobe, llama.cpp, and Ollama executables are discovered in bounded system and user Homebrew locations or selected explicitly in Settings.
 - Replaceable local text providers: llama.cpp / GGUF and Ollama.
 - English speech uses local Chatterbox Turbo or Original with a built-in or selected recorded/imported voice reference; Original also converts recorded delivery to the chosen narrator voice.
-- Sound Studio uses Chatterbox Turbo for speech and Stable Audio Open for effects through versioned loopback HTTP. Turbo and Original checkpoints can be explicitly installed from Settings.
+- Sound Studio uses Chatterbox Turbo for standalone English speech and inline vocal gestures through versioned loopback HTTP. Sound-effect generation is retired; previously generated effects remain in the clip library. Turbo and Original checkpoints can be explicitly installed from Settings.
 - GitHub Actions builds and verifies packages on macOS arm64.
 
 ## Hard constraints
@@ -48,7 +48,7 @@
 7. Listen to takes, choose the preferred one, assemble the chapter, then flag or approve it.
 8. Combine complete chapter audio using FFmpeg.
 9. Save the final audio and measured chapter timestamps.
-10. Independently, prompt speech with supported Turbo gesture tags or a Stable Audio Open effect in Sound Studio, then play, compare, retry, or export clips. Effects may render in segments for up to two minutes.
+10. Independently, prompt English speech with supported Turbo gesture tags in Sound Studio, then play, retry, or export clips. Longer speech is split into worker-sized segments and joined locally.
 11. In Voice Lab, record or import up to two minutes, convert delivery to a chosen narrator with Original Chatterbox, and save or delete the result.
 
 ## UI reference

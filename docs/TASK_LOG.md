@@ -99,3 +99,8 @@
 - Added standalone Voice Lab recording/import and Original Chatterbox voice conversion; up to two minutes are divided into 15-second worker requests and joined into one saved clip. Sound effects now allow up to two minutes via joined 20-second worker renders.
 - Review playback now uses custom play/pause/stop controls, bounded waveform-window loading, zoom, panning, seeking, and passage selection. Added a bundled built-in Turbo narrator preview and immediate selected-sample fallback for custom voices.
 - Replaced the sidebar H badge with the exact macOS app icon asset. Renderer build (six tests), 28 Rust tests, nine worker tests, arm64 package/signature verification, and packaged-app startup smoke passed. Changes remain local until the user requests a push.
+
+# 2026-09-23 — Retire effects and extend standalone speech
+- Removed sound-effect generation controls and availability reporting; existing clips remain playable, exportable, and deletable. The launcher defaults to Chatterbox only.
+- Sound Studio accepts maximum duration up to 120 seconds for speech. Longer text is split into bounded Turbo requests and joined in source order. Dedicated vocal-gesture requests retain the 120-second native limit; inline gesture tags remain available in speech.
+- Renderer typecheck, six tests, production web build, 29 native tests, nine worker tests, arm64 app/signature verification, and packaged-app startup smoke passed. The build remains local; no push was requested.

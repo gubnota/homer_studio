@@ -1,6 +1,6 @@
 # Local sound workers
 
-Sound Studio can make clips without a book. Its two Python workers are separate processes on this Mac. Chatterbox Turbo handles English speech and its documented vocal tags. Stable Audio Open handles general sound effects, including fabric; panting is experimental and may be poor. The app reports each worker's status in Sound Studio and its address in Settings. FFmpeg and FFprobe are also required for finished clips.
+Sound Studio can make English speech clips without a book. Chatterbox Turbo handles speech and its documented vocal tags; the optional Original Chatterbox worker supports expressive chapter narration and voice conversion. Sound-effect generation has been retired because its output did not meet the quality bar. Existing effect clips remain available in the library. FFmpeg and FFprobe are also required for finished clips.
 
 The workers do not download checkpoints or install packages when the app starts or generates a clip. Settings can install pinned Turbo and Original checkpoints only when you request it; Python packages remain a separate setup step. Use Python 3.10 for the currently pinned Chatterbox package; its NumPy dependency does not install reliably on Python 3.12. Install each worker in its own virtual environment. Run commands from the repository root.
 
@@ -29,44 +29,27 @@ python3 workers/start_local.py original
 
 The original worker listens at `http://127.0.0.1:8767` by default. Select **Original Chatterbox** in Settings and set that service address there. Its health check confirms the dependencies and files are present; the model loads when the first generation begins. A saved voice sample is copied into Homer Studio's local library when imported, so its original file can be moved afterward.
 
-## Sound effects: Stable Audio Open
-
-1. Request access to the [Stable Audio Open 1.0 checkpoint](https://huggingface.co/stabilityai/stable-audio-open-1.0), accept its terms, and download the complete Diffusers-format repository to a local folder. It must include `model_index.json` and the component weights. Check the model license and permitted uses yourself.
-2. Install and start the worker:
-
-```sh
-python3.12 -m venv workers/sfx/.venv
-workers/sfx/.venv/bin/python -m pip install -r workers/sfx/requirements.txt
-HOMER_SFX_MODEL_DIR=/absolute/path/to/stable-audio-open-1.0 python3 workers/start_local.py sfx
-```
-
-Change the sound worker port with `HOMER_SFX_PORT` and the matching Settings field. This model was designed for sound effects; realistic vocals are a known limitation. A panting prompt is an experiment, not a guaranteed result.
-The default address is `http://127.0.0.1:8766`. The worker uses Apple Silicon MPS when available and otherwise CPU; CPU generation can be slow. Make prompts concrete and describe the audible texture and setting. Try another seed if the result is strange.
-
 ## Check and use
 
 ```sh
 curl http://127.0.0.1:8765/v2/health
-curl http://127.0.0.1:8766/v2/health
 curl http://127.0.0.1:8767/v2/health
 ```
 
-Each response must report `protocolVersion: 2` and `ready: true`. This confirms checkpoint files and Python dependencies are present. The model is loaded on the first generation request; if that load fails, the job reports the error. Open **Sound Studio**, choose a category, enter a prompt, and generate. Finished clips appear in the independent Clip library, with a 48 kHz WAV master and M4A preview/export copy in the app data folder. Neither a manuscript nor a user voice sample is required.
+Each response must report `protocolVersion: 2` and `ready: true`. This confirms checkpoint files and Python dependencies are present. The model is loaded on the first generation request; if that load fails, the job reports the error. Open **Sound Studio**, enter speech text, and generate. Finished clips appear in the independent Clip library, with a 48 kHz WAV master and M4A preview/export copy in the app data folder. Neither a manuscript nor a user voice sample is required.
 
-Install Turbo and/or Original checkpoints explicitly from Settings first. Settings shows download progress in bytes and the actual disk use. On macOS the launcher picks up the app-managed checkpoints automatically; `HOMER_CHATTERBOX_MODEL_DIR` and `HOMER_CHATTERBOX_ORIGINAL_MODEL_DIR` override those locations. Install the Python requirements above separately. To start installed workers in the background from the repository root, run `python3 workers/start_local.py chatterbox original` (or name one). You may set `HOMER_SFX_MODEL_DIR` and `HOMER_CHATTERBOX_PYTHON` for custom locations. The launcher reports missing model/environment paths and writes worker logs beside each worker. Launch it again after a restart. Settings URLs point to the **running service**, not to checkpoint folders.
+Install Turbo and/or Original checkpoints explicitly from Settings first. Settings shows download progress in bytes and the actual disk use. On macOS the launcher picks up the app-managed checkpoints automatically; `HOMER_CHATTERBOX_MODEL_DIR` and `HOMER_CHATTERBOX_ORIGINAL_MODEL_DIR` override those locations. Install the Python requirements above separately. To start installed workers in the background from the repository root, run `python3 workers/start_local.py chatterbox original` (or name one). You may set `HOMER_CHATTERBOX_PYTHON` for a custom location. The launcher reports missing model/environment paths and writes worker logs beside each worker. Launch it again after a restart. Settings URLs point to the **running service**, not to checkpoint folders.
 
 The worker API is documented in `docs/API_CONTRACTS.md`. It is bound to loopback and the Mac app accepts loopback addresses only. A future Linux GPU worker can implement the same versioned API, but remote authentication and transport are not part of this release.
 
 Automated tests use stub audio and cannot judge sound quality. Listen to a generated clip to assess whether a prompt and seed work for your purpose.
 
-## Voice samples and sound variations
+## Voice samples
 
 In **Voices**, create a voice, import a clear 6–20 second spoken sample or record one with the microphone, select the sample, and preview it. Homer Studio normalizes the sample to a bounded WAV in local app data. Chatterbox receives it through `POST /v2/references` and consumes the temporary reference during the next job; the worker does not need access to the voice library. The built-in model voice needs no sample. Only one selected sample conditions a generation; multiple speakers are not blended.
-
-In **Sound Studio**, the optional **Sounds to avoid** field becomes `negativePrompt` on an effects request. **Generate 3 variations** queues three neighboring seeds for listening comparison. Different seeds and more specific prompts can help, but neither model guarantees realistic fabric or panting.
 
 ## Correcting a narrated section with your delivery
 
 Create a custom narrator voice and select one of its saved samples. Start the Original worker, open a chapter in **Review**, and expand **Manual sections**. After generating and assembling section takes, drag on the waveform to select up to 20 seconds inside one section, choose **Record replacement**, and speak that passage with your preferred pace and emphasis. You can also choose **Record delivery** on a section row to replace the whole take. The recorder stops after 20 seconds. **Convert to narrator voice** sends the recorded WAV and selected narrator sample to Original's `voice_conversion` route. For a partial replacement, the result is spliced into the existing take with short fades. The result appears as another saved take; play both and choose **Use take** only when it sounds right. **Assemble chapter** rebuilds the chapter and measured section cues. Previous takes are retained. Voice conversion can alter timing or words, so listening matters.
 
-Sound Studio can request effects up to two minutes. The desktop app submits these as successive worker jobs of at most 20 seconds and joins their WAV files; listen at the joins before using the result. Speech and vocal-gesture prompts remain limited to 20-second worker requests. Voice Lab accepts a 1–120 second recording and sends 15-second-or-shorter chunks to Original Chatterbox, then joins the converted audio. The Original worker, FFmpeg, and a saved narrator sample must be available for conversion.
+Sound Studio accepts a maximum duration up to two minutes for speech and gestures. Longer speech is split by words into worker requests of at most 20 seconds and joined locally; actual speech duration depends on the text. Voice Lab accepts a 1–120 second recording and sends 15-second-or-shorter chunks to Original Chatterbox, then joins the converted audio. The Original worker, FFmpeg, and a saved narrator sample must be available for conversion.
