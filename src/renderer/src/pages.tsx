@@ -373,6 +373,10 @@ function SettingsForm({ settings, tools, onChange }: { settings: Settings; tools
     <h2>Audio tools</h2>
     {pathField('FFmpeg path', settings.ffmpegPath ?? '', (path) => onChange({ ...settings, ffmpegPath: path || null }), 'ffmpeg')}
     {pathField('FFprobe path', settings.ffprobePath ?? '', (path) => onChange({ ...settings, ffprobePath: path || null }), 'ffprobe')}
+    <h2>Sound workers</h2>
+    <p className="field-note">Start each local worker separately. Sound Studio shows whether its model is ready.</p>
+    <label>Chatterbox URL<input value={settings.sounds.chatterboxUrl} onChange={(event) => onChange({ ...settings, sounds: { ...settings.sounds, chatterboxUrl: event.target.value } })} /></label>
+    <label>Sound effects URL<input value={settings.sounds.sfxUrl} onChange={(event) => onChange({ ...settings, sounds: { ...settings.sounds, sfxUrl: event.target.value } })} /></label>
     <h2>Text processing</h2>
     <label>Provider<select value={settings.llm.provider} onChange={(event) => onChange({ ...settings, llm: event.target.value === 'ollama' ? { provider: 'ollama', base_url: 'http://127.0.0.1:11434', model: '', context_size: 8192, max_tokens: 2048 } : event.target.value === 'llama_cpp' ? { provider: 'llama_cpp', executable_path: '', model_path: '', context_size: 8192, max_tokens: 2048, gpu_layers: 99 } : { provider: 'none' } })}><option value="none">Disabled</option><option value="llama_cpp">llama.cpp / GGUF</option><option value="ollama">Ollama</option></select></label>
     {ollama && <div><label>Loopback URL<input value={ollama.base_url} onChange={(event) => onChange({ ...settings, llm: { ...ollama, base_url: event.target.value } })} /></label><label>Model<input value={ollama.model} onChange={(event) => onChange({ ...settings, llm: { ...ollama, model: event.target.value } })} /></label>{pathField('Ollama CLI path', settings.ollamaPath ?? '', (path) => onChange({ ...settings, ollamaPath: path || null }), 'ollama')}</div>}

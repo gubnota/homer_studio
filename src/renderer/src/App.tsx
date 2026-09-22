@@ -5,6 +5,7 @@ import { AudioPlayer } from './components/AudioPlayer'
 import { StudioLayout } from './components/StudioLayout'
 import { EditorPage, ExportsPage, ImportPage, ProjectsPage, QueuePage, ReviewPage, SettingsPage, StudioPage, VoicesPage } from './pages'
 import { chooseFolder, errorMessage, isDesktop, projectApi } from './native'
+import { SoundStudioPage } from './SoundStudioPage'
 
 function initialRoute(): RouteId {
   const value = window.location.hash.slice(1)
@@ -43,6 +44,7 @@ export function App(): JSX.Element {
       case 'editor': return <EditorPage project={project} onProjectChange={remember} />
       case 'review': return <ReviewPage project={project} onProjectChange={remember} />
       case 'voices': return <VoicesPage />
+      case 'sounds': return <SoundStudioPage />
       case 'queue': return <QueuePage />
       case 'exports': return <ExportsPage project={project} onProjectChange={remember} />
       case 'settings': return <SettingsPage />

@@ -28,6 +28,17 @@
 - `audio_url(...) -> audio://localhost/<opaque-id>` and `audio_waveform(...) -> number[]`; expose only registered project audio, with byte-range playback and bounded peak data.
 - `export_project(...) -> jobId`; re-probes all current approved chapters, tries verified stream-copy concatenation, falls back to one canonical AAC encode, then commits the M4A/timestamp pair with export history.
 - `export_audio_url(...)` and `read_export_timestamps(...)`; read only manifest-owned export files.
+- `sound_workers() -> WorkerHealth[]`, `list_sounds() -> SoundAsset[]`, `generate_sound(request) -> jobId`, `sound_audio_url(id) -> audio://localhost/<opaque-id>`, `export_sound(id, destination) -> void`. No project identifier is required.
+
+## Standalone sound library v1
+- App data: `sound-assets/manifest.json`, `{ schemaVersion: 1, assets: SoundAsset[] }`. Each asset has UUID `id`, `prompt`, `category`, `provider`, `model`, `requestedDurationSeconds`, measured `durationMs`, optional `seed`, `createdAtMs`, `masterPath`, and `previewPath`.
+- Paths are exactly `clips/<id>/master.wav` and `clips/<id>/preview.m4a`. Files are published only after WAV/M4A validation; manifest writes use a same-folder temporary file and rename.
+- `SoundRequest`: 1–500 nonblank prompt characters, category `speech | vocal_gesture | sound_effect`, duration 1–20 seconds, optional integer seed 0–2147483647. Gestures accept one documented tag.
+
+## Local audio worker protocol v1
+- Each worker binds `127.0.0.1`. The Mac app accepts only `http://127.0.0.1:<port>`. `GET /v1/health` returns `protocolVersion`, `engine`, `model`, `ready`, `categories`, `maxDurationSeconds`, and `message`.
+- `POST /v1/jobs` takes the `SoundRequest` JSON and returns HTTP 202 `{id}`. `GET /v1/jobs/<id>` returns `{id,status,error,format}` with `queued | running | completed | failed | cancelled`; `DELETE` cancels. A completed job provides WAV bytes at `GET /v1/jobs/<id>/audio`.
+- Chatterbox engine ID `chatterbox_turbo` supports speech and documented vocal tags. Stable Audio engine ID `stable_audio_open` supports sound effects. Worker errors use JSON `{error}`. Responses and audio are size bounded; model packages and checkpoints are never downloaded in request handling.
 
 ## Settings v1
 - `llm`: `none`, `llama_cpp`, or `ollama`. Ollama URLs must use loopback HTTP.
@@ -35,6 +46,7 @@
 - `voicePresets`: ordered `{ id, name, voiceId, rate, builtIn }` records. IDs are non-empty and unique; rates are 80–500 WPM. Curated Samantha, Daniel, and Karen presets are added only when those voices are installed.
 - `selectedVoicePresetId`: nullable preset ID. Selecting or saving a preset also updates the effective `speech.voiceId` and `speech.rate` for backward-compatible generation.
 - Optional explicit FFmpeg, FFprobe, and Ollama executable paths. llama.cpp keeps its executable and GGUF model paths in its provider settings.
+- `sounds.chatterboxUrl` and `sounds.sfxUrl` default to ports 8765 and 8766. Existing settings migrate through defaults. Worker URLs must be loopback HTTP.
 
 ## Job states
 - `queued -> running -> completed | failed | cancelled`.

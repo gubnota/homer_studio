@@ -1,5 +1,13 @@
 # Task log
 
+## 2026-09-22 — Standalone prompt-to-audio studio
+- User approved `docs/IMPLEMENTATION_PLAN_STANDALONE_AUDIO.md`; work remains local and pushes are deferred.
+- Added versioned loopback Python workers for Chatterbox Turbo speech/tags and Stable Audio Open effects, with stub protocol tests and manual checkpoint setup instructions.
+- Added validated Rust worker client, isolated sound library, WAV/M4A media pipeline, and narrow Tauri commands. Added project-independent Sound Studio, model status/settings, clip playback, retry, and export.
+- Renderer typecheck, four test files (nine tests), production web build, 23 Rust tests including FFmpeg integration, and four Python worker tests passed.
+- FFmpeg/FFprobe are present. Python worker packages and checkpoints are absent, and downloads were unavailable; actual model loading, Apple Silicon MPS inference, and generated-audio quality remain unverified. Workers remain visibly unavailable until installed.
+- Built and verified the ad-hoc signed arm64 `.app`, `.dmg`, and `.zip`; the isolated packaged app remained healthy through its startup smoke window. DMG assembly and GUI launch required normal macOS access outside the restricted command sandbox. The real FFmpeg integration fixture also passed.
+
 ## 2026-09-07 — Tool setup, manuscript drop, and voice presets
 - User approved `docs/IMPLEMENTATION_PLAN_INPUTS_AND_VOICES.md`; implementation remained on local `main`, with pushes deferred.
 - Tool setup checkpoint (`a8a7be1`): added packaged-app discovery for bounded system and user Homebrew locations, visible FFmpeg/FFprobe/llama.cpp/GGUF/Ollama path controls, detected-path actions, and separate Ollama CLI/server diagnostics.

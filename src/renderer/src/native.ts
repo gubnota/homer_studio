@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
-import { open } from '@tauri-apps/plugin-dialog'
-import type { JobRecord, ProjectSnapshot, Settings, TextCandidate, ToolDiagnostic, Voice } from '../../shared/contracts'
+import { open, save } from '@tauri-apps/plugin-dialog'
+import type { JobRecord, ProjectSnapshot, Settings, SoundAsset, SoundRequest, TextCandidate, ToolDiagnostic, Voice, WorkerHealth } from '../../shared/contracts'
 
 export function isDesktop(): boolean {
   return '__TAURI_INTERNALS__' in window
@@ -113,6 +113,18 @@ export const systemApi = {
   diagnostics: () => invoke<ToolDiagnostic[]>('tool_diagnostics'),
   jobs: () => invoke<JobRecord[]>('list_jobs'),
   controlJob: (jobId: string, action: 'pause' | 'resume' | 'cancel') => invoke<void>('control_job', { jobId, action })
+}
+
+export const soundsApi = {
+  workers: () => invoke<WorkerHealth[]>('sound_workers'),
+  list: () => invoke<SoundAsset[]>('list_sounds'),
+  generate: (request: SoundRequest) => invoke<string>('generate_sound', { request }),
+  audioUrl: (id: string) => invoke<string>('sound_audio_url', { id }),
+  export: async (asset: SoundAsset, format: 'wav' | 'm4a') => {
+    const destination = await save({ title: 'Export sound clip', defaultPath: `sound-${asset.id.slice(0, 8)}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] })
+    if (destination) await invoke<void>('export_sound', { id: asset.id, destination })
+    return destination
+  }
 }
 
 export function errorMessage(error: unknown): string {

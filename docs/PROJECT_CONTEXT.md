@@ -9,7 +9,7 @@
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
-- Version 0.1.0 implements the complete local manuscript-to-audiobook workflow.
+- Version 0.1.0 implements the local manuscript-to-audiobook workflow and standalone prompt-to-audio clip flow.
 - The Tauri app, durable project storage, drag-and-drop import, optional local text providers, reusable voice presets, narration/import, review, export, and packaging are implemented.
 - The release target is a locally verified Apple Silicon app, DMG, and ZIP with GitHub CI/release automation.
 - Remote pushes remain deferred until the user asks.
@@ -23,6 +23,7 @@
 - FFmpeg, FFprobe, llama.cpp, and Ollama executables are discovered in bounded system and user Homebrew locations or selected explicitly in Settings.
 - Replaceable local text providers: llama.cpp / GGUF and Ollama.
 - Speech uses installed macOS voices plus imported audio.
+- Sound Studio uses local Chatterbox Turbo and Stable Audio Open Python workers through versioned loopback HTTP; model checkpoints are user-managed.
 - GitHub Actions builds and verifies packages on macOS arm64.
 
 ## Hard constraints
@@ -47,6 +48,7 @@
 7. Listen, flag, approve, and retry items.
 8. Combine complete chapter audio using FFmpeg.
 9. Save the final audio and measured chapter timestamps.
+10. Independently, prompt a short speech, vocal gesture, or sound effect in Sound Studio, then play, retry, or export the saved clip.
 
 ## UI reference
 - Projects and Import screens.
@@ -57,6 +59,7 @@
 - Render Queue screen.
 - Exports screen.
 - Settings screen.
+- Project-independent Sound Studio and clip library.
 - Persistent project playback bar.
 - Neutral backgrounds, white panels, compact typography, and narrow borders.
 

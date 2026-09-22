@@ -57,3 +57,13 @@ Context: A flat installed-voice list does not preserve useful narration speed ch
 Decision: Store named presets containing an installed macOS voice ID and speaking rate. Seed curated presets only for installed voices, allow custom presets, and synthesize previews through the production speech pipeline.
 Consequences: Existing speech settings remain the effective generation contract, old settings migrate without a schema-version break, and the product clearly represents presets rather than voice cloning.
 Related files: `src-tauri/src/services/settings.rs`, `src-tauri/src/services/speech.rs`, `src/renderer/src/voice-presets.ts`, `src/renderer/src/pages.tsx`.
+
+# ADR-0007: Independent prompt-to-audio library and local workers
+
+Date: 2026-09-22
+Status: Accepted
+
+Context: Authors need short sounds from prompts without a book. Chatterbox handles speech and documented vocal tags but is not a general fabric/ambience engine; the future Linux GPU deployment should share a stable boundary.
+Decision: Keep a separate versioned sound-asset manifest in app data. Use Chatterbox Turbo for speech/tags and Stable Audio Open for effects through a versioned loopback job API. Rust validates worker output and publishes a 48 kHz WAV master plus M4A preview. Model files and Python environments are supplied explicitly; no automatic downloads. Use a bounded standard-library HTTP client because the intended HTTP crate was unavailable in the offline Cargo cache.
+Consequences: No manuscript dependency or new Rust dependency. Workers must be installed and started separately. The Mac app accepts only loopback URLs; a future private Linux endpoint needs explicit authentication and transport design. Real model inference remains unverified until local checkpoints and dependencies are available.
+Related files: `workers/`, `src-tauri/src/services/sound_workers.rs`, `src-tauri/src/services/sound_render.rs`, `src-tauri/src/services/sound_store.rs`, `docs/API_CONTRACTS.md`.

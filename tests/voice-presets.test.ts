@@ -10,7 +10,8 @@ const base: Settings = {
   ffprobePath: null,
   ollamaPath: null,
   voicePresets: [],
-  selectedVoicePresetId: null
+  selectedVoicePresetId: null,
+  sounds: { chatterboxUrl: 'http://127.0.0.1:8765', sfxUrl: 'http://127.0.0.1:8766' }
 }
 
 const custom: VoicePreset = { id: 'custom-one', name: 'Quiet', voiceId: 'Daniel', rate: 150, builtIn: false }

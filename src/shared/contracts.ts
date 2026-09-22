@@ -68,6 +68,19 @@ export interface Settings {
   ollamaPath: string | null
   voicePresets: VoicePreset[]
   selectedVoicePresetId: string | null
+  sounds: { chatterboxUrl: string; sfxUrl: string }
+}
+
+export type SoundCategory = 'speech' | 'vocal_gesture' | 'sound_effect'
+export interface SoundRequest { prompt: string; category: SoundCategory; durationSeconds: number; seed: number | null }
+export interface SoundAsset {
+  id: string; prompt: string; category: SoundCategory; provider: string; model: string
+  requestedDurationSeconds: number; durationMs: number; seed: number | null; createdAtMs: number
+  masterPath: string; previewPath: string
+}
+export interface WorkerHealth {
+  protocolVersion: 1; engine: string; model: string; ready: boolean
+  categories: SoundCategory[]; maxDurationSeconds: number; message: string
 }
 
 export interface ToolDiagnostic {

@@ -4,6 +4,7 @@ export const routes = [
   { id: 'editor', label: 'Chapter editor', group: 'Production' },
   { id: 'review', label: 'Review', group: 'Production' },
   { id: 'voices', label: 'Voices', group: 'Production' },
+  { id: 'sounds', label: 'Sound Studio', group: 'Production' },
   { id: 'queue', label: 'Render queue', group: 'Production' },
   { id: 'exports', label: 'Exports', group: 'Output' },
   { id: 'settings', label: 'Settings', group: 'System' }

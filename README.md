@@ -1,6 +1,6 @@
 # Homer Studio
 
-Homer Studio is a local audiobook production app for Apple Silicon Macs. It imports TXT and Markdown manuscripts, lets you edit and process chapters, generates narration with installed macOS voices or imported audio, reviews each chapter, and exports one M4A audiobook with measured chapter timestamps.
+Homer Studio is a local audiobook and sound-clip production app for Apple Silicon Macs. It imports TXT and Markdown manuscripts, lets you edit and process chapters, generates narration with installed macOS voices or imported audio, reviews each chapter, and exports one M4A audiobook with measured chapter timestamps. Sound Studio creates independent prompt-based clips without a book.
 
 Manuscripts, model requests, narration, and exports stay on the Mac. The app has no account, analytics, or hosted backend.
 
@@ -44,6 +44,10 @@ The Voices screen starts with reusable presets. Built-in presets appear only whe
 You can also import existing chapter audio. FFmpeg converts chapter media to 48 kHz stereo AAC/M4A and FFprobe measures its real duration.
 
 Approve every current chapter recording before export. Homer Studio rechecks the media, joins it, verifies the final duration, and writes both the M4A and timestamp text file to the project.
+
+## Standalone sounds
+
+Open **Sound Studio** without a project. Choose **Sound effect** for fabric, ambience, or experimental panting prompts; choose **Speech** or a supported **Vocal gesture** for Chatterbox Turbo. Each finished clip stays in a separate library and can be played, retried, or exported as WAV or M4A. Sound generation needs local model checkpoints and companion Python workers; the app does not download or install them. See [workers/README.md](workers/README.md) for setup and limitations. Worker addresses are set in **Settings**.
 
 ## Checks and packages
 

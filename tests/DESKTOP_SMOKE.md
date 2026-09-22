@@ -13,3 +13,5 @@ For a release candidate, also check these actions manually:
 7. Generate one chapter with the selected preset, then import or generate audio for the other chapter; listen and approve both.
 8. Export the audiobook and play the result.
 9. Confirm the timestamp file matches the chapter order.
+10. With no project open, visit Sound Studio. Confirm both workers show unavailable when stopped and generation is disabled.
+11. After configuring local model checkpoints and starting each worker, generate a short speech clip and a fabric clip. Listen, retry, export WAV/M4A, and reopen the app to confirm the clip library persists. Treat panting as experimental and assess the result by listening.

@@ -10,6 +10,8 @@ Status: accepted boundaries for the authorized implementation.
 | Job/process services | Sequential execution, cancellation, bounded logs | Rust process APIs and shared job types |
 | LLM providers | Optional text transformation through GGUF or Ollama | Process runner or local HTTP; shared provider contract |
 | Speech/audio services | Installed voice discovery, preset preview synthesis, speech generation, import, probing, normalization, concat | Process runner, project paths, shared audio types |
+| Sound workers | Local model loading and prompt-to-WAV generation | Shared worker protocol; local checkpoint folders only |
+| Standalone sound services | Worker access, WAV validation/conversion, independent clip manifest and export | Job/process services, FFmpeg/FFprobe, loopback worker protocol; never project manifests |
 | Shared domain | Serializable types, validation, ordering, timestamp formatting | Pure TypeScript and schema validation only |
 | Build/release | Reproducible dependencies, arm64 packages, CI | Root build configuration and scripts |
 | Tests | Domain invariants and service-boundary checks | Relevant modules and small generated fixtures |
@@ -20,6 +22,7 @@ Rules:
 - Shared TypeScript code never imports renderer code or native implementations.
 - Speech generation and text LLM processing have separate interfaces.
 - Voice presets own only a macOS voice ID and rate; speech generation continues to consume the effective speech settings.
+- Standalone sounds never require or mutate a book project. The renderer uses narrow Tauri commands; only Rust talks to local workers.
 - Tool discovery is bounded to inherited PATH and documented system/user installation prefixes; the renderer can only select explicit files.
 - Services report structured results; the renderer displays them without inventing progress.
 - The Rust application serializes writes and rejects stale/concurrent project changes.
