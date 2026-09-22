@@ -134,6 +134,11 @@ export const soundsApi = {
     const destination = await save({ title: 'Export sound clip', defaultPath: `sound-${asset.id.slice(0, 8)}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] })
     if (destination) await invoke<void>('export_sound', { id: asset.id, destination })
     return destination
+  },
+  exportMany: async (ids: string[], format: 'wav' | 'm4a') => {
+    const destination = await open({ directory: true, multiple: false, title: `Choose folder for ${format.toUpperCase()} exports` })
+    if (typeof destination !== 'string') return []
+    return invoke<string[]>('export_sounds', { ids, destinationDir: destination, format })
   }
 }
 
