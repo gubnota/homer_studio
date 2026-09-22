@@ -39,6 +39,6 @@
 .section-recorder { display: grid; gap: .65rem; width: 100%; padding: .8rem; border: 1px solid var(--line, #ddd); border-radius: .7rem; background: #faf9ff; }
 .section-recorder p { margin: 0; }
 .section-recorder audio { width: min(100%, 420px); }
-.waveform[role="button"] { cursor: crosshair; }
+.waveform[role="button"] { cursor: crosshair; touch-action: none; }
 .waveform i.selected { background: #5145b5; }
 .waveform-selection { display: flex; align-items: center; justify-content: space-between; gap: .7rem; font-size: .85rem; }

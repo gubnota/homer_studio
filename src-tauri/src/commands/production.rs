@@ -321,12 +321,26 @@ pub fn generate_segment_audio(
 }
 
 #[tauri::command]
-pub fn convert_segment_recording(app: AppHandle, state: State<'_, AppState>, root_path: String, expected_revision: u64, chapter_id: String, segment_id: String, bytes: Vec<u8>) -> Result<String, CommandError> {
+pub fn convert_segment_recording(app: AppHandle, state: State<'_, AppState>, root_path: String, expected_revision: u64, chapter_id: String, segment_id: String, bytes: Vec<u8>, range_start_ms: Option<u64>, range_end_ms: Option<u64>) -> Result<String, CommandError> {
     if bytes.is_empty() || bytes.len() > 20 * 1024 * 1024 { return Err(CommandError::new("INVALID_RECORDING", "Record a passage shorter than 20 seconds.")); }
     let snapshot = project_store::open(&root_path)?;
     if snapshot.revision != expected_revision || !snapshot.chapters.iter().any(|chapter| chapter.chapter.id == chapter_id && chapter.chapter.segments.iter().any(|segment| segment.id == segment_id)) {
         return Err(CommandError::new("REVISION_CONFLICT", "Reload the chapter before converting this section."));
     }
+    let source_take = match (range_start_ms, range_end_ms) {
+        (None, None) => None,
+        (Some(start), Some(end)) if end.saturating_sub(start) > 100 && end - start <= 20_000 => {
+            let segment = snapshot.chapters.iter().find(|item| item.chapter.id == chapter_id)
+                .and_then(|item| item.chapter.segments.iter().find(|item| item.id == segment_id))
+                .ok_or_else(|| CommandError::new("SEGMENT_NOT_FOUND", "The section no longer exists."))?;
+            let take_id = segment.selected_take.as_ref().ok_or_else(|| CommandError::new("TAKE_NOT_SELECTED", "Choose a section take before replacing part of it."))?;
+            let take = segment.takes.iter().find(|item| &item.id == take_id)
+                .ok_or_else(|| CommandError::new("TAKE_NOT_FOUND", "The selected take no longer exists."))?;
+            if end > take.duration_ms { return Err(CommandError::new("INVALID_AUDIO_RANGE", "The selected range exceeds this section take.")); }
+            Some((project_store::segment_take_path(&root_path, &chapter_id, &segment_id, take_id)?, start, end))
+        }
+        _ => return Err(CommandError::new("INVALID_AUDIO_RANGE", "Choose a range of 0.1–20 seconds within one narrated section.")),
+    };
     let settings = settings::load(&app)?;
     let narrator = crate::services::voice_store::selected_sample(&app, &settings.speech.voice_id)?
         .ok_or_else(|| CommandError::new("VOICE_HAS_NO_SAMPLE", "Choose a narrator voice with a recorded sample before voice conversion."))?;
@@ -359,7 +373,14 @@ pub fn convert_segment_recording(app: AppHandle, state: State<'_, AppState>, roo
             let result_wav = crate::services::sound_workers::generate(worker_url, &request, &control)?;
             progress(75);
             std::fs::write(&converted, result_wav).map_err(|error| CommandError::io("Cannot stage converted take", error))?;
-            let args = vec!["-v".into(), "error".into(), "-y".into(), "-i".into(), converted.to_string_lossy().to_string(), "-c:a".into(), "aac".into(), "-b:a".into(), "128k".into(), staged.to_string_lossy().to_string()];
+            let args = if let Some((source_take, start, end)) = &source_take {
+                let source_duration = crate::services::speech::probe_duration(source_take, &settings)?;
+                if *end > source_duration { return Err(CommandError::new("INVALID_AUDIO_RANGE", "The selected range exceeds the measured take duration.")); }
+                let filter = splice_filter(*start, *end, source_duration);
+                vec!["-v".into(), "error".into(), "-y".into(), "-i".into(), source_take.to_string_lossy().to_string(), "-i".into(), converted.to_string_lossy().to_string(), "-filter_complex".into(), filter, "-map".into(), "[out]".into(), "-c:a".into(), "aac".into(), "-b:a".into(), "128k".into(), staged.to_string_lossy().to_string()]
+            } else {
+                vec!["-v".into(), "error".into(), "-y".into(), "-i".into(), converted.to_string_lossy().to_string(), "-c:a".into(), "aac".into(), "-b:a".into(), "128k".into(), staged.to_string_lossy().to_string()]
+            };
             let encode = crate::services::process_runner::run_bounded(&ffmpeg, &args, std::time::Duration::from_secs(60), control.cancelled.clone())?;
             if !encode.success { return Err(CommandError::new("AUDIO_CONVERSION_FAILED", encode.stderr)); }
             let duration = crate::services::speech::probe_duration(&staged, &settings)?;
@@ -372,6 +393,26 @@ pub fn convert_segment_recording(app: AppHandle, state: State<'_, AppState>, roo
         let _ = std::fs::remove_dir_all(work);
         result
     }))
+}
+
+fn splice_filter(start_ms: u64, end_ms: u64, source_duration_ms: u64) -> String {
+    let before = start_ms >= 10;
+    let after = source_duration_ms.saturating_sub(end_ms) >= 10;
+    let mut chains = Vec::new();
+    if before && after { chains.push("[0:a]asplit=2[left][right]".to_string()); }
+    let source_left = if after { "[left]" } else { "[0:a]" };
+    let source_right = if before { "[right]" } else { "[0:a]" };
+    if before { chains.push(format!("{source_left}atrim=end={:.3},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a]", start_ms as f64 / 1000.0)); }
+    chains.push("[1:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,afade=t=in:st=0:d=0.01,areverse,afade=t=in:st=0:d=0.01,areverse[b]".to_string());
+    if after { chains.push(format!("{source_right}atrim=start={:.3},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[c]", end_ms as f64 / 1000.0)); }
+    let (inputs, count) = match (before, after) {
+        (true, true) => ("[a][b][c]", 3),
+        (true, false) => ("[a][b]", 2),
+        (false, true) => ("[b][c]", 2),
+        (false, false) => ("[b]", 1),
+    };
+    chains.push(format!("{inputs}concat=n={count}:v=0:a=1[out]"));
+    chains.join(";")
 }
 
 #[tauri::command]
@@ -641,6 +682,29 @@ pub fn read_export_timestamps(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn splices_recorded_passage_at_middle_and_edges() {
+        let Some(ffmpeg) = crate::services::process_runner::resolve_executable("ffmpeg", None) else { return; };
+        let root = std::env::temp_dir().join(format!("homer-splice-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let source = root.join("source.m4a");
+        let replacement = root.join("replacement.wav");
+        for (path, duration) in [(&source, "3"), (&replacement, "1")] {
+            let output = std::process::Command::new(&ffmpeg).args(["-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=24000", "-t", duration, "-y"]).arg(path).output().unwrap();
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        }
+        let settings = crate::services::settings::Settings::default();
+        for (start, end, expected) in [(1_000, 2_000, 3_000), (0, 1_000, 3_000), (2_000, 3_000, 3_000), (0, 3_000, 1_000)] {
+            let result = root.join(format!("{start}-{end}.m4a"));
+            let output = std::process::Command::new(&ffmpeg).args(["-v", "error", "-y", "-i"]).arg(&source).arg("-i").arg(&replacement)
+                .args(["-filter_complex", &splice_filter(start, end, 3_000), "-map", "[out]", "-c:a", "aac"]).arg(&result).output().unwrap();
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+            let measured = crate::services::speech::probe_duration(&result, &settings).unwrap();
+            assert!((measured as i64 - expected).abs() < 80, "{start}-{end}: {measured} ms");
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn removes_old_preview_files_and_registry_entries() {

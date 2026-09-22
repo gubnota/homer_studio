@@ -103,8 +103,8 @@ export const productionApi = {
     invoke<string>('generate_chapter_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId }),
   generateSegment: (project: ProjectSnapshot, chapterId: string, segmentId: string) =>
     invoke<string>('generate_segment_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId, segmentId }),
-  convertSegmentRecording: (project: ProjectSnapshot, chapterId: string, segmentId: string, bytes: number[]) =>
-    invoke<string>('convert_segment_recording', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId, segmentId, bytes }),
+  convertSegmentRecording: (project: ProjectSnapshot, chapterId: string, segmentId: string, bytes: number[], range?: { startMs: number; endMs: number }) =>
+    invoke<string>('convert_segment_recording', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId, segmentId, bytes, rangeStartMs: range?.startMs ?? null, rangeEndMs: range?.endMs ?? null }),
   assembleTakes: (project: ProjectSnapshot, chapterId: string) =>
     invoke<string>('assemble_chapter_takes', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId }),
   importAudio: (project: ProjectSnapshot, chapterId: string, sourcePath: string) =>
