@@ -11,7 +11,7 @@
   },
   "app": {
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: data:; media-src 'self' audio:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; img-src 'self' asset: data:; media-src 'self' audio: blob:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
     },
     "windows": [
       {

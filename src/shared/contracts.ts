@@ -51,7 +51,8 @@ export interface TextCandidate {
   model: string
 }
 
-export interface Voice { id: string; language: string; sample: string }
+export interface VoiceSample { id: string; name: string; durationMs: number }
+export interface Voice { id: string; name: string; samples: VoiceSample[]; selectedSampleId: string | null; builtIn: boolean }
 export interface VoicePreset { id: string; name: string; voiceId: string; rate: number; builtIn: boolean }
 
 export type LlmSettings =
@@ -62,7 +63,7 @@ export type LlmSettings =
 export interface Settings {
   schemaVersion: 1
   llm: LlmSettings
-  speech: { provider: 'macos_say'; voiceId: string; rate: number }
+  speech: { provider: 'macos_say' | 'chatterbox_turbo'; voiceId: string; rate: number }
   ffmpegPath: string | null
   ffprobePath: string | null
   ollamaPath: string | null
@@ -72,14 +73,15 @@ export interface Settings {
 }
 
 export type SoundCategory = 'speech' | 'vocal_gesture' | 'sound_effect'
-export interface SoundRequest { prompt: string; category: SoundCategory; durationSeconds: number; seed: number | null }
+export interface SoundRequest { prompt: string; category: SoundCategory; durationSeconds: number; seed: number | null; negativePrompt?: string | null }
 export interface SoundAsset {
   id: string; prompt: string; category: SoundCategory; provider: string; model: string
   requestedDurationSeconds: number; durationMs: number; seed: number | null; createdAtMs: number
   masterPath: string; previewPath: string
+  voiceId?: string | null; negativePrompt?: string | null
 }
 export interface WorkerHealth {
-  protocolVersion: 1; engine: string; model: string; ready: boolean
+  protocolVersion: number; engine: string; model: string; ready: boolean
   categories: SoundCategory[]; maxDurationSeconds: number; message: string
 }
 

@@ -88,6 +88,12 @@ export const productionApi = {
       text
     }),
   voices: () => invoke<Voice[]>('list_voices'),
+  createVoice: (name: string) => invoke<Voice>('create_voice', { name }),
+  addVoiceSample: (voiceId: string, name: string, sourcePath: string) => invoke<Voice>('add_voice_sample', { voiceId, name, sourcePath }),
+  addRecordedVoiceSample: (voiceId: string, name: string, bytes: number[]) => invoke<Voice>('add_recorded_voice_sample', { voiceId, name, bytes }),
+  selectVoiceSample: (voiceId: string, sampleId: string) => invoke<Voice>('select_voice_sample', { voiceId, sampleId }),
+  voiceSampleUrl: (voiceId: string, sampleId: string) => invoke<string>('voice_sample_url', { voiceId, sampleId }),
+  deleteVoice: (voiceId: string) => invoke<void>('delete_voice', { voiceId }),
   previewVoice: (voiceId: string, rate: number) => invoke<string>('preview_voice', { voiceId, rate }),
   generateAudio: (project: ProjectSnapshot, chapterId: string) =>
     invoke<string>('generate_chapter_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId }),

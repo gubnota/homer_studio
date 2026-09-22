@@ -1,10 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
-import type { Chapter, JobRecord, ProjectSnapshot, Settings, ToolDiagnostic, Voice, VoicePreset } from '../../shared/contracts'
+import type { Chapter, JobRecord, ProjectSnapshot, Settings, ToolDiagnostic, Voice } from '../../shared/contracts'
 import type { RouteId } from '../../shared/navigation'
 import { chooseAudio, chooseFolder, chooseManuscript, chooseTool, errorMessage, isDesktop, loadDroppedManuscript, productionApi, projectApi, systemApi } from './native'
-import { activateVoicePreset, deleteVoicePreset, resetBuiltInPreset, upsertVoicePreset } from './voice-presets'
+import { VoicePicker } from './VoicePicker'
 
 interface DesktopInfo { platform: string; architecture: string; runtime: string }
 
@@ -24,7 +24,7 @@ interface ProjectsProps {
 export function ProjectsPage({ project, busy, onImport, onOpen, onEdit, onProjectChange }: ProjectsProps): JSX.Element {
   if (!project) {
     return <div className="page"><Header eyebrow="Library" title="Your audiobooks" copy="Local projects stay on this Mac." action={<div className="actions"><button onClick={onOpen} disabled={busy}>Open project</button><button className="primary" onClick={onImport}>New project</button></div>} />
-      <section className="empty-card"><div className="empty-icon">Aa</div><h2>Start your first audiobook</h2><p>Import a TXT or Markdown manuscript, review its chapters, then create audio with an installed macOS voice.</p><button className="primary" onClick={onImport}>Import manuscript</button></section>
+      <section className="empty-card"><div className="empty-icon">Aa</div><h2>Start your first audiobook</h2><p>Import a TXT or Markdown manuscript, review its chapters, then create audio with a local Chatterbox voice.</p><button className="primary" onClick={onImport}>Import manuscript</button></section>
     </div>
   }
   return <div className="page"><Header eyebrow="Active project" title={project.title} copy={`${project.chapters.length} chapters · Revision ${project.revision}`} action={<div className="actions"><button onClick={onOpen}>Open another</button><button className="primary" onClick={onEdit}>Edit chapters</button></div>} />
@@ -157,6 +157,10 @@ export function StudioPage({ route, project }: { route: 'editor'; project: Proje
 export function ReviewPage({ project, onProjectChange }: { project: ProjectSnapshot | null; onProjectChange: (project: ProjectSnapshot) => void }): JSX.Element {
   const [busyId, setBusyId] = useState('')
   const [error, setError] = useState('')
+  const [voices, setVoices] = useState<Voice[]>([])
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  useEffect(() => { if (isDesktop()) void Promise.all([productionApi.voices(), systemApi.settings()]).then(([found, current]) => { setVoices(found); setSettings(current) }).catch((cause) => setError(errorMessage(cause))) }, [])
   if (!project) return <div className="page"><Header eyebrow="Production" title="Review" copy="Listen to chapter audio and approve it." /><section className="panel placeholder"><h2>Open a project first</h2></section></div>
   const activeProject = project
   async function waitForJob(jobId: string): Promise<void> {
@@ -184,9 +188,16 @@ export function ReviewPage({ project, onProjectChange }: { project: ProjectSnaps
     setError('')
     try { onProjectChange(await productionApi.review(activeProject, chapterId, status)) } catch (cause) { setError(errorMessage(cause)) }
   }
-  return <div className="page"><Header eyebrow={project.title} title="Narrate and review" copy="Generate with the selected macOS voice or import existing chapter audio." />
+  const selectedVoice = voices.find((voice) => voice.id === settings?.speech.voiceId)
+  async function selectVoice(voice: Voice): Promise<void> {
+    if (!settings) return
+    try { setSettings(await systemApi.saveSettings({ ...settings, speech: { ...settings.speech, voiceId: voice.id } })) } catch (cause) { setError(errorMessage(cause)) }
+  }
+  return <div className="page"><Header eyebrow={project.title} title="Narrate and review" copy="Generate with a local Chatterbox voice or import existing chapter audio." />
     {error && <div className="inline-error">{error}</div>}
+    <section className="panel review-voice"><div><strong>Narration voice</strong><span>{selectedVoice?.name ?? 'Loading voices…'}</span></div><button onClick={() => setPickerOpen(true)} disabled={!settings}>Choose voice</button></section>
     <section className="review-list">{project.chapters.map((chapter) => <article className="panel review-card" key={chapter.id}><div className="review-copy"><small>Chapter {chapter.order + 1}</small><h2>{chapter.title}</h2><span>{chapter.audioPath ? `${formatDuration(chapter.audioDurationMs)} · ${chapter.audioOrigin}${chapter.audioStale ? ' · stale' : ''}` : `${chapter.segments.length} text segments`}</span></div><div className="review-controls">{chapter.audioPath && !chapter.audioStale && <ChapterAudio project={project} chapter={chapter} />}<div className="actions"><button disabled={Boolean(busyId)} onClick={() => void importAudio(chapter.id)}>Import audio</button><button className="primary" disabled={Boolean(busyId)} onClick={() => void generate(chapter.id)}>{busyId === chapter.id ? 'Processing…' : chapter.audioPath ? 'Regenerate' : 'Generate audio'}</button></div>{chapter.audioPath && !chapter.audioStale && <div className="review-actions"><button className={chapter.reviewStatus === 'changes_requested' ? 'selected' : ''} onClick={() => void review(chapter.id, 'changes_requested')}>Needs changes</button><button className={chapter.reviewStatus === 'approved' ? 'selected approved' : ''} onClick={() => void review(chapter.id, 'approved')}>Approve</button></div>}</div></article>)}</section>
+    <VoicePicker open={pickerOpen} voices={voices} selectedId={selectedVoice?.id ?? ''} onSelect={(voice) => void selectVoice(voice)} onClose={() => setPickerOpen(false)} />
   </div>
 }
 
@@ -207,56 +218,89 @@ function formatDuration(value: number | null): string {
 export function VoicesPage(): JSX.Element {
   const [voices, setVoices] = useState<Voice[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
-  const [message, setMessage] = useState('Loading installed voices…')
+  const [message, setMessage] = useState('Loading voices…')
   const [name, setName] = useState('')
-  const [voiceId, setVoiceId] = useState('')
-  const [rate, setRate] = useState(180)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editorOpen, setEditorOpen] = useState(false)
+  const [sampleName, setSampleName] = useState('Reference sample')
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [previewUrl, setPreviewUrl] = useState('')
+  const [sampleUrl, setSampleUrl] = useState('')
+  const [recording, setRecording] = useState(false)
+  const [recordingVoiceId, setRecordingVoiceId] = useState('')
+  const [level, setLevel] = useState(0)
+  const [recorded, setRecorded] = useState<Blob | null>(null)
+  const [recordedUrl, setRecordedUrl] = useState('')
+  const recorder = useRef<MediaRecorder | null>(null)
+  const recordingStream = useRef<MediaStream | null>(null)
+  const meter = useRef<number | null>(null)
+  const recordingContext = useRef<AudioContext | null>(null)
   useEffect(() => { void Promise.all([productionApi.voices(), systemApi.settings()]).then(([found, current]) => { setVoices(found); setSettings(current); setMessage('') }).catch((cause) => setMessage(errorMessage(cause))) }, [])
-  async function persist(next: Settings, success = 'Voice preset saved'): Promise<void> {
-    setSettings(next); setMessage('Saving…')
-    try { setSettings(await systemApi.saveSettings(next)); setMessage(success) } catch (cause) { setMessage(errorMessage(cause)) }
-  }
-  async function select(preset: VoicePreset): Promise<void> {
-    if (settings) await persist(activateVoicePreset(settings, preset), `${preset.name} selected`)
-  }
-  function edit(preset?: VoicePreset): void {
-    setEditorOpen(true)
-    setEditingId(preset?.id || null)
-    setName(preset?.name ?? '')
-    setVoiceId(preset?.voiceId ?? settings?.speech.voiceId ?? voices[0]?.id ?? '')
-    setRate(preset?.rate ?? settings?.speech.rate ?? 180)
-  }
-  function closeEditor(): void {
-    setEditorOpen(false)
-    setEditingId(null)
-    setName('')
-    setVoiceId('')
-  }
-  async function savePreset(): Promise<void> {
-    if (!settings || !name.trim() || !voiceId) return
-    const preset: VoicePreset = { id: editingId ?? `custom-${Date.now()}`, name: name.trim(), voiceId, rate, builtIn: false }
-    await persist(upsertVoicePreset(settings, preset))
-    closeEditor()
-  }
-  async function remove(preset: VoicePreset): Promise<void> {
+  useEffect(() => () => { recorder.current?.stop(); recordingStream.current?.getTracks().forEach((track) => track.stop()); if (meter.current !== null) window.clearInterval(meter.current); void recordingContext.current?.close() }, [])
+  useEffect(() => { if (!recorded) { setRecordedUrl(''); return }; const url = URL.createObjectURL(recorded); setRecordedUrl(url); return () => URL.revokeObjectURL(url) }, [recorded])
+  const selected = voices.find((voice) => voice.id === settings?.speech.voiceId) ?? voices[0]
+  async function refresh(): Promise<void> { setVoices(await productionApi.voices()) }
+  async function select(voice: Voice): Promise<void> {
     if (!settings) return
-    try { await persist(deleteVoicePreset(settings, preset.id), 'Voice preset deleted') } catch (cause) { setMessage(errorMessage(cause)) }
+    try { const saved = await systemApi.saveSettings({ ...settings, speech: { ...settings.speech, provider: 'chatterbox_turbo', voiceId: voice.id } }); setSettings(saved); setMessage(`${voice.name} selected`) }
+    catch (cause) { setMessage(errorMessage(cause)) }
   }
-  async function preview(selectedVoice: string, selectedRate: number): Promise<void> {
-    setMessage('Creating voice preview…'); setPreviewUrl('')
-    try { setPreviewUrl(await productionApi.previewVoice(selectedVoice, selectedRate)); setMessage('Preview ready') } catch (cause) { setMessage(errorMessage(cause)) }
+  async function create(): Promise<void> {
+    if (!name.trim()) return
+    try { const voice = await productionApi.createVoice(name); await refresh(); setName(''); setMessage(`Created ${voice.name}. Add a spoken sample to use it.`) }
+    catch (cause) { setMessage(errorMessage(cause)) }
   }
-  const installed = new Set(voices.map((voice) => voice.id))
-  const presets = settings?.voicePresets.filter((preset) => installed.has(preset.voiceId)) ?? []
-  return <div className="page"><Header eyebrow="Production" title="Voice presets" copy="Combine an installed macOS voice with a narration speed. Everything stays offline." action={<button onClick={() => edit()}>Create preset</button>} />
-    {message && <div className="status-banner">{message}</div>}
+  async function addFile(voice: Voice): Promise<void> {
+    try { const path = await chooseAudio(); if (!path) return; await productionApi.addVoiceSample(voice.id, sampleName || 'Imported sample', path); await refresh(); setMessage('Sample added. Select this voice to use it for narration.') }
+    catch (cause) { setMessage(errorMessage(cause)) }
+  }
+  async function preview(voice: Voice): Promise<void> {
+    setPreviewUrl(''); setMessage('Creating neural voice preview…')
+    try { setPreviewUrl(await productionApi.previewVoice(voice.id, 180)); setMessage('Preview ready') }
+    catch (cause) { setMessage(errorMessage(cause)) }
+  }
+  async function listenSample(voice: Voice, sampleId: string): Promise<void> {
+    try { setSampleUrl(await productionApi.voiceSampleUrl(voice.id, sampleId)) } catch (cause) { setMessage(errorMessage(cause)) }
+  }
+  async function startRecording(voiceId: string): Promise<void> {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      recordingStream.current = stream
+      const context = new AudioContext()
+      recordingContext.current = context
+      const analyser = context.createAnalyser()
+      context.createMediaStreamSource(stream).connect(analyser)
+      const levels = new Uint8Array(analyser.frequencyBinCount)
+      meter.current = window.setInterval(() => { analyser.getByteTimeDomainData(levels); setLevel(Math.min(100, Math.round(Math.sqrt(levels.reduce((sum, value) => sum + (value - 128) ** 2, 0) / levels.length) * 3))) }, 100)
+      const chunks: Blob[] = []
+      const mimeType = ['audio/webm', 'audio/mp4'].find((type) => MediaRecorder.isTypeSupported(type))
+      const media = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      recorder.current = media
+      media.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data) }
+      media.onstop = () => {
+        setRecorded(new Blob(chunks, { type: media.mimeType }))
+        stream.getTracks().forEach((track) => track.stop())
+        if (meter.current !== null) window.clearInterval(meter.current)
+        void context.close(); setRecording(false); setLevel(0)
+      }
+      media.start(); setRecorded(null); setRecordingVoiceId(voiceId); setRecording(true); setMessage('Recording. Speak naturally for about 10 seconds.')
+      window.setTimeout(() => { if (media.state === 'recording') media.stop() }, 20_000)
+    } catch (cause) { setMessage(`Microphone unavailable: ${errorMessage(cause)}`) }
+  }
+  async function saveRecording(voice: Voice): Promise<void> {
+    if (!recorded || recordingVoiceId !== voice.id) return
+    try { await productionApi.addRecordedVoiceSample(voice.id, sampleName || 'Recorded sample', Array.from(new Uint8Array(await recorded.arrayBuffer()))); setRecorded(null); setRecordingVoiceId(''); await refresh(); setMessage('Recorded sample added.') }
+    catch (cause) { setMessage(errorMessage(cause)) }
+  }
+  async function remove(voice: Voice): Promise<void> {
+    try { await productionApi.deleteVoice(voice.id); await refresh(); setMessage(`${voice.name} deleted`) }
+    catch (cause) { setMessage(errorMessage(cause)) }
+  }
+  return <div className="page"><Header eyebrow="Production" title="Voice library" copy="Use Chatterbox's natural voice or create a voice from your own speech. Samples stay on this computer." action={<button onClick={() => setPickerOpen(true)}>Choose voice</button>} />
+    {message && <div className="status-banner" role="status">{message}</div>}
     {previewUrl && <section className="voice-preview"><audio controls autoPlay src={previewUrl} /><button onClick={() => setPreviewUrl('')}>Close</button></section>}
-    <section className="voice-section"><h2>Presets</h2><div className="voice-grid">{presets.map((preset) => <article className={settings?.selectedVoicePresetId === preset.id ? 'voice-card selected' : 'voice-card'} key={preset.id}><button className="voice-select" onClick={() => void select(preset)}><strong>{preset.name}</strong><span>{preset.voiceId} · {preset.rate} wpm</span><small>{preset.builtIn ? 'Built-in preset' : 'Custom preset'}</small></button><div className="voice-actions"><button onClick={() => void preview(preset.voiceId, preset.rate)}>Preview</button>{preset.builtIn ? <button onClick={() => settings && void persist(resetBuiltInPreset(settings, preset.id), 'Preset reset')}>Reset</button> : <><button onClick={() => edit(preset)}>Edit</button><button onClick={() => void remove(preset)}>Delete</button></>}</div></article>)}</div></section>
-    {editorOpen && <section className="panel preset-editor"><h2>{editingId ? 'Edit voice preset' : 'Create voice preset'}</h2><label>Preset name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Evening narrator" /></label><label>Installed macOS voice<select value={voiceId} onChange={(event) => setVoiceId(event.target.value)}><option value="">Choose a voice</option>{voices.map((voice) => <option key={`${voice.id}-${voice.language}`} value={voice.id}>{voice.id} · {voice.language}</option>)}</select></label><label>Words per minute<input type="number" min="80" max="500" value={rate} onChange={(event) => setRate(Number(event.target.value))} /></label><div className="actions"><button disabled={!voiceId} onClick={() => void preview(voiceId, rate)}>Preview</button><button onClick={closeEditor}>Cancel</button><button className="primary" disabled={!name.trim() || !voiceId || rate < 80 || rate > 500} onClick={() => void savePreset()}>Save preset</button></div></section>}
-    <section className="voice-section"><h2>Installed voices</h2><p>Use these macOS voices when creating a preset.</p><div className="voice-grid installed-voices">{voices.map((voice) => <button className="voice-card" key={`${voice.id}-${voice.language}`} onClick={() => edit({ id: '', name: '', voiceId: voice.id, rate: settings?.speech.rate ?? 180, builtIn: false })}><strong>{voice.id}</strong><span>{voice.language}</span><small>{voice.sample || 'Installed macOS voice'}</small></button>)}</div></section>
+    <section className="panel preset-editor"><h2>Create a voice</h2><p className="field-note">Record or import several samples of the same speaker. Choose one sample for generation; distinct speakers are not blended.</p><label>Voice name<input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="My narrator" /></label><button className="primary" disabled={!name.trim()} onClick={() => void create()}>Create voice</button></section>
+    <section className="voice-section"><h2>Your voices</h2><div className="voice-grid">{voices.map((voice) => <article className={selected?.id === voice.id ? 'voice-card selected' : 'voice-card'} key={voice.id}><div><strong>{voice.name}</strong><small>{voice.builtIn ? 'Model voice' : `${voice.samples.length} sample${voice.samples.length === 1 ? '' : 's'}`}</small></div><div className="voice-actions"><button onClick={() => void select(voice)} disabled={!voice.builtIn && !voice.selectedSampleId}>Select</button><button onClick={() => void preview(voice)} disabled={!voice.builtIn && !voice.selectedSampleId}>Preview</button>{!voice.builtIn && <button onClick={() => void remove(voice)} disabled={selected?.id === voice.id}>Delete</button>}</div>{!voice.builtIn && <><label>Sample name<input value={sampleName} onChange={(event) => setSampleName(event.target.value)} /></label><div className="voice-actions"><button onClick={() => void addFile(voice)}>Import sample</button><button disabled={recording && recordingVoiceId !== voice.id} onClick={() => recording ? recorder.current?.stop() : void startRecording(voice.id)}>{recording && recordingVoiceId === voice.id ? 'Stop recording' : 'Record sample'}</button></div>{recording && recordingVoiceId === voice.id && <div className="recording-meter" role="meter" aria-label="Microphone level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={level}><span style={{ width: `${level}%` }} /></div>}{recorded && recordingVoiceId === voice.id && <div className="recording-preview"><audio controls src={recordedUrl} /><button onClick={() => void saveRecording(voice)}>Save recording</button><button onClick={() => { setRecorded(null); setRecordingVoiceId('') }}>Retry</button></div>}{voice.samples.map((sample) => <div className="sample-row" key={sample.id}><span>{sample.name} · {(sample.durationMs / 1000).toFixed(1)}s</span><button onClick={() => void listenSample(voice, sample.id)}>Listen</button><button onClick={() => void productionApi.selectVoiceSample(voice.id, sample.id).then(refresh).catch((cause) => setMessage(errorMessage(cause)))} disabled={voice.selectedSampleId === sample.id}>{voice.selectedSampleId === sample.id ? 'Selected' : 'Use sample'}</button></div>)}{sampleUrl && <audio controls src={sampleUrl} />}</>}</article>)}</div></section>
+    <p className="field-note">For expressive speech, use punctuation and sentence breaks. Chatterbox supports tags such as [sigh] and [laugh]. Exact word emphasis and SSML are not supported; preview a sentence and adjust its wording if needed.</p>
+    <VoicePicker open={pickerOpen} voices={voices} selectedId={selected?.id ?? ''} onSelect={(voice) => void select(voice)} onClose={() => setPickerOpen(false)} onPreview={(voice) => { setPickerOpen(false); void preview(voice) }} />
   </div>
 }
 
@@ -355,6 +399,9 @@ function toolStatus(status: ToolDiagnostic['status']): string {
 }
 
 function SettingsForm({ settings, tools, onChange }: { settings: Settings; tools: ToolDiagnostic[]; onChange: (value: Settings) => void }): JSX.Element {
+  const [voices, setVoices] = useState<Voice[]>([])
+  const [pickerOpen, setPickerOpen] = useState(false)
+  useEffect(() => { if (isDesktop()) void productionApi.voices().then(setVoices) }, [])
   const ollama = settings.llm.provider === 'ollama' ? settings.llm : null
   const llama = settings.llm.provider === 'llama_cpp' ? settings.llm : null
   const detected = (key: ToolDiagnostic['key']): string => tools.find((tool) => tool.key === key)?.detectedPath ?? ''
@@ -368,8 +415,8 @@ function SettingsForm({ settings, tools, onChange }: { settings: Settings; tools
   }
   return <section className="panel settings-form">
     <h2>Speech</h2>
-    <label>Installed voice<input value={settings.speech.voiceId} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, voiceId: event.target.value } })} /></label>
-    <label>Words per minute<input type="number" min="80" max="500" value={settings.speech.rate} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, rate: Number(event.target.value) } })} /></label>
+    <div className="voice-field"><span>Narration voice</span><button onClick={() => setPickerOpen(true)}>{voices.find((voice) => voice.id === settings.speech.voiceId)?.name ?? 'Choose a voice'}</button></div>
+    <VoicePicker open={pickerOpen} voices={voices} selectedId={settings.speech.voiceId} onSelect={(voice) => onChange({ ...settings, speech: { ...settings.speech, voiceId: voice.id } })} onClose={() => setPickerOpen(false)} />
     <h2>Audio tools</h2>
     {pathField('FFmpeg path', settings.ffmpegPath ?? '', (path) => onChange({ ...settings, ffmpegPath: path || null }), 'ffmpeg')}
     {pathField('FFprobe path', settings.ffprobePath ?? '', (path) => onChange({ ...settings, ffprobePath: path || null }), 'ffprobe')}
