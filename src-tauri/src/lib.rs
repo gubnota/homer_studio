@@ -77,6 +77,11 @@ pub fn run() {
             commands::production::import_chapter_audio,
             commands::production::export_chapter_audio,
             commands::production::delete_generated_chapter_audio,
+            commands::production::delete_generated_chapter_audio_many,
+            commands::production::delete_exports,
+            commands::production::save_export_file,
+            commands::production::save_exports,
+            commands::production::save_chapters,
             commands::production::set_chapter_review,
             commands::production::audio_url,
             commands::production::segment_take_url,
@@ -88,6 +93,7 @@ pub fn run() {
             commands::production::read_export_timestamps
             ,commands::sounds::sound_workers
             ,commands::sounds::list_sounds
+            ,commands::sounds::delete_sounds
             ,commands::sounds::generate_sound
             ,commands::sounds::sound_audio_url
             ,commands::sounds::export_sound

@@ -15,6 +15,11 @@ pub fn sound_workers(app: AppHandle) -> Result<Vec<WorkerHealth>, CommandError> 
 pub fn list_sounds(app: AppHandle) -> Result<Vec<SoundAsset>, CommandError> { sound_store::list(&app) }
 
 #[tauri::command]
+pub fn delete_sounds(app: AppHandle, ids: Vec<String>) -> Result<Vec<SoundAsset>, CommandError> {
+    sound_store::delete_many(&app, &ids)
+}
+
+#[tauri::command]
 pub fn generate_sound(app: AppHandle, state: State<'_, AppState>, request: SoundRequest) -> Result<String, CommandError> {
     sound_render::validate(&request)?;
     let settings = settings::load(&app)?;

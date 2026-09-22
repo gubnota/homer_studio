@@ -422,6 +422,61 @@ pub fn delete_generated_audio(
     snapshot(&root, manifest)
 }
 
+pub fn delete_generated_audio_many(root_path: &str, expected_revision: u64, ids: &[String]) -> Result<ProjectSnapshot, CommandError> {
+    let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let mut manifest = read_manifest(&root)?;
+    require_revision(&manifest, expected_revision)?;
+    let unique: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
+    if unique.is_empty() || unique.len() != ids.len() || unique.len() > manifest.chapters.len() {
+        return Err(CommandError::new("INVALID_SELECTION", "Choose existing chapters to delete."));
+    }
+    let mut paths = Vec::new();
+    for id in &unique {
+        let chapter = manifest.chapters.iter().find(|chapter| chapter.id == *id)
+            .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "A selected chapter no longer exists."))?;
+        if chapter.audio_origin.as_deref() != Some("generated") {
+            return Err(CommandError::new("AUDIO_NOT_GENERATED", "Only generated chapter audio can be deleted."));
+        }
+        let relative = chapter.audio_path.as_deref().ok_or_else(|| CommandError::new("AUDIO_NOT_FOUND", "Generated chapter audio is missing."))?;
+        paths.push(existing_owned_file(&root, relative)?);
+    }
+    for chapter in manifest.chapters.iter_mut().filter(|chapter| unique.contains(chapter.id.as_str())) {
+        chapter.audio_path = None;
+        chapter.audio_duration_ms = None;
+        chapter.audio_origin = None;
+        chapter.audio_stale = false;
+        chapter.review_status = None;
+        chapter.cues.clear();
+    }
+    manifest.revision += 1;
+    manifest.updated_at_ms = now_ms();
+    write_manifest(&root, &manifest)?;
+    for path in paths { fs::remove_file(path).map_err(|error| CommandError::io("Chapter record was removed but audio cleanup failed", error))?; }
+    snapshot(&root, manifest)
+}
+
+pub fn delete_exports(root_path: &str, expected_revision: u64, ids: &[String]) -> Result<ProjectSnapshot, CommandError> {
+    let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let mut manifest = read_manifest(&root)?;
+    require_revision(&manifest, expected_revision)?;
+    let unique: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
+    if unique.is_empty() || unique.len() != ids.len() || unique.len() > manifest.exports.len() {
+        return Err(CommandError::new("INVALID_SELECTION", "Choose existing exports to delete."));
+    }
+    let mut paths = Vec::new();
+    for id in &unique {
+        let item = manifest.exports.iter().find(|item| item.id == *id)
+            .ok_or_else(|| CommandError::new("EXPORT_NOT_FOUND", "A selected export no longer exists."))?;
+        paths.push(existing_owned_file(&root, &item.audio_path)?);
+        paths.push(existing_owned_file(&root, &item.timestamps_path)?);
+    }
+    manifest.exports.retain(|item| !unique.contains(item.id.as_str()));
+    manifest.revision += 1;
+    write_manifest(&root, &manifest)?;
+    for path in paths { fs::remove_file(path).map_err(|error| CommandError::io("Export record was removed but file cleanup failed", error))?; }
+    snapshot(&root, manifest)
+}
+
 pub fn set_review_status(
     root_path: &str,
     expected_revision: u64,
@@ -690,6 +745,15 @@ fn owned_path(root: &Path, relative: &str) -> Result<PathBuf, CommandError> {
         ));
     }
     Ok(root.join(path))
+}
+
+fn existing_owned_file(root: &Path, relative: &str) -> Result<PathBuf, CommandError> {
+    let path = owned_path(root, relative)?;
+    let resolved = fs::canonicalize(&path).map_err(|error| CommandError::io("Cannot locate owned audio file", error))?;
+    if !resolved.starts_with(root) || !resolved.is_file() {
+        return Err(CommandError::new("UNSAFE_PROJECT_PATH", "Project asset is not a file inside this project."));
+    }
+    Ok(path)
 }
 
 fn require_revision(

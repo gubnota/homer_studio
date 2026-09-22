@@ -602,6 +602,89 @@ pub fn delete_generated_chapter_audio(
 }
 
 #[tauri::command]
+pub fn delete_generated_chapter_audio_many(state: State<'_, AppState>, root_path: String, expected_revision: u64, chapter_ids: Vec<String>) -> Result<ProjectSnapshot, CommandError> {
+    let _guard = state.project_write_lock.lock().map_err(|_| CommandError::internal("project lock is unavailable"))?;
+    project_store::delete_generated_audio_many(&root_path, expected_revision, &chapter_ids)
+}
+
+#[tauri::command]
+pub fn delete_exports(state: State<'_, AppState>, root_path: String, expected_revision: u64, export_ids: Vec<String>) -> Result<ProjectSnapshot, CommandError> {
+    let _guard = state.project_write_lock.lock().map_err(|_| CommandError::internal("project lock is unavailable"))?;
+    project_store::delete_exports(&root_path, expected_revision, &export_ids)
+}
+
+#[tauri::command]
+pub fn save_export_file(root_path: String, export_id: String, kind: String, destination: String) -> Result<(), CommandError> {
+    let (audio, timestamps) = project_store::export_paths(&root_path, &export_id)?;
+    let (source, extension) = match kind.as_str() {
+        "audio" => (audio, "m4a"),
+        "timestamps" => (timestamps, "txt"),
+        _ => return Err(CommandError::new("INVALID_EXPORT_KIND", "Choose audio or timestamps.")),
+    };
+    let target = Path::new(&destination);
+    if target.extension().and_then(|value| value.to_str()).map(|value| value.to_ascii_lowercase()) != Some(extension.into()) || !target.parent().is_some_and(Path::is_dir) {
+        return Err(CommandError::new("INVALID_EXPORT_PATH", "Choose an existing folder and matching file extension."));
+    }
+    std::fs::copy(source, target).map_err(|error| CommandError::io("Cannot save export", error))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn save_exports(root_path: String, export_ids: Vec<String>, destination_dir: String) -> Result<Vec<String>, CommandError> {
+    let dir = Path::new(&destination_dir);
+    if !dir.is_dir() || export_ids.is_empty() || export_ids.len() > 500 {
+        return Err(CommandError::new("INVALID_EXPORT_SELECTION", "Choose exports and an existing folder."));
+    }
+    let mut saved = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for id in export_ids {
+        if !seen.insert(id.clone()) { return Err(CommandError::new("INVALID_EXPORT_SELECTION", "An export was selected twice.")); }
+        let (audio, timestamps) = project_store::export_paths(&root_path, &id)?;
+        let short = &id[..8.min(id.len())];
+        let mut suffix = 1;
+        let (audio_target, text_target) = loop {
+            let stem = if suffix == 1 { format!("audiobook-{short}") } else { format!("audiobook-{short}-{suffix}") };
+            let a = dir.join(format!("{stem}.m4a"));
+            let t = dir.join(format!("{stem}-timestamps.txt"));
+            if !a.exists() && !t.exists() { break (a, t); }
+            suffix += 1;
+        };
+        std::fs::copy(&audio, &audio_target).map_err(|error| CommandError::io("Cannot save exported audio", error))?;
+        if let Err(error) = std::fs::copy(&timestamps, &text_target) {
+            let _ = std::fs::remove_file(&audio_target);
+            return Err(CommandError::io("Cannot save exported timestamps", error));
+        }
+        saved.push(audio_target.to_string_lossy().into_owned());
+    }
+    Ok(saved)
+}
+
+#[tauri::command]
+pub fn save_chapters(root_path: String, chapter_ids: Vec<String>, destination_dir: String) -> Result<Vec<String>, CommandError> {
+    let dir = Path::new(&destination_dir);
+    if !dir.is_dir() || chapter_ids.is_empty() || chapter_ids.len() > 500 {
+        return Err(CommandError::new("INVALID_CHAPTER_SELECTION", "Choose chapters and an existing folder."));
+    }
+    let mut saved = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for id in chapter_ids {
+        if !seen.insert(id.clone()) { return Err(CommandError::new("INVALID_CHAPTER_SELECTION", "A chapter was selected twice.")); }
+        let source = project_store::chapter_audio_path(&root_path, &id)?;
+        let short = &id[..8.min(id.len())];
+        let mut suffix = 1;
+        let target = loop {
+            let stem = if suffix == 1 { format!("chapter-{short}") } else { format!("chapter-{short}-{suffix}") };
+            let path = dir.join(format!("{stem}.m4a"));
+            if !path.exists() { break path; }
+            suffix += 1;
+        };
+        std::fs::copy(source, &target).map_err(|error| CommandError::io("Cannot save chapter audio", error))?;
+        saved.push(target.to_string_lossy().into_owned());
+    }
+    Ok(saved)
+}
+
+#[tauri::command]
 pub fn export_project(
     app: AppHandle,
     state: State<'_, AppState>,

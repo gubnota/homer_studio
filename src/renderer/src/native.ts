@@ -117,6 +117,12 @@ export const productionApi = {
   },
   deleteGeneratedAudio: (project: ProjectSnapshot, chapterId: string) =>
     invoke<ProjectSnapshot>('delete_generated_chapter_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId }),
+  deleteGeneratedAudioMany: (project: ProjectSnapshot, chapterIds: string[]) =>
+    invoke<ProjectSnapshot>('delete_generated_chapter_audio_many', { rootPath: project.rootPath, expectedRevision: project.revision, chapterIds }),
+  saveChapters: async (project: ProjectSnapshot, chapterIds: string[]) => {
+    const destination = await open({ directory: true, multiple: false, title: 'Choose folder for chapter audio' })
+    return typeof destination === 'string' ? invoke<string[]>('save_chapters', { rootPath: project.rootPath, chapterIds, destinationDir: destination }) : []
+  },
   review: (project: ProjectSnapshot, chapterId: string, status: 'approved' | 'changes_requested') =>
     invoke<ProjectSnapshot>('set_chapter_review', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId, status }),
   audioUrl: (project: ProjectSnapshot, chapterId: string) =>
@@ -132,7 +138,19 @@ export const productionApi = {
   exportAudioUrl: (project: ProjectSnapshot, exportId: string) =>
     invoke<string>('export_audio_url', { rootPath: project.rootPath, exportId }),
   exportTimestamps: (project: ProjectSnapshot, exportId: string) =>
-    invoke<string>('read_export_timestamps', { rootPath: project.rootPath, exportId })
+    invoke<string>('read_export_timestamps', { rootPath: project.rootPath, exportId }),
+  deleteExports: (project: ProjectSnapshot, exportIds: string[]) =>
+    invoke<ProjectSnapshot>('delete_exports', { rootPath: project.rootPath, expectedRevision: project.revision, exportIds }),
+  saveExportFile: async (project: ProjectSnapshot, exportId: string, kind: 'audio' | 'timestamps') => {
+    const ext = kind === 'audio' ? 'm4a' : 'txt'
+    const destination = await save({ title: `Save export ${kind}`, defaultPath: `audiobook-${exportId.slice(0, 8)}${kind === 'timestamps' ? '-timestamps' : ''}.${ext}`, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] })
+    if (destination) await invoke<void>('save_export_file', { rootPath: project.rootPath, exportId, kind, destination })
+    return destination
+  },
+  saveExports: async (project: ProjectSnapshot, exportIds: string[]) => {
+    const destination = await open({ directory: true, multiple: false, title: 'Choose folder for audiobook exports' })
+    return typeof destination === 'string' ? invoke<string[]>('save_exports', { rootPath: project.rootPath, exportIds, destinationDir: destination }) : []
+  }
 }
 
 export const systemApi = {
@@ -160,7 +178,8 @@ export const soundsApi = {
     const destination = await open({ directory: true, multiple: false, title: `Choose folder for ${format.toUpperCase()} exports` })
     if (typeof destination !== 'string') return []
     return invoke<string[]>('export_sounds', { ids, destinationDir: destination, format })
-  }
+  },
+  deleteMany: (ids: string[]) => invoke<SoundAsset[]>('delete_sounds', { ids })
 }
 
 export function errorMessage(error: unknown): string {

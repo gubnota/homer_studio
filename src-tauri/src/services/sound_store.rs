@@ -84,6 +84,45 @@ pub fn publish(app: &AppHandle, asset: SoundAsset, staged: &Path) -> Result<(), 
     result
 }
 
+pub fn delete_many(app: &AppHandle, ids: &[String]) -> Result<Vec<SoundAsset>, CommandError> {
+    let mut assets = list(app)?;
+    let unique: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
+    if unique.is_empty() || unique.len() != ids.len() || unique.len() > assets.len() ||
+        unique.iter().any(|id| !assets.iter().any(|asset| asset.id == *id)) {
+        return Err(CommandError::new("INVALID_SOUND_SELECTION", "Choose existing clips to delete."));
+    }
+    let base = root(app)?;
+    let trash = base.join(format!(".deleting-{}", uuid::Uuid::new_v4()));
+    fs::create_dir(&trash).map_err(|error| CommandError::io("Cannot stage clip deletion", error))?;
+    let mut moved = Vec::new();
+    for asset in assets.iter().filter(|asset| unique.contains(asset.id.as_str())) {
+        let source = base.join("clips").join(&asset.id);
+        let target = trash.join(&asset.id);
+        if let Err(error) = fs::rename(&source, &target) {
+            for (from, to) in moved { let _ = fs::rename(from, to); }
+            let _ = fs::remove_dir(&trash);
+            return Err(CommandError::io("Cannot stage clip deletion", error));
+        }
+        moved.push((target, source));
+    }
+    assets.retain(|asset| !unique.contains(asset.id.as_str()));
+    let temp = base.join(format!("manifest-{}.tmp", uuid::Uuid::new_v4()));
+    let result = (|| {
+        let data = serde_json::to_vec_pretty(&Manifest { schema_version: 1, assets: assets.clone() })
+            .map_err(|_| CommandError::internal("Cannot serialize sound library"))?;
+        fs::write(&temp, data).map_err(|error| CommandError::io("Cannot write sound library", error))?;
+        fs::rename(&temp, base.join("manifest.json")).map_err(|error| CommandError::io("Cannot publish sound library", error))
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_file(temp);
+        for (from, to) in moved { let _ = fs::rename(from, to); }
+        let _ = fs::remove_dir(trash);
+        return Err(error);
+    }
+    fs::remove_dir_all(trash).map_err(|error| CommandError::io("Clips were removed from the library but file cleanup failed", error))?;
+    Ok(assets)
+}
+
 pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
 }
