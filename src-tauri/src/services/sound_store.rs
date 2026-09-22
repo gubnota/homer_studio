@@ -16,6 +16,10 @@ pub struct SoundAsset {
     pub duration_ms: u64,
     pub seed: Option<u32>,
     pub created_at_ms: u64,
+    #[serde(default)]
+    pub voice_id: Option<String>,
+    #[serde(default)]
+    pub negative_prompt: Option<String>,
     pub master_path: String,
     pub preview_path: String,
 }

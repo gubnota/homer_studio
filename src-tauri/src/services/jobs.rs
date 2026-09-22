@@ -30,6 +30,9 @@ pub struct JobControl {
 }
 
 impl JobControl {
+    pub fn preview() -> Self {
+        Self { cancelled: Arc::new(AtomicBool::new(false)), paused: Arc::new(AtomicBool::new(false)) }
+    }
     pub fn boundary(&self) -> Result<(), CommandError> {
         while self.paused.load(Ordering::SeqCst) && !self.cancelled.load(Ordering::SeqCst) {
             std::thread::sleep(std::time::Duration::from_millis(50));

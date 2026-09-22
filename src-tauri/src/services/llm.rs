@@ -302,7 +302,7 @@ mod tests {
             assert!(String::from_utf8_lossy(&input[..count]).contains("GET /api/tags"));
             stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"models\":[]}").unwrap();
         });
-        assert!(ollama_models(&format!("http://localhost:{port}")).unwrap().is_empty());
+        assert!(ollama_models(&format!("http://127.0.0.1:{port}")).unwrap().is_empty());
         server.join().unwrap();
     }
 }

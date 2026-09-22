@@ -1,4 +1,3 @@
-use serde::Serialize;
 use std::{
     fs::{self, File},
     io::{BufReader, Read},
@@ -6,119 +5,70 @@ use std::{
     time::Duration,
 };
 
-use super::{process_runner, project_store::CommandError, settings::Settings};
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Voice {
-    pub id: String,
-    pub language: String,
-    pub sample: String,
-}
-
-pub fn list_voices() -> Result<Vec<Voice>, CommandError> {
-    let output = process_runner::run_bounded(
-        Path::new("/usr/bin/say"),
-        &["-v".into(), "?".into()],
-        Duration::from_secs(10),
-        Default::default(),
-    )?;
-    if !output.success {
-        return Err(CommandError::new("VOICE_LIST_FAILED", output.stderr));
-    }
-    Ok(parse_voices(&output.stdout))
-}
-
-pub fn ensure_installed_voice(voice_id: &str) -> Result<(), CommandError> {
-    if voice_is_installed(voice_id, &list_voices()?) {
-        Ok(())
-    } else {
-        Err(CommandError::new(
-            "VOICE_NOT_INSTALLED",
-            format!("The macOS voice ‘{voice_id}’ is not installed."),
-        ))
-    }
-}
-
-fn voice_is_installed(voice_id: &str, voices: &[Voice]) -> bool {
-    voices.iter().any(|voice| voice.id == voice_id)
-}
+use super::{jobs::JobControl, process_runner, project_store::CommandError, settings::Settings, sound_workers, voice_store};
+use tauri::AppHandle;
 
 pub fn generate(
+    app: &AppHandle,
     text: &str,
-    voice: &str,
-    rate: u16,
+    voice_id: &str,
     output: &Path,
     settings: &Settings,
-    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    control: &JobControl,
 ) -> Result<u64, CommandError> {
-    if text.trim().is_empty() {
-        return Err(CommandError::new(
-            "EMPTY_TEXT",
-            "There is no text to narrate.",
-        ));
+    if text.trim().is_empty() { return Err(CommandError::new("EMPTY_TEXT", "There is no text to narrate.")); }
+    let health = sound_workers::health(&settings.sounds.chatterbox_url, "chatterbox_turbo");
+    if !health.ready { return Err(CommandError::new("WORKER_UNAVAILABLE", health.message)); }
+    let reference = voice_store::selected_sample(app, voice_id)?;
+    let work = output.parent().ok_or_else(|| CommandError::internal("Audio work folder is missing"))?
+        .join(format!("narration-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&work).map_err(|error| CommandError::io("Cannot stage narration", error))?;
+    let result = (|| {
+        let chunks = chunks(text, 280);
+        if chunks.len() > 500 { return Err(CommandError::new("CHAPTER_TOO_LONG", "This chapter is too long for one narration job. Split it into smaller chapters.")); }
+        let mut files = Vec::new();
+        for (index, chunk) in chunks.iter().enumerate() {
+            control.boundary()?;
+            let reference_id = reference.as_ref().map(|bytes| sound_workers::upload_reference(&settings.sounds.chatterbox_url, bytes)).transpose()?;
+            let payload = serde_json::json!({"prompt": chunk, "category": "speech", "durationSeconds": 20, "seed": null, "referenceId": reference_id});
+            let wav = sound_workers::generate(&settings.sounds.chatterbox_url, &payload, control)?;
+            let name = format!("part-{index:04}.wav");
+            fs::write(work.join(&name), wav).map_err(|error| CommandError::io("Cannot stage speech audio", error))?;
+            files.push(name);
+        }
+        let ffmpeg = process_runner::resolve_executable("ffmpeg", settings.ffmpeg_path.as_deref())
+            .ok_or_else(|| CommandError::new("FFMPEG_NOT_FOUND", "Set FFmpeg in Settings before creating narration."))?;
+        let list = work.join("parts.txt");
+        fs::write(&list, files.iter().map(|file| format!("file '{file}'\n")).collect::<String>())
+            .map_err(|error| CommandError::io("Cannot stage narration list", error))?;
+        let conversion = process_runner::run_bounded(&ffmpeg, &[
+            "-v".into(), "error".into(), "-y".into(), "-f".into(), "concat".into(), "-safe".into(), "1".into(),
+            "-i".into(), path_string(&list), "-vn".into(), "-c:a".into(), "aac".into(), "-b:a".into(), "128k".into(),
+            "-ar".into(), "48000".into(), "-ac".into(), "2".into(), path_string(output),
+        ], Duration::from_secs(3600), control.cancelled.clone())?;
+        if !conversion.success { return Err(CommandError::new("AUDIO_CONVERSION_FAILED", concise(&conversion.stderr))); }
+        probe_duration(output, settings)
+    })();
+    let _ = fs::remove_dir_all(work);
+    if result.is_err() { let _ = fs::remove_file(output); }
+    result
+}
+
+fn chunks(text: &str, max_chars: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        if !current.is_empty() && current.chars().count() + 1 + word.chars().count() > max_chars {
+            chunks.push(std::mem::take(&mut current));
+        }
+        if !current.is_empty() { current.push(' '); }
+        current.push_str(word);
+        if current.chars().count() >= max_chars / 2 && word.ends_with(['.', '!', '?']) {
+            chunks.push(std::mem::take(&mut current));
+        }
     }
-    let work = output
-        .parent()
-        .ok_or_else(|| CommandError::internal("audio work folder is missing"))?;
-    fs::create_dir_all(work)
-        .map_err(|error| CommandError::io("Cannot create audio work folder", error))?;
-    let text_path = work.join("speech.txt");
-    let aiff_path = work.join("speech.aiff");
-    fs::write(&text_path, text)
-        .map_err(|error| CommandError::io("Cannot stage narration text", error))?;
-    let say = process_runner::run_bounded(
-        Path::new("/usr/bin/say"),
-        &[
-            "-v".into(),
-            voice.into(),
-            "-r".into(),
-            rate.to_string(),
-            "-o".into(),
-            path_string(&aiff_path),
-            "-f".into(),
-            path_string(&text_path),
-        ],
-        Duration::from_secs(3600),
-        cancelled.clone(),
-    )?;
-    if !say.success {
-        return Err(CommandError::new("SPEECH_FAILED", concise(&say.stderr)));
-    }
-    let ffmpeg = process_runner::resolve_executable("ffmpeg", settings.ffmpeg_path.as_deref())
-        .ok_or_else(|| {
-            CommandError::new(
-                "FFMPEG_NOT_FOUND",
-                "Install FFmpeg or set its path in Settings.",
-            )
-        })?;
-    let conversion = process_runner::run_bounded(
-        &ffmpeg,
-        &[
-            "-y".into(),
-            "-i".into(),
-            path_string(&aiff_path),
-            "-vn".into(),
-            "-c:a".into(),
-            "aac".into(),
-            "-b:a".into(),
-            "128k".into(),
-            "-ar".into(),
-            "48000".into(),
-            "-ac".into(),
-            "2".into(),
-            path_string(output),
-        ],
-        Duration::from_secs(3600),
-        cancelled,
-    )?;
-    if !conversion.success {
-        return Err(CommandError::new(
-            "AUDIO_CONVERSION_FAILED",
-            concise(&conversion.stderr),
-        ));
-    }
-    probe_duration(output, settings)
+    if !current.is_empty() { chunks.push(current); }
+    chunks
 }
 
 pub fn import(
@@ -293,29 +243,6 @@ pub fn probe_duration(path: &Path, settings: &Settings) -> Result<u64, CommandEr
     Ok((seconds * 1000.0).round() as u64)
 }
 
-fn parse_voices(text: &str) -> Vec<Voice> {
-    text.lines()
-        .filter_map(|line| {
-            let locale_start = line.find(|character: char| character == '_' || character == '-')?;
-            let prefix = &line[..locale_start];
-            let id = prefix
-                .trim_end()
-                .rsplit_once("  ")
-                .map(|(name, _)| name.trim())
-                .unwrap_or(prefix.trim());
-            let rest = &line[locale_start.saturating_sub(2)..];
-            let mut parts = rest.splitn(2, '#');
-            let language = parts.next()?.trim().split_whitespace().last()?.to_string();
-            let sample = parts.next().unwrap_or_default().trim().to_string();
-            (!id.is_empty()).then(|| Voice {
-                id: id.into(),
-                language,
-                sample,
-            })
-        })
-        .collect()
-}
-
 fn path_string(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
@@ -339,12 +266,11 @@ pub fn staged_path(root: &str, chapter_id: &str) -> PathBuf {
 mod tests {
     use super::*;
     #[test]
-    fn parses_installed_voice_output() {
-        let voices = parse_voices("Samantha             en_US    # Hello! My name is Samantha.\n");
-        assert_eq!(voices[0].id, "Samantha");
-        assert_eq!(voices[0].language, "en_US");
-        assert!(voice_is_installed("Samantha", &voices));
-        assert!(!voice_is_installed("Unavailable Voice", &voices));
+    fn splits_long_speech_without_losing_words() {
+        let original = "A first sentence. A second sentence here. A final sentence.";
+        let parts = chunks(original, 28);
+        assert_eq!(parts.join(" "), original);
+        assert!(parts.iter().all(|part| part.len() <= 28));
     }
 
     #[test]

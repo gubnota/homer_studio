@@ -11,6 +11,8 @@ pub struct SoundRequest {
     pub category: String,
     pub duration_seconds: f32,
     pub seed: Option<u32>,
+    #[serde(default)]
+    pub negative_prompt: Option<String>,
 }
 
 pub fn validate(request: &SoundRequest) -> Result<(), CommandError> {
@@ -30,6 +32,9 @@ pub fn validate(request: &SoundRequest) -> Result<(), CommandError> {
         }
         _ => return Err(CommandError::new("INVALID_SOUND_CATEGORY", "Choose speech, vocal gesture, or sound effect.")),
     }
+    if request.negative_prompt.as_ref().is_some_and(|value| value.chars().count() > 300) {
+        return Err(CommandError::new("INVALID_NEGATIVE_PROMPT", "Keep the unwanted-sounds field under 300 characters."));
+    }
     Ok(())
 }
 
@@ -43,7 +48,11 @@ pub fn render(app: &AppHandle, settings: &Settings, request: &SoundRequest, cont
     if !health.ready { return Err(CommandError::new("WORKER_UNAVAILABLE", health.message)); }
     if !health.categories.contains(&request.category) { return Err(CommandError::new("WORKER_CAPABILITY", "The selected worker cannot generate this kind of sound.")); }
     progress(10);
-    let payload = serde_json::json!({"prompt": request.prompt, "category": request.category, "durationSeconds": request.duration_seconds, "seed": request.seed});
+    let reference_id = if request.category != "sound_effect" {
+        super::voice_store::selected_sample(app, &settings.speech.voice_id)?
+            .map(|bytes| sound_workers::upload_reference(url, &bytes)).transpose()?
+    } else { None };
+    let payload = serde_json::json!({"prompt": request.prompt, "category": request.category, "durationSeconds": request.duration_seconds, "seed": request.seed, "referenceId": reference_id, "negativePrompt": request.negative_prompt});
     let wav = sound_workers::generate(url, &payload, control)?;
     control.boundary()?;
     progress(70);
@@ -71,6 +80,8 @@ pub fn render(app: &AppHandle, settings: &Settings, request: &SoundRequest, cont
             id: id.clone(), prompt: request.prompt.trim().into(), category: request.category.clone(),
             provider: health.engine, model: health.model, requested_duration_seconds: request.duration_seconds,
             duration_ms, seed: request.seed, created_at_ms: sound_store::now_ms(),
+            voice_id: if request.category == "sound_effect" { None } else { Some(settings.speech.voice_id.clone()) },
+            negative_prompt: request.negative_prompt.clone(),
             master_path: format!("clips/{id}/master.wav"), preview_path: format!("clips/{id}/preview.m4a"),
         };
         sound_store::publish(app, asset, &stage)
@@ -96,7 +107,7 @@ mod tests {
     use super::*;
     #[test]
     fn rejects_unsupported_gestures_and_lengths() {
-        let mut request = SoundRequest { prompt: "heavy breathing".into(), category: "vocal_gesture".into(), duration_seconds: 3.0, seed: None };
+        let mut request = SoundRequest { prompt: "heavy breathing".into(), category: "vocal_gesture".into(), duration_seconds: 3.0, seed: None, negative_prompt: None };
         assert!(validate(&request).is_err());
         request.prompt = "[sigh]".into();
         assert!(validate(&request).is_ok());

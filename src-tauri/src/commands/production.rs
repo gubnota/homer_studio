@@ -30,8 +30,46 @@ pub fn accept_processed_text(
 }
 
 #[tauri::command]
-pub fn list_voices() -> Result<Vec<crate::services::speech::Voice>, CommandError> {
-    crate::services::speech::list_voices()
+pub fn list_voices(app: AppHandle) -> Result<Vec<crate::services::voice_store::Voice>, CommandError> {
+    crate::services::voice_store::list(&app)
+}
+
+#[tauri::command]
+pub fn create_voice(app: AppHandle, name: String) -> Result<crate::services::voice_store::Voice, CommandError> {
+    crate::services::voice_store::create(&app, &name)
+}
+
+#[tauri::command]
+pub fn add_voice_sample(app: AppHandle, voice_id: String, name: String, source_path: String) -> Result<crate::services::voice_store::Voice, CommandError> {
+    crate::services::voice_store::add_sample(&app, &voice_id, &name, Path::new(&source_path), &settings::load(&app)?)
+}
+
+#[tauri::command]
+pub fn add_recorded_voice_sample(app: AppHandle, voice_id: String, name: String, bytes: Vec<u8>) -> Result<crate::services::voice_store::Voice, CommandError> {
+    if bytes.len() > 20 * 1024 * 1024 || bytes.is_empty() { return Err(CommandError::new("INVALID_VOICE_SAMPLE", "Recording is empty or too large.")); }
+    let path = std::env::temp_dir().join(format!("homer-recording-{}.webm", uuid::Uuid::new_v4()));
+    std::fs::write(&path, bytes).map_err(|error| CommandError::io("Cannot stage recording", error))?;
+    let result = crate::services::voice_store::add_sample(&app, &voice_id, &name, &path, &settings::load(&app)?);
+    let _ = std::fs::remove_file(path);
+    result
+}
+
+#[tauri::command]
+pub fn select_voice_sample(app: AppHandle, voice_id: String, sample_id: String) -> Result<crate::services::voice_store::Voice, CommandError> {
+    crate::services::voice_store::select_sample(&app, &voice_id, &sample_id)
+}
+
+#[tauri::command]
+pub fn voice_sample_url(app: AppHandle, state: State<'_, AppState>, voice_id: String, sample_id: String) -> Result<String, CommandError> {
+    let path = crate::services::voice_store::sample_path(&app, &voice_id, &sample_id)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    state.audio_assets.write().map_err(|_| CommandError::internal("Audio registry unavailable"))?.insert(id.clone(), path);
+    Ok(format!("audio://localhost/{id}"))
+}
+
+#[tauri::command]
+pub fn delete_voice(app: AppHandle, voice_id: String) -> Result<(), CommandError> {
+    crate::services::voice_store::delete(&app, &voice_id, &settings::load(&app)?.speech.voice_id)
 }
 
 #[tauri::command]
@@ -39,15 +77,8 @@ pub fn preview_voice(
     app: AppHandle,
     state: State<'_, AppState>,
     voice_id: String,
-    rate: u16,
+    _rate: u16,
 ) -> Result<String, CommandError> {
-    crate::services::speech::ensure_installed_voice(&voice_id)?;
-    if !(80..=500).contains(&rate) {
-        return Err(CommandError::new(
-            "INVALID_SPEECH_RATE",
-            "Speech rate must be between 80 and 500 words per minute.",
-        ));
-    }
     let directory = app
         .path()
         .app_cache_dir()
@@ -62,12 +93,12 @@ pub fn preview_voice(
     let output = directory.join(format!("{}.m4a", uuid::Uuid::new_v4()));
     let settings = settings::load(&app)?;
     crate::services::speech::generate(
+        &app,
         "Welcome to Homer Studio. This is a preview of your audiobook voice.",
         &voice_id,
-        rate,
         &output,
         &settings,
-        Default::default(),
+        &crate::services::jobs::JobControl::preview(),
     )?;
     let id = uuid::Uuid::new_v4().to_string();
     state
@@ -126,12 +157,12 @@ pub fn generate_chapter_audio(
             progress(10);
             let staged = crate::services::speech::staged_path(&queued_root, &queued_chapter);
             let duration = crate::services::speech::generate(
+                &app,
                 &text,
                 &settings.speech.voice_id,
-                settings.speech.rate,
                 &staged,
                 &settings,
-                control.cancelled.clone(),
+                &control,
             )?;
             control.boundary()?;
             progress(90);
