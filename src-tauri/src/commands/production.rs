@@ -1,9 +1,9 @@
-use crate::AppState;
 use crate::services::{
     llm::{self, TextCandidate},
     project_store::{self, CommandError, ProjectSnapshot},
     settings,
 };
+use crate::AppState;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -30,40 +30,127 @@ pub fn accept_processed_text(
 }
 
 #[tauri::command]
-pub fn list_voices(app: AppHandle) -> Result<Vec<crate::services::voice_store::Voice>, CommandError> {
+pub fn list_voices(
+    app: AppHandle,
+) -> Result<Vec<crate::services::voice_store::Voice>, CommandError> {
     crate::services::voice_store::list(&app)
 }
 
 #[tauri::command]
-pub fn create_voice(app: AppHandle, name: String) -> Result<crate::services::voice_store::Voice, CommandError> {
+pub fn create_voice(
+    app: AppHandle,
+    name: String,
+) -> Result<crate::services::voice_store::Voice, CommandError> {
     crate::services::voice_store::create(&app, &name)
 }
 
 #[tauri::command]
-pub fn add_voice_sample(app: AppHandle, voice_id: String, name: String, source_path: String) -> Result<crate::services::voice_store::Voice, CommandError> {
-    crate::services::voice_store::add_sample(&app, &voice_id, &name, Path::new(&source_path), &settings::load(&app)?)
+pub fn add_voice_sample(
+    app: AppHandle,
+    voice_id: String,
+    name: String,
+    source_path: String,
+) -> Result<crate::services::voice_store::Voice, CommandError> {
+    let voice = crate::services::voice_store::add_sample(
+        &app,
+        &voice_id,
+        &name,
+        Path::new(&source_path),
+        &settings::load(&app)?,
+    )?;
+    queue_voice_preview(app, voice.id.clone());
+    Ok(voice)
 }
 
 #[tauri::command]
-pub fn add_recorded_voice_sample(app: AppHandle, voice_id: String, name: String, bytes: Vec<u8>) -> Result<crate::services::voice_store::Voice, CommandError> {
-    if bytes.len() > 20 * 1024 * 1024 || bytes.is_empty() { return Err(CommandError::new("INVALID_VOICE_SAMPLE", "Recording is empty or too large.")); }
+pub fn add_recorded_voice_sample(
+    app: AppHandle,
+    voice_id: String,
+    name: String,
+    bytes: Vec<u8>,
+) -> Result<crate::services::voice_store::Voice, CommandError> {
+    if bytes.len() > 20 * 1024 * 1024 || bytes.is_empty() {
+        return Err(CommandError::new(
+            "INVALID_VOICE_SAMPLE",
+            "Recording is empty or too large.",
+        ));
+    }
     let path = std::env::temp_dir().join(format!("homer-recording-{}.webm", uuid::Uuid::new_v4()));
-    std::fs::write(&path, bytes).map_err(|error| CommandError::io("Cannot stage recording", error))?;
-    let result = crate::services::voice_store::add_sample(&app, &voice_id, &name, &path, &settings::load(&app)?);
+    std::fs::write(&path, bytes)
+        .map_err(|error| CommandError::io("Cannot stage recording", error))?;
+    let result = crate::services::voice_store::add_sample(
+        &app,
+        &voice_id,
+        &name,
+        &path,
+        &settings::load(&app)?,
+    );
     let _ = std::fs::remove_file(path);
-    result
+    let voice = result?;
+    queue_voice_preview(app, voice.id.clone());
+    Ok(voice)
+}
+
+fn queue_voice_preview(app: AppHandle, voice_id: String) {
+    std::thread::spawn(move || {
+        let Ok(settings) = settings::load(&app) else {
+            return;
+        };
+        let Ok(output) = crate::services::voice_store::preview_path(&app, &voice_id) else {
+            return;
+        };
+        let marker = output.with_file_name("preview.generating");
+        let Ok(_guard) = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&marker)
+        else {
+            return;
+        };
+        let _ = std::fs::remove_file(&output);
+        let temp = output.with_file_name("preview.pending.m4a");
+        let _ = std::fs::remove_file(&temp);
+        if crate::services::speech::generate(
+            &app,
+            "Welcome to Homer Studio. This is a preview of your audiobook voice.",
+            &voice_id,
+            &temp,
+            &settings,
+            &crate::services::jobs::JobControl::preview(),
+        )
+        .is_ok()
+        {
+            let _ = std::fs::rename(temp, output);
+        }
+        let _ = std::fs::remove_file(marker);
+    });
 }
 
 #[tauri::command]
-pub fn select_voice_sample(app: AppHandle, voice_id: String, sample_id: String) -> Result<crate::services::voice_store::Voice, CommandError> {
-    crate::services::voice_store::select_sample(&app, &voice_id, &sample_id)
+pub fn select_voice_sample(
+    app: AppHandle,
+    voice_id: String,
+    sample_id: String,
+) -> Result<crate::services::voice_store::Voice, CommandError> {
+    let voice = crate::services::voice_store::select_sample(&app, &voice_id, &sample_id)?;
+    queue_voice_preview(app, voice.id.clone());
+    Ok(voice)
 }
 
 #[tauri::command]
-pub fn voice_sample_url(app: AppHandle, state: State<'_, AppState>, voice_id: String, sample_id: String) -> Result<String, CommandError> {
+pub fn voice_sample_url(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    voice_id: String,
+    sample_id: String,
+) -> Result<String, CommandError> {
     let path = crate::services::voice_store::sample_path(&app, &voice_id, &sample_id)?;
     let id = uuid::Uuid::new_v4().to_string();
-    state.audio_assets.write().map_err(|_| CommandError::internal("Audio registry unavailable"))?.insert(id.clone(), path);
+    state
+        .audio_assets
+        .write()
+        .map_err(|_| CommandError::internal("Audio registry unavailable"))?
+        .insert(id.clone(), path);
     Ok(format!("audio://localhost/{id}"))
 }
 
@@ -79,6 +166,22 @@ pub fn preview_voice(
     voice_id: String,
     _rate: u16,
 ) -> Result<String, CommandError> {
+    if voice_id != crate::services::voice_store::DEFAULT_VOICE {
+        let output = crate::services::voice_store::preview_path(&app, &voice_id)?;
+        if !output.is_file() {
+            return Err(CommandError::new(
+                "VOICE_PREVIEW_PENDING",
+                "The voice preview is still being prepared. Try again in a moment.",
+            ));
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        state
+            .audio_assets
+            .write()
+            .map_err(|_| CommandError::internal("Audio registry unavailable"))?
+            .insert(id.clone(), output);
+        return Ok(format!("audio://localhost/{id}"));
+    }
     let directory = app
         .path()
         .app_cache_dir()

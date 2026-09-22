@@ -1,5 +1,11 @@
 # Task log
 
+## 2026-09-22 — Reliable custom voice previews
+- Voice sample imports already normalize and copy source audio into app-owned storage; the UI now confirms users can move the original file.
+- Align voice sample counts to the right edge of each card.
+- Custom voice previews synthesize in a background thread when samples are added or selected, then cache a measured M4A beside the voice. Preview playback reads the cache and returns a pending message while synthesis is running.
+- Renderer typecheck, six tests, production web build, Rust formatting for touched files, and `cargo check` passed. Model-side preview latency remains dependent on the local Chatterbox worker.
+
 ## 2026-09-22 — Neural voices and Sound Studio controls
 - User approved `docs/IMPLEMENTATION_PLAN_NEURAL_VOICES_AND_CONTROLS.md`. Four local stage commits added app-owned voice samples, Chatterbox previews and narration, a searchable voice picker with microphone recording/import, and three seeded Sound Studio effects variations. No push was made.
 - Voice references use one selected clear 6–20 second sample; the minimum was raised after a real Chatterbox job rejected a shorter clip. Voices screen and setup guides state the usable range. Legacy macOS preset settings still migrate, but no new speech path invokes system narration.
