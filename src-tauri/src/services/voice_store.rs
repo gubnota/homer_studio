@@ -77,9 +77,9 @@ pub fn add_sample(app: &AppHandle, voice_id: &str, name: &str, source: &Path, se
     if !result.success { let _ = fs::remove_file(&destination); return Err(CommandError::new("INVALID_VOICE_SAMPLE", result.stderr)); }
     let duration = speech::probe_duration(&destination, settings)?;
     let size = fs::metadata(&destination).map_err(|error| CommandError::io("Cannot inspect sample", error))?.len();
-    if !(2_000..=20_000).contains(&duration) || size > 2 * 1024 * 1024 {
+    if !(6_000..=20_000).contains(&duration) || size > 2 * 1024 * 1024 {
         let _ = fs::remove_file(&destination);
-        return Err(CommandError::new("INVALID_VOICE_SAMPLE", "Use a clear 2–20 second spoken sample smaller than 2 MB."));
+        return Err(CommandError::new("INVALID_VOICE_SAMPLE", "Use a clear 6–20 second spoken sample smaller than 2 MB."));
     }
     let bytes = fs::read(&destination).map_err(|error| CommandError::io("Cannot inspect sample", error))?;
     if bytes.iter().skip(44).all(|byte| *byte == 0) {

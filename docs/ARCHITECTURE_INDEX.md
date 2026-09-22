@@ -15,11 +15,11 @@
 - `src-tauri/`: Tauri lifecycle, permissions, Rust commands, icons, build configuration, and future native services.
 - `src-tauri/src/commands/project.rs`: native project and manuscript commands.
 - `src-tauri/src/services/project_store.rs`: schema v1 persistence, parsing, segmentation, atomic saves, and filesystem tests.
-- `src-tauri/src/services/settings.rs`: validated app settings, voice-preset migration, atomic persistence, and local tool/service diagnostics.
+- `src-tauri/src/services/settings.rs`: validated app settings, legacy voice-setting migration, atomic persistence, and local tool/service diagnostics.
 - `src-tauri/src/services/process_runner.rs`: argument-only child processes, timeout, cancellation, and bounded diagnostics.
 - `src-tauri/src/services/jobs.rs`: serialized heavy-work queue and pause/resume/cancel state.
 - `src-tauri/src/services/llm.rs`: bounded llama.cpp and loopback Ollama text processing with candidate-only results.
-- `src-tauri/src/services/speech.rs`: macOS voice discovery, narration, audio import, FFmpeg normalization, duration probing, and waveform peaks.
+- `src-tauri/src/services/speech.rs`: Chatterbox narration, audio import, FFmpeg normalization, duration probing, and waveform peaks.
 - `src-tauri/src/services/audio_protocol.rs`: registry-backed project audio delivery with byte-range support.
 - `src-tauri/src/services/exports.rs`: re-probed chapter assembly, copy/re-encode fallback, duration verification, and timestamp generation.
 - `src-tauri/src/services/sound_workers.rs`: bounded loopback worker client, health, job polling, cancellation, and WAV transfer.
@@ -30,12 +30,13 @@
 - `src-tauri/src/commands/production.rs`: text candidates, disposable voice previews, queued narration/import/export, audio playback, waveforms, chapter review, and export retrieval.
 - `src/shared/`: serializable contracts and pure chapter/time logic.
 - `src/renderer/src/native.ts`: typed renderer bridge to native commands, validated dropped manuscripts, and file dialogs.
-- `src/renderer/src/voice-presets.ts`: pure preset selection, creation, update, deletion, and built-in reset rules.
-- `src/renderer/`: React project library, drop-enabled importer, source/candidate chapter editor, voice presets and previews, narration/review, verified export history/timestamps, live queue, settings/tool status, shared controls, and prototype-derived styles.
+- `src-tauri/src/services/voice_store.rs`: app-data voice library, normalized reference samples, selected sample, and deletion.
+- `src/renderer/src/VoicePicker.tsx`: searchable modal voice picker shared across production screens.
+- `src/renderer/`: React project library, drop-enabled importer, source/candidate chapter editor, neural voices, sample recording, and previews, narration/review, verified export history/timestamps, live queue, settings/tool status, shared controls, and prototype-derived styles.
 - `src/renderer/src/SoundStudioPage.tsx`: book-independent prompt, worker status, clip library, playback, retry, and export.
 - `workers/`: local Chatterbox and AudioLDM 2/Stable Audio Open Python companions, shared versioned protocol, launcher, tests, and setup guide.
 - `tests/standalone-audio.test.tsx`: no-project and sound request UI checks.
-- `tests/manuscript-drop.test.ts` and `tests/voice-presets.test.ts`: focused renderer behavior tests.
+- `tests/manuscript-drop.test.ts` and `tests/standalone-audio.test.tsx`: focused renderer behavior tests.
 - `tests/DESKTOP_SMOKE.md`: automated and manual packaged-app smoke procedure.
 - `scripts/verify-release.mjs`: version, architecture, signature, and package verification plus ZIP creation.
 - `scripts/smoke-app.mjs`: isolated packaged-app startup check.

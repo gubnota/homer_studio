@@ -1,5 +1,11 @@
 # Task log
 
+## 2026-09-22 — Neural voices and Sound Studio controls
+- User approved `docs/IMPLEMENTATION_PLAN_NEURAL_VOICES_AND_CONTROLS.md`. Four local stage commits added app-owned voice samples, Chatterbox previews and narration, a searchable voice picker with microphone recording/import, and three seeded Sound Studio effects variations. No push was made.
+- Voice references use one selected clear 6–20 second sample; the minimum was raised after a real Chatterbox job rejected a shorter clip. Voices screen and setup guides state the usable range. Legacy macOS preset settings still migrate, but no new speech path invokes system narration.
+- Renderer typecheck, six tests across three files, production web build, 22 native tests, and seven worker protocol tests passed. A real local Chatterbox default-voice WAV, a 3.56-second WAV conditioned on a 12.84-second reference, and an AudioLDM 2 effects WAV completed and were probed. The final arm64 app, DMG, and ZIP passed package verification; the packaged app passed its startup smoke check.
+- Sound realism, spoken delivery, microphone permission behavior, modal layout, and long chapter narration still need listening and interactive packaged-app review. AudioLDM 2 quality is model-dependent; three variations are a selection aid.
+
 ## 2026-09-22 — Local sound worker repair
 - User reported both sound workers unavailable, Ollama falsely available, and odd effect output. Push remains deferred.
 - Ollama is running locally but `/api/tags` reports no installed models. Diagnostics now query the model API and distinguish unreachable service, empty model list, missing selected model, and ready service.

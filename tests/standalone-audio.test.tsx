@@ -18,6 +18,8 @@ describe('standalone sound studio', () => {
     expect(isValidSoundRequest(good)).toBe(true)
     expect(isValidSoundRequest({ ...good, prompt: ' ' })).toBe(false)
     expect(isValidSoundRequest({ ...good, durationSeconds: 21 })).toBe(false)
+    expect(isValidSoundRequest({ ...good, negativePrompt: 'music, voices' })).toBe(true)
+    expect(isValidSoundRequest({ ...good, negativePrompt: 'x'.repeat(301) })).toBe(false)
     expect(isValidSoundRequest({ ...good, seed: -1 })).toBe(false)
     expect(isValidSoundRequest({ ...good, category: 'vocal_gesture', prompt: 'heavy breathing' })).toBe(false)
     expect(isValidSoundRequest({ ...good, category: 'vocal_gesture', prompt: '[sigh]' })).toBe(true)

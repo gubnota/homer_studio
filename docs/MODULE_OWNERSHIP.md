@@ -6,10 +6,10 @@ Status: accepted boundaries for the authorized implementation.
 | --- | --- | --- |
 | Renderer | Screens, editing state, playback controls, progress/errors | Shared contracts and explicit Tauri commands |
 | Tauri application | App lifecycle, capabilities, command validation, service coordination | Rust domain services and shared serialized contracts |
-| Project/configuration services | Validated JSON, safe paths, atomic writes, recovery, tool diagnostics, and voice-preset migration | Rust standard library, Serde schemas, bounded process discovery |
+| Project/configuration services | Validated JSON, safe paths, atomic writes, recovery, tool diagnostics, and legacy voice-setting migration | Rust standard library, Serde schemas, bounded process discovery |
 | Job/process services | Sequential execution, cancellation, bounded logs | Rust process APIs and shared job types |
 | LLM providers | Optional text transformation through GGUF or Ollama | Process runner or local HTTP; shared provider contract |
-| Speech/audio services | Installed voice discovery, preset preview synthesis, speech generation, import, probing, normalization, concat | Process runner, project paths, shared audio types |
+| Speech/audio services | Neural voice reference storage and preview synthesis, speech generation, import, probing, normalization, concat | Process runner, project paths, shared audio types |
 | Sound workers | Local model loading and prompt-to-WAV generation | Shared worker protocol; local checkpoint folders only |
 | Standalone sound services | Worker access, WAV validation/conversion, independent clip manifest and export | Job/process services, FFmpeg/FFprobe, loopback worker protocol; never project manifests |
 | Shared domain | Serializable types, validation, ordering, timestamp formatting | Pure TypeScript and schema validation only |
@@ -21,7 +21,7 @@ Rules:
 - Tauri capabilities expose only named commands needed by the product.
 - Shared TypeScript code never imports renderer code or native implementations.
 - Speech generation and text LLM processing have separate interfaces.
-- Voice presets own only a macOS voice ID and rate; speech generation continues to consume the effective speech settings.
+- The voice store owns app-data voice identities and reference samples. Speech generation reads the selected sample and sends it through the worker client. The renderer never passes worker filesystem paths.
 - Standalone sounds never require or mutate a book project. The renderer uses narrow Tauri commands; only Rust talks to local workers.
 - Tool discovery is bounded to inherited PATH and documented system/user installation prefixes; the renderer can only select explicit files.
 - Services report structured results; the renderer displays them without inventing progress.

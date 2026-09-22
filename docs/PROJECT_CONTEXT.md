@@ -10,7 +10,7 @@
 
 ## Current milestone
 - Version 0.1.0 implements the local manuscript-to-audiobook workflow and standalone prompt-to-audio clip flow.
-- The Tauri app, durable project storage, drag-and-drop import, optional local text providers, reusable voice presets, narration/import, review, export, and packaging are implemented.
+- The Tauri app, durable project storage, drag-and-drop import, optional local text providers, local neural voice library, narration/import, review, export, and packaging are implemented.
 - The release target is a locally verified Apple Silicon app, DMG, and ZIP with GitHub CI/release automation.
 - Remote pushes remain deferred until the user asks.
 
@@ -22,7 +22,7 @@
 - JSON project/configuration files; no database.
 - FFmpeg, FFprobe, llama.cpp, and Ollama executables are discovered in bounded system and user Homebrew locations or selected explicitly in Settings.
 - Replaceable local text providers: llama.cpp / GGUF and Ollama.
-- Speech uses installed macOS voices plus imported audio.
+- Speech uses local Chatterbox Turbo with a built-in model voice or a selected user-recorded/imported voice reference; imported chapter audio is also supported.
 - Sound Studio uses a local Chatterbox Turbo worker for speech and a local AudioLDM 2 or Stable Audio Open worker for effects through versioned loopback HTTP; model checkpoints are user-managed.
 - GitHub Actions builds and verifies packages on macOS arm64.
 
@@ -44,11 +44,11 @@
 3. Inspect chapter boundaries and ordering.
 4. Edit chapter/segment text.
 5. Optionally process text using a selected local LLM.
-6. Select or create a local macOS voice preset, preview it, then generate speech or import chapter audio.
+6. Select the built-in neural voice or create a custom voice from a local sample, preview it, then generate speech or import chapter audio.
 7. Listen, flag, approve, and retry items.
 8. Combine complete chapter audio using FFmpeg.
 9. Save the final audio and measured chapter timestamps.
-10. Independently, prompt a short speech, vocal gesture, or sound effect in Sound Studio, then play, retry, or export the saved clip.
+10. Independently, prompt a short speech, vocal gesture, or sound effect in Sound Studio, optionally compare three effects variations, then play, retry, or export the saved clip.
 
 ## UI reference
 - Projects and Import screens.

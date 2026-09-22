@@ -1,6 +1,6 @@
 # Homer Studio
 
-Homer Studio is a local audiobook and sound-clip production app for Apple Silicon Macs. It imports TXT and Markdown manuscripts, lets you edit and process chapters, generates narration with installed macOS voices or imported audio, reviews each chapter, and exports one M4A audiobook with measured chapter timestamps. Sound Studio creates independent prompt-based clips without a book.
+Homer Studio is a local audiobook and sound-clip production app for Apple Silicon Macs. It imports TXT and Markdown manuscripts, lets you edit and process chapters, generates narration with local Chatterbox Turbo voices or imported audio, reviews each chapter, and exports one M4A audiobook with measured chapter timestamps. Sound Studio creates independent prompt-based clips without a book.
 
 Manuscripts, model requests, narration, and exports stay on the Mac. The app has no account, analytics, or hosted backend.
 
@@ -39,7 +39,7 @@ Generated text is always presented as a candidate. Accepting it changes narratio
 
 ## Narration and export
 
-The Voices screen starts with reusable presets. Built-in presets appear only when their macOS voices are installed. You can create a preset with a name, an installed voice, and a speaking rate, then preview or select it for narration. These are macOS voice settings; they do not clone a person's voice. Additional voices can be installed in macOS System Settings.
+The Voices screen offers the built-in Chatterbox model voice and custom voices from local reference samples. Create a voice, import a clear 6–20 second spoken recording or record through the microphone, then choose one sample to condition generation. You can keep multiple samples and switch between them; the app does not blend different speakers. Preview before a long narration run. Use punctuation and sentence breaks to shape speech, or supported tags such as `[sigh]` and `[laugh]`. Exact word emphasis and SSML are unavailable. Start the Chatterbox worker as described in [workers/README.md](workers/README.md).
 
 You can also import existing chapter audio. FFmpeg converts chapter media to 48 kHz stereo AAC/M4A and FFprobe measures its real duration.
 
@@ -47,7 +47,7 @@ Approve every current chapter recording before export. Homer Studio rechecks the
 
 ## Standalone sounds
 
-Open **Sound Studio** without a project. Choose **Sound effect** for fabric, ambience, or experimental panting prompts; choose **Speech** or a supported **Vocal gesture** for Chatterbox Turbo. Each finished clip stays in a separate library and can be played, retried, or exported as WAV or M4A. Sound generation needs local model checkpoints and companion Python workers; the app does not download or install them. See [workers/README.md](workers/README.md) for setup and limitations. Worker addresses are set in **Settings**.
+Open **Sound Studio** without a project. Choose **Sound effect** for fabric, ambience, or experimental panting prompts; choose **Speech** or a supported **Vocal gesture** for Chatterbox Turbo. For effects, add sounds to avoid and generate three variations to compare. Speech uses the selected voice from the searchable voice picker. Each finished clip stays in a separate library and can be played, retried, or exported as WAV or M4A. Sound generation needs local model checkpoints and companion Python workers; the app does not download or install them. See [workers/README.md](workers/README.md) for setup and limitations. Worker addresses are set in **Settings**.
 
 ## Checks and packages
 

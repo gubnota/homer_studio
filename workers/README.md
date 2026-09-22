@@ -45,14 +45,20 @@ Change the sound worker port with `HOMER_SFX_PORT` and the matching Settings fie
 ## Check and use
 
 ```sh
-curl http://127.0.0.1:8765/v1/health
-curl http://127.0.0.1:8766/v1/health
+curl http://127.0.0.1:8765/v2/health
+curl http://127.0.0.1:8766/v2/health
 ```
 
-Each response must report `protocolVersion: 1` and `ready: true`. This confirms checkpoint files and Python dependencies are present. The model is loaded on the first generation request; if that load fails, the job reports the error. Open **Sound Studio**, choose a category, enter a prompt, and generate. Finished clips appear in the independent Clip library, with a 48 kHz WAV master and M4A preview/export copy in the app data folder. Neither a manuscript nor a user voice sample is required.
+Each response must report `protocolVersion: 2` and `ready: true`. This confirms checkpoint files and Python dependencies are present. The model is loaded on the first generation request; if that load fails, the job reports the error. Open **Sound Studio**, choose a category, enter a prompt, and generate. Finished clips appear in the independent Clip library, with a 48 kHz WAV master and M4A preview/export copy in the app data folder. Neither a manuscript nor a user voice sample is required.
 
 To start both installed workers in the background from the repository root, run `python3 workers/start_local.py`. You may set `HOMER_CHATTERBOX_MODEL_DIR`, `HOMER_SFX_MODEL_DIR`, `HOMER_CHATTERBOX_PYTHON`, or `HOMER_SFX_PYTHON` for custom locations. The launcher reports missing model/environment paths and writes worker logs beside each worker. Launch it again after a restart. Settings URLs point to the **running service**, not to checkpoint folders.
 
 The worker API is documented in `docs/API_CONTRACTS.md`. It is bound to loopback and the Mac app accepts loopback addresses only. A future Linux GPU worker can implement the same versioned API, but remote authentication and transport are not part of this release.
 
 Automated tests use stub audio and cannot judge sound quality. Listen to a generated clip to assess whether a prompt and seed work for your purpose.
+
+## Voice samples and sound variations
+
+In **Voices**, create a voice, import a clear 6–20 second spoken sample or record one with the microphone, select the sample, and preview it. Homer Studio normalizes the sample to a bounded WAV in local app data. Chatterbox receives it through `POST /v2/references` and consumes the temporary reference during the next job; the worker does not need access to the voice library. The built-in model voice needs no sample. Only one selected sample conditions a generation; multiple speakers are not blended.
+
+In **Sound Studio**, the optional **Sounds to avoid** field becomes `negativePrompt` on an effects request. **Generate 3 variations** queues three neighboring seeds for listening comparison. Different seeds and more specific prompts can help, but neither model guarantees realistic fabric or panting.
