@@ -33,3 +33,6 @@
 .model-install progress { width: 100%; accent-color: #5145b5; }
 .model-install-actions { justify-content: flex-start; }
 .model-install .error-text { color: #b3263e; }
+.segment-takes { display: grid; gap: .5rem; width: 100%; }
+.segment-take { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding: .45rem .6rem; border: 1px solid var(--line, #ddd); border-radius: .6rem; }
+.segment-take audio { min-width: 180px; max-width: 340px; flex: 1; }

@@ -453,6 +453,20 @@ pub fn audio_url(
 }
 
 #[tauri::command]
+pub fn segment_take_url(state: State<'_, AppState>, root_path: String, chapter_id: String, segment_id: String, take_id: String) -> Result<String, CommandError> {
+    let path = project_store::segment_take_path(&root_path, &chapter_id, &segment_id, &take_id)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    state.audio_assets.write().map_err(|_| CommandError::internal("audio registry is unavailable"))?.insert(id.clone(), path);
+    Ok(format!("audio://localhost/{id}"))
+}
+
+#[tauri::command]
+pub fn select_segment_take(state: State<'_, AppState>, root_path: String, expected_revision: u64, chapter_id: String, segment_id: String, take_id: String) -> Result<ProjectSnapshot, CommandError> {
+    let _guard = state.project_write_lock.lock().map_err(|_| CommandError::internal("project lock is unavailable"))?;
+    project_store::select_segment_take(&root_path, expected_revision, &chapter_id, &segment_id, &take_id)
+}
+
+#[tauri::command]
 pub fn audio_waveform(
     app: AppHandle,
     root_path: String,

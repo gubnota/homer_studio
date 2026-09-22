@@ -359,6 +359,37 @@ pub fn selected_segment_takes(root_path: &str, chapter_id: &str) -> Result<Vec<(
     }).collect()
 }
 
+pub fn segment_take_path(root_path: &str, chapter_id: &str, segment_id: &str, take_id: &str) -> Result<PathBuf, CommandError> {
+    let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let manifest = read_manifest(&root)?;
+    let segment = manifest.chapters.iter().find(|chapter| chapter.id == chapter_id).and_then(|chapter| chapter.segments.iter().find(|segment| segment.id == segment_id))
+        .ok_or_else(|| CommandError::new("SEGMENT_NOT_FOUND", "The section no longer exists."))?;
+    let take = segment.takes.iter().find(|take| take.id == take_id)
+        .ok_or_else(|| CommandError::new("TAKE_NOT_FOUND", "The take no longer exists."))?;
+    let path = owned_path(&root, &take.audio_path)?;
+    if !path.is_file() { return Err(CommandError::new("TAKE_MISSING", "The take audio is missing.")); }
+    Ok(path)
+}
+
+pub fn select_segment_take(root_path: &str, expected_revision: u64, chapter_id: &str, segment_id: &str, take_id: &str) -> Result<ProjectSnapshot, CommandError> {
+    let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let mut manifest = read_manifest(&root)?;
+    require_revision(&manifest, expected_revision)?;
+    let chapter = manifest.chapters.iter_mut().find(|chapter| chapter.id == chapter_id)
+        .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
+    let segment = chapter.segments.iter_mut().find(|segment| segment.id == segment_id)
+        .ok_or_else(|| CommandError::new("SEGMENT_NOT_FOUND", "The section no longer exists."))?;
+    if !segment.takes.iter().any(|take| take.id == take_id) { return Err(CommandError::new("TAKE_NOT_FOUND", "The take no longer exists.")); }
+    if segment.selected_take.as_deref() == Some(take_id) { return snapshot(&root, manifest); }
+    segment.selected_take = Some(take_id.into());
+    chapter.audio_stale = chapter.audio_path.is_some();
+    chapter.review_status = chapter.audio_path.as_ref().map(|_| "pending".into());
+    manifest.revision += 1;
+    manifest.updated_at_ms = now_ms();
+    write_manifest(&root, &manifest)?;
+    snapshot(&root, manifest)
+}
+
 pub fn delete_generated_audio(
     root_path: &str,
     expected_revision: u64,

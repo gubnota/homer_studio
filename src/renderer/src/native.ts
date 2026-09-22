@@ -121,6 +121,10 @@ export const productionApi = {
     invoke<string>('audio_url', { rootPath: project.rootPath, chapterId }),
   waveform: (project: ProjectSnapshot, chapterId: string) =>
     invoke<number[]>('audio_waveform', { rootPath: project.rootPath, chapterId }),
+  takeUrl: (project: ProjectSnapshot, chapterId: string, segmentId: string, takeId: string) =>
+    invoke<string>('segment_take_url', { rootPath: project.rootPath, chapterId, segmentId, takeId }),
+  selectTake: (project: ProjectSnapshot, chapterId: string, segmentId: string, takeId: string) =>
+    invoke<ProjectSnapshot>('select_segment_take', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId, segmentId, takeId }),
   exportProject: (project: ProjectSnapshot) =>
     invoke<string>('export_project', { rootPath: project.rootPath, expectedRevision: project.revision }),
   exportAudioUrl: (project: ProjectSnapshot, exportId: string) =>
