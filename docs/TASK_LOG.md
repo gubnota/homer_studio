@@ -75,3 +75,8 @@
 - Speech baseline is explicitly proposed as macOS installed voices plus import, pending approval of the plan.
 - Planning-only validation: checked document presence, internal file references, headings, and absence of source/config changes.
 - This planning task performed no implementation, dependency installation, builds, tests, Git initialization, commits, or deployment.
+# 2026-09-22 — Expressive narration and line playback
+- Added supported vocal gesture tags and bounded `[pause:ms]` cues to Chatterbox narration, with parser coverage.
+- Generated chapter manifests now persist line cues; review playback can seek to and highlight each cue. Imported files correctly have no generated line timings.
+- Documented expressive markup, example dramatic pacing, cue behavior, and current line timing limitations in the UI and API contract.
+- Validation/build/release status: in progress.

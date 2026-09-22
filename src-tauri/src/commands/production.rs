@@ -259,7 +259,7 @@ pub fn generate_chapter_audio(
             control.boundary()?;
             progress(10);
             let staged = crate::services::speech::staged_path(&queued_root, &queued_chapter);
-            let duration = crate::services::speech::generate(
+            let speech = crate::services::speech::generate(
                 &app,
                 &text,
                 &settings.speech.voice_id,
@@ -277,8 +277,9 @@ pub fn generate_chapter_audio(
                 expected_revision,
                 &queued_chapter,
                 &staged,
-                duration,
+                speech.duration_ms,
                 "generated",
+                speech.cues,
             )?;
             Ok(())
         },
@@ -337,6 +338,7 @@ pub fn import_chapter_audio(
                 &staged,
                 duration,
                 "imported",
+                Vec::new(),
             )?;
             Ok(())
         },

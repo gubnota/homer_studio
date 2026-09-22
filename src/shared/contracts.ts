@@ -21,7 +21,10 @@ export interface Chapter {
   audioDurationMs: number | null
   audioOrigin: string | null
   reviewStatus: 'pending' | 'approved' | 'changes_requested' | null
+  cues: LineCue[]
 }
+
+export interface LineCue { order: number; text: string; startMs: number; endMs: number }
 
 export interface ExportRecord {
   id: string

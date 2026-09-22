@@ -55,6 +55,8 @@
 
 `ProjectSnapshot` adds the absolute `rootPath` and chapter source/processed text to the persisted manifest fields.
 
+Generated chapter audio stores optional `cues` on each chapter. A cue has `order`, clean spoken `text`, and `startMs`/`endMs`; legacy projects deserialize with no cues. Imported audio has an empty cue list. Narration accepts `[sigh]`, `[gasp]`, `[cough]`, `[laugh]`, `[chuckle]`, `[groan]`, and `[pause:100..5000]`; unsupported markers fail with `INVALID_SPEECH_MARKUP`.
+
 ## Implemented error codes
 - `INVALID_PATH`, `UNSAFE_PROJECT_PATH`, `PROJECT_EXISTS`, `PROJECT_NOT_FOUND`.
 - `INVALID_TITLE`, `EMPTY_MANUSCRIPT`, `MANUSCRIPT_TOO_LARGE`, `UNSUPPORTED_FILE`.

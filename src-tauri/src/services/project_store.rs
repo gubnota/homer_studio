@@ -65,6 +65,17 @@ pub struct Chapter {
     pub audio_origin: Option<String>,
     #[serde(default)]
     pub review_status: Option<String>,
+    #[serde(default)]
+    pub cues: Vec<LineCue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LineCue {
+    pub order: usize,
+    pub text: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,6 +270,7 @@ pub fn commit_chapter_audio(
     staged_audio: &Path,
     duration_ms: u64,
     origin: &str,
+    cues: Vec<LineCue>,
 ) -> Result<ProjectSnapshot, CommandError> {
     let root = fs::canonicalize(root_path)
         .map_err(|error| CommandError::io("Cannot open project folder", error))?;
@@ -282,6 +294,7 @@ pub fn commit_chapter_audio(
     chapter.audio_duration_ms = Some(duration_ms);
     chapter.audio_origin = Some(origin.to_string());
     chapter.review_status = Some("pending".into());
+    chapter.cues = cues;
     manifest.revision += 1;
     manifest.updated_at_ms = now_ms();
     write_manifest(&root, &manifest)?;
@@ -521,6 +534,7 @@ fn write_new_chapter(
         audio_duration_ms: None,
         audio_origin: None,
         review_status: None,
+        cues: Vec::new(),
     })
 }
 
@@ -782,11 +796,9 @@ mod tests {
         );
         let segments = segment_text(&input);
         assert_eq!(segments.len(), 3);
-        assert!(
-            segments
-                .iter()
-                .all(|segment| segment.text.chars().count() <= MAX_SEGMENT_CHARS)
-        );
+        assert!(segments
+            .iter()
+            .all(|segment| segment.text.chars().count() <= MAX_SEGMENT_CHARS));
     }
 
     #[test]
@@ -809,11 +821,9 @@ mod tests {
             .expect("update chapter");
         assert_eq!(updated.revision, 2);
         assert_eq!(updated.chapters[0].source_text, "Updated");
-        assert!(
-            Path::new(&updated.root_path)
-                .join("project.json.bak")
-                .is_file()
-        );
+        assert!(Path::new(&updated.root_path)
+            .join("project.json.bak")
+            .is_file());
 
         let conflict = update_chapter(&created.root_path, 1, &chapter_id, "Old", "Stale")
             .expect_err("reject stale revision");
@@ -827,13 +837,11 @@ mod tests {
             processed.chapters[0].processed_text.as_deref(),
             Some("Spoken version")
         );
-        assert!(
-            Path::new(&processed.root_path)
-                .join("chapters")
-                .join(&chapter_id)
-                .join("processed.txt")
-                .is_file()
-        );
+        assert!(Path::new(&processed.root_path)
+            .join("chapters")
+            .join(&chapter_id)
+            .join("processed.txt")
+            .is_file());
         fs::remove_dir_all(parent).expect("remove temporary project");
     }
 }
