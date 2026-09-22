@@ -29,13 +29,18 @@ pub struct Settings {
 #[serde(rename_all = "camelCase")]
 pub struct SoundSettings {
     pub chatterbox_url: String,
+    #[serde(default = "default_original_url")]
+    pub original_url: String,
     pub sfx_url: String,
 }
+
+fn default_original_url() -> String { "http://127.0.0.1:8767".into() }
 
 impl Default for SoundSettings {
     fn default() -> Self {
         Self {
             chatterbox_url: "http://127.0.0.1:8765".into(),
+            original_url: default_original_url(),
             sfx_url: "http://127.0.0.1:8766".into(),
         }
     }
@@ -66,7 +71,14 @@ pub struct SpeechSettings {
     pub provider: String,
     pub voice_id: String,
     pub rate: u16,
+    #[serde(default = "default_exaggeration")]
+    pub exaggeration: f32,
+    #[serde(default = "default_cfg_weight")]
+    pub cfg_weight: f32,
 }
+
+fn default_exaggeration() -> f32 { 0.5 }
+fn default_cfg_weight() -> f32 { 0.5 }
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,6 +111,8 @@ impl Default for Settings {
                 provider: "chatterbox_turbo".into(),
                 voice_id: super::voice_store::DEFAULT_VOICE.into(),
                 rate: 180,
+                exaggeration: default_exaggeration(),
+                cfg_weight: default_cfg_weight(),
             },
             ffmpeg_path: None,
             ffprobe_path: None,
@@ -229,6 +243,12 @@ pub fn diagnostics(settings: &Settings) -> Vec<ToolDiagnostic> {
         available: speech.ready, status: if speech.ready { "service_ready" } else { "service_unavailable" }.into(),
         configured_path: Some(settings.sounds.chatterbox_url.clone()), detected_path: None,
     });
+    let original = super::sound_workers::health(&settings.sounds.original_url, "chatterbox_original");
+    diagnostics.push(ToolDiagnostic {
+        key: "original_speech".into(), name: "Original Chatterbox".into(), path: Some(settings.sounds.original_url.clone()),
+        available: original.ready, status: if original.ready { "service_ready" } else { "service_unavailable" }.into(),
+        configured_path: Some(settings.sounds.original_url.clone()), detected_path: None,
+    });
     diagnostics
 }
 
@@ -245,6 +265,7 @@ fn llama_override(llm: &LlmSettings) -> Option<&str> {
 
 fn validate(settings: &Settings) -> Result<(), CommandError> {
     validate_worker_url(&settings.sounds.chatterbox_url)?;
+    validate_worker_url(&settings.sounds.original_url)?;
     validate_worker_url(&settings.sounds.sfx_url)?;
     if settings.schema_version != 1 {
         return Err(CommandError::new(
@@ -252,8 +273,12 @@ fn validate(settings: &Settings) -> Result<(), CommandError> {
             "Only settings version 1 is supported.",
         ));
     }
-    if settings.speech.provider != "chatterbox_turbo" || settings.speech.voice_id.trim().is_empty() {
+    if !matches!(settings.speech.provider.as_str(), "chatterbox_turbo" | "chatterbox_original") || settings.speech.voice_id.trim().is_empty() {
         return Err(CommandError::new("INVALID_SPEECH_PROVIDER", "Choose a Chatterbox voice."));
+    }
+    if !settings.speech.exaggeration.is_finite() || !(0.25..=2.0).contains(&settings.speech.exaggeration)
+        || !settings.speech.cfg_weight.is_finite() || !(0.0..=1.0).contains(&settings.speech.cfg_weight) {
+        return Err(CommandError::new("INVALID_EXPRESSION", "Set expression between 0.25 and 2, and pace between 0 and 1."));
     }
     if let LlmSettings::Ollama { base_url, .. } = &settings.llm {
         if !(base_url.starts_with("http://127.0.0.1:") || base_url.starts_with("http://localhost:"))
@@ -276,7 +301,7 @@ pub fn validate_worker_url(value: &str) -> Result<(), CommandError> {
 }
 
 fn migrate_speech(mut settings: Settings) -> Settings {
-    if settings.speech.provider != "chatterbox_turbo" {
+    if !matches!(settings.speech.provider.as_str(), "chatterbox_turbo" | "chatterbox_original") {
         settings.speech.provider = "chatterbox_turbo".into();
         settings.speech.voice_id = super::voice_store::DEFAULT_VOICE.into();
     }

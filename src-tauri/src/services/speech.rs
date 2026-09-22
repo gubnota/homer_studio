@@ -40,7 +40,9 @@ pub fn generate_with_progress(
             "There is no text to narrate.",
         ));
     }
-    let health = sound_workers::health(&settings.sounds.chatterbox_url, "chatterbox_turbo");
+    let original = settings.speech.provider == "chatterbox_original";
+    let worker_url = if original { &settings.sounds.original_url } else { &settings.sounds.chatterbox_url };
+    let health = sound_workers::health(worker_url, if original { "chatterbox_original" } else { "chatterbox_turbo" });
     if !health.ready {
         return Err(CommandError::new("WORKER_UNAVAILABLE", health.message));
     }
@@ -94,14 +96,14 @@ pub fn generate_with_progress(
                                 .as_ref()
                                 .map(|bytes| {
                                     sound_workers::upload_reference(
-                                        &settings.sounds.chatterbox_url,
+                                        worker_url,
                                         bytes,
                                     )
                                 })
                                 .transpose()?;
-                            let payload = serde_json::json!({"prompt": chunk, "category": "speech", "durationSeconds": 20, "seed": null, "referenceId": reference_id});
+                            let payload = serde_json::json!({"prompt": chunk, "category": "speech", "durationSeconds": 20, "seed": null, "referenceId": reference_id, "exaggeration": settings.speech.exaggeration, "cfgWeight": settings.speech.cfg_weight});
                             let wav = sound_workers::generate(
-                                &settings.sounds.chatterbox_url,
+                                worker_url,
                                 &payload,
                                 control,
                             )?;
@@ -116,19 +118,22 @@ pub fn generate_with_progress(
                         }
                     }
                     SpeechPart::Gesture(tag) => {
+                        if original {
+                            return Err(CommandError::new("GESTURE_REQUIRES_TURBO", "Bracketed vocal gestures require Chatterbox Turbo. Choose Turbo in Settings or remove the markers."));
+                        }
                         control.boundary()?;
                         let reference_id = reference
                             .as_ref()
                             .map(|bytes| {
                                 sound_workers::upload_reference(
-                                    &settings.sounds.chatterbox_url,
+                                    worker_url,
                                     bytes,
                                 )
                             })
                             .transpose()?;
                         let payload = serde_json::json!({"prompt": tag, "category": "vocal_gesture", "durationSeconds": 3, "seed": null, "referenceId": reference_id});
                         let wav = sound_workers::generate(
-                            &settings.sounds.chatterbox_url,
+                            worker_url,
                             &payload,
                             control,
                         )?;

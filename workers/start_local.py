@@ -31,11 +31,11 @@ def start(name, port, model, python, script):
     if not model.is_dir():
         print(f"{name}: model folder missing: {model}")
         return
-    log = ROOT / name / "worker.log"
+    log = ROOT / ("chatterbox" if name == "original" else name) / ("original.log" if name == "original" else "worker.log")
     environment = os.environ.copy()
     environment["HF_HOME"] = str(ROOT / name / ".cache")
     environment["TOKENIZERS_PARALLELISM"] = "false"
-    environment["HOMER_CHATTERBOX_MODEL_DIR" if name == "chatterbox" else "HOMER_SFX_MODEL_DIR"] = str(model)
+    environment[{"chatterbox": "HOMER_CHATTERBOX_MODEL_DIR", "original": "HOMER_CHATTERBOX_ORIGINAL_MODEL_DIR", "sfx": "HOMER_SFX_MODEL_DIR"}[name]] = str(model)
     with log.open("ab") as output:
         subprocess.Popen([str(python), str(script)], cwd=ROOT.parent, env=environment,
                          stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
@@ -51,8 +51,8 @@ def start(name, port, model, python, script):
 
 if __name__ == "__main__":
     requested = set(sys.argv[1:]) or {"chatterbox", "sfx"}
-    if not requested <= {"chatterbox", "sfx"}:
-        raise SystemExit("Usage: python3 workers/start_local.py [chatterbox] [sfx]")
+    if not requested <= {"chatterbox", "original", "sfx"}:
+        raise SystemExit("Usage: python3 workers/start_local.py [chatterbox] [original] [sfx]")
     if "chatterbox" in requested:
         start("chatterbox", int(os.environ.get("HOMER_CHATTERBOX_PORT", "8765")),
               Path(os.environ.get("HOMER_CHATTERBOX_MODEL_DIR", ROOT / "chatterbox/models/chatterbox-turbo")),
@@ -63,3 +63,8 @@ if __name__ == "__main__":
               Path(os.environ.get("HOMER_SFX_MODEL_DIR", ROOT / "sfx/models/stable-audio-open-1.0")),
               Path(os.environ.get("HOMER_SFX_PYTHON", ROOT / "sfx/.venv/bin/python")),
               ROOT / "sfx/server.py")
+    if "original" in requested:
+        start("original", int(os.environ.get("HOMER_CHATTERBOX_ORIGINAL_PORT", "8767")),
+              Path(os.environ.get("HOMER_CHATTERBOX_ORIGINAL_MODEL_DIR", ROOT / "chatterbox/models/chatterbox-original")),
+              Path(os.environ.get("HOMER_CHATTERBOX_PYTHON", ROOT / "chatterbox/.venv/bin/python")),
+              ROOT / "chatterbox/original.py")

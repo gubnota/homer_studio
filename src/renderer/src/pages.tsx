@@ -436,6 +436,8 @@ function SettingsForm({ settings, tools, onChange }: { settings: Settings; tools
   }
   return <section className="panel settings-form">
     <h2>Speech</h2>
+    <label>Narration model<select value={settings.speech.provider} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, provider: event.target.value as Settings['speech']['provider'] } })}><option value="chatterbox_turbo">Chatterbox Turbo · speech and vocal gestures</option><option value="chatterbox_original">Original Chatterbox · expression controls</option></select></label>
+    {settings.speech.provider === 'chatterbox_original' && <div className="expression-controls"><label>Expression · {settings.speech.exaggeration.toFixed(2)}<input type="range" min="0.25" max="2" step="0.05" value={settings.speech.exaggeration} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, exaggeration: Number(event.target.value) } })} /></label><label>CFG / pace · {settings.speech.cfgWeight.toFixed(2)}<input type="range" min="0" max="1" step="0.05" value={settings.speech.cfgWeight} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, cfgWeight: Number(event.target.value) } })} /></label></div>}
     <div className="voice-field"><span>Narration voice</span><button onClick={() => setPickerOpen(true)}>{voices.find((voice) => voice.id === settings.speech.voiceId)?.name ?? 'Choose a voice'}</button></div>
     <VoicePicker open={pickerOpen} voices={voices} selectedId={settings.speech.voiceId} onSelect={(voice) => onChange({ ...settings, speech: { ...settings.speech, voiceId: voice.id } })} onClose={() => setPickerOpen(false)} />
     <h2>Audio tools</h2>
@@ -444,6 +446,7 @@ function SettingsForm({ settings, tools, onChange }: { settings: Settings; tools
     <h2>Sound workers</h2>
     <p className="field-note">Start each local worker separately. Sound Studio shows whether its model is ready.</p>
     <label>Chatterbox URL<input value={settings.sounds.chatterboxUrl} onChange={(event) => onChange({ ...settings, sounds: { ...settings.sounds, chatterboxUrl: event.target.value } })} /></label>
+    <label>Original Chatterbox URL<input value={settings.sounds.originalUrl} onChange={(event) => onChange({ ...settings, sounds: { ...settings.sounds, originalUrl: event.target.value } })} /></label>
     <label>Sound effects URL<input value={settings.sounds.sfxUrl} onChange={(event) => onChange({ ...settings, sounds: { ...settings.sounds, sfxUrl: event.target.value } })} /></label>
     <h2>Text processing</h2>
     <label>Provider<select value={settings.llm.provider} onChange={(event) => onChange({ ...settings, llm: event.target.value === 'ollama' ? { provider: 'ollama', base_url: 'http://127.0.0.1:11434', model: '', context_size: 8192, max_tokens: 2048 } : event.target.value === 'llama_cpp' ? { provider: 'llama_cpp', executable_path: '', model_path: '', context_size: 8192, max_tokens: 2048, gpu_layers: 99 } : { provider: 'none' } })}><option value="none">Disabled</option><option value="llama_cpp">llama.cpp / GGUF</option><option value="ollama">Ollama</option></select></label>

@@ -32,7 +32,11 @@ pub fn health(url: &str, expected_engine: &str) -> WorkerHealth {
         engine: expected_engine.into(),
         model: "not loaded".into(),
         ready: false,
-        categories: if expected_engine == "chatterbox_turbo" { vec!["speech".into(), "vocal_gesture".into()] } else { vec!["sound_effect".into()] },
+        categories: match expected_engine {
+            "chatterbox_turbo" => vec!["speech".into(), "vocal_gesture".into()],
+            "chatterbox_original" => vec!["speech".into()],
+            _ => vec!["sound_effect".into()],
+        },
         max_duration_seconds: 20,
         message,
     };

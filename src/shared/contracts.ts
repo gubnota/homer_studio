@@ -67,13 +67,13 @@ export type LlmSettings =
 export interface Settings {
   schemaVersion: 1
   llm: LlmSettings
-  speech: { provider: 'macos_say' | 'chatterbox_turbo'; voiceId: string; rate: number }
+  speech: { provider: 'chatterbox_turbo' | 'chatterbox_original'; voiceId: string; rate: number; exaggeration: number; cfgWeight: number }
   ffmpegPath: string | null
   ffprobePath: string | null
   ollamaPath: string | null
   voicePresets: VoicePreset[]
   selectedVoicePresetId: string | null
-  sounds: { chatterboxUrl: string; sfxUrl: string }
+  sounds: { chatterboxUrl: string; originalUrl: string; sfxUrl: string }
 }
 
 export type SoundCategory = 'speech' | 'vocal_gesture' | 'sound_effect'

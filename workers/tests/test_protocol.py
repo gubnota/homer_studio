@@ -100,6 +100,19 @@ class WorkerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             voice.start({"prompt": "Hello.", "category": "speech", "durationSeconds": 2, "negativePrompt": "music"})
 
+    def test_original_speech_accepts_reference_but_not_turbo_gestures(self):
+        voice = Worker("chatterbox_original", self.folder.name, ["speech"], silence)
+        reference_id = voice.add_reference(silence(None, None))
+        job_id = voice.start({"prompt": "Tomorrow.", "category": "speech", "durationSeconds": 2,
+                              "referenceId": reference_id, "exaggeration": 0.7, "cfgWeight": 0.4})
+        for _ in range(50):
+            if voice.status(job_id)["status"] == "completed":
+                break
+            time.sleep(0.01)
+        self.assertEqual(voice.status(job_id)["status"], "completed")
+        with self.assertRaises(ValueError):
+            voice.start({"prompt": "[sigh]", "category": "vocal_gesture", "durationSeconds": 2})
+
 
 if __name__ == "__main__":
     unittest.main()

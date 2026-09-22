@@ -17,6 +17,18 @@ HOMER_CHATTERBOX_MODEL_DIR=/absolute/path/to/chatterbox-turbo python3 workers/st
 
 The default address is `http://127.0.0.1:8765`. Use `HOMER_CHATTERBOX_PORT` to change it, and set the matching address in Homer Studio Settings. Speech takes exact English text. Documented Turbo tags are `[clear throat]`, `[sigh]`, `[shush]`, `[cough]`, `[groan]`, `[sniff]`, `[gasp]`, `[chuckle]`, and `[laugh]`; they can appear inline with spoken words. Chatterbox is not used for arbitrary fabric or ambience prompts.
 
+## Original Chatterbox for expressive English speech
+
+The original Chatterbox model is an alternative speech engine. It provides exaggeration and CFG controls and accepts a selected voice sample. It does not interpret Turbo's bracketed vocal-gesture tags; choose Turbo for those tags.
+
+Download the [complete original checkpoint](https://huggingface.co/ResembleAI/chatterbox/tree/main) into a local folder containing `ve.safetensors`, `t3_cfg.safetensors`, `s3gen.safetensors`, `tokenizer.json`, and `conds.pt`. Install the Chatterbox requirements as above, then run:
+
+```sh
+HOMER_CHATTERBOX_ORIGINAL_MODEL_DIR=/absolute/path/to/chatterbox workers/chatterbox/.venv/bin/python workers/start_local.py original
+```
+
+The original worker listens at `http://127.0.0.1:8767` by default. Select **Original Chatterbox** in Settings and set that service address there. Its health check confirms the dependencies and files are present; the model loads when the first generation begins. A saved voice sample is copied into Homer Studio's local library when imported, so its original file can be moved afterward.
+
 ## Sound effects: Stable Audio Open
 
 1. Request access to the [Stable Audio Open 1.0 checkpoint](https://huggingface.co/stabilityai/stable-audio-open-1.0), accept its terms, and download the complete Diffusers-format repository to a local folder. It must include `model_index.json` and the component weights. Check the model license and permitted uses yourself.
@@ -36,6 +48,7 @@ The default address is `http://127.0.0.1:8766`. The worker uses Apple Silicon MP
 ```sh
 curl http://127.0.0.1:8765/v2/health
 curl http://127.0.0.1:8766/v2/health
+curl http://127.0.0.1:8767/v2/health
 ```
 
 Each response must report `protocolVersion: 2` and `ready: true`. This confirms checkpoint files and Python dependencies are present. The model is loaded on the first generation request; if that load fails, the job reports the error. Open **Sound Studio**, choose a category, enter a prompt, and generate. Finished clips appear in the independent Clip library, with a 48 kHz WAV master and M4A preview/export copy in the app data folder. Neither a manuscript nor a user voice sample is required.

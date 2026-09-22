@@ -56,11 +56,11 @@ class Worker:
         if seed is not None and (type(seed) is not int or not 0 <= seed <= 2147483647):
             raise ValueError("Seed must be a non-negative 32-bit integer.")
         negative = request.get("negativePrompt")
-        if negative is not None and (self.engine == "chatterbox_turbo" or not isinstance(negative, str) or len(negative) > 300):
+        if negative is not None and (self.engine in ("chatterbox_turbo", "chatterbox_original") or not isinstance(negative, str) or len(negative) > 300):
             raise ValueError("Unwanted sounds must be text under 300 characters for effects only.")
         reference_id = request.get("referenceId")
         if reference_id is not None:
-            if self.engine != "chatterbox_turbo" or not isinstance(reference_id, str):
+            if self.engine not in ("chatterbox_turbo", "chatterbox_original") or not isinstance(reference_id, str):
                 raise ValueError("Reference audio is only supported for Chatterbox speech.")
             with self.lock:
                 if reference_id not in self.references:
@@ -106,7 +106,7 @@ class Worker:
                     Path(reference_path).unlink(missing_ok=True)
 
     def add_reference(self, audio):
-        if self.engine != "chatterbox_turbo":
+        if self.engine not in ("chatterbox_turbo", "chatterbox_original"):
             raise ValueError("This worker does not accept voice samples.")
         if not 44 <= len(audio) <= MAX_REFERENCE or not audio.startswith(b"RIFF") or audio[8:12] != b"WAVE":
             raise ValueError("Upload a WAV voice sample smaller than 2 MB.")
