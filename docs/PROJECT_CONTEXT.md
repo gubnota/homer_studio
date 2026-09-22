@@ -9,10 +9,10 @@
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
-- Version 0.2.0 adds project import defaults, long-text local processing, shared Sound Studio clip selection/export, expressive speech cues, line-level playback navigation, and refreshed app artwork; Apple Silicon packaging is the current release checkpoint.
+- Version 0.2.0 now includes explicit English model installation, per-section narration and takes, queue progress/cleanup, and recording-to-narrator conversion; Apple Silicon packaging is the current release checkpoint.
 - The Tauri app, durable project storage, drag-and-drop import, optional local text providers, local neural voice library, narration/import, review, export, and packaging are implemented.
-- The locally verified release deliverables are the Apple Silicon app bundle and ZIP with GitHub CI/release automation; DMG assembly is currently failing in the macOS bundler.
-- User authorized publishing the arm64 release artifact/tag after local verification; push only after package checks pass.
+- The current arm64 app bundle is being rebuilt and verified; no new release has been pushed or tagged.
+- The user explicitly deferred pushing; keep this implementation and its commits local until asked.
 
 ## Technology
 - Tauri 2 desktop shell with a narrow Rust command boundary.
@@ -22,8 +22,8 @@
 - JSON project/configuration files; no database.
 - FFmpeg, FFprobe, llama.cpp, and Ollama executables are discovered in bounded system and user Homebrew locations or selected explicitly in Settings.
 - Replaceable local text providers: llama.cpp / GGUF and Ollama.
-- Speech uses local Chatterbox Turbo with a built-in model voice or a selected user-recorded/imported voice reference; imported chapter audio is also supported.
-- Sound Studio uses a local Chatterbox Turbo worker for speech and a local AudioLDM 2 or Stable Audio Open worker for effects through versioned loopback HTTP; model checkpoints are user-managed.
+- English speech uses local Chatterbox Turbo or Original with a built-in or selected recorded/imported voice reference; Original also converts recorded delivery to the chosen narrator voice.
+- Sound Studio uses Chatterbox Turbo for speech and Stable Audio Open for effects through versioned loopback HTTP. Turbo and Original checkpoints can be explicitly installed from Settings.
 - GitHub Actions builds and verifies packages on macOS arm64.
 
 ## Hard constraints
@@ -33,7 +33,7 @@
 - Do not invent a reference application that is not present.
 - Remain local-first; no application accounts or remote backend.
 - Models and executables are configurable, never tied to one machine's paths.
-- Do not download model weights automatically.
+- Download Turbo/Original weights only after an explicit user action in Settings; show byte progress and disk use.
 - No mandatory Apple Developer credentials for test packages.
 - No Intel or universal-build requirement for the first milestone.
 - Development packages use ad-hoc signing; public Developer ID signing/notarization is a later distribution concern.
@@ -44,11 +44,11 @@
 3. Inspect chapter boundaries and ordering.
 4. Edit chapter/segment text.
 5. Optionally process text using a selected local LLM.
-6. Select the built-in neural voice or create a custom voice from a local sample, preview it, then generate speech or import chapter audio.
-7. Listen, flag, approve, and retry items.
+6. Choose a built-in or custom voice, install/start the English worker, then narrate a chapter or individual section; record and convert a section as a preview take when needed.
+7. Listen to takes, choose the preferred one, assemble the chapter, then flag or approve it.
 8. Combine complete chapter audio using FFmpeg.
 9. Save the final audio and measured chapter timestamps.
-10. Independently, prompt a short speech, vocal gesture, or sound effect in Sound Studio, optionally compare three effects variations, then play, retry, or export the saved clip.
+10. Independently, prompt speech with supported Turbo gesture tags or a Stable Audio Open effect in Sound Studio, then play, compare, retry, or export clips.
 
 ## UI reference
 - Projects and Import screens.
@@ -108,4 +108,4 @@
 - `docs/API_CONTRACTS.md`: persisted, command, provider, media, and export contracts.
 - `docs/DECISIONS.md`: accepted architecture decisions.
 - `docs/TASK_LOG.md`: progress and verification status.
-- `docs/IMPLEMENTATION_PLAN.md`: implementation handoff once written.
+- `docs/IMPLEMENTATION_PLAN_NARRATION_EDITING_AND_MODEL_SETUP.md`: approved current feature plan.

@@ -1,5 +1,12 @@
 # Task log
 
+## 2026-09-23 — English narration and model setup
+- Approved plan: `docs/IMPLEMENTATION_PLAN_NARRATION_EDITING_AND_MODEL_SETUP.md`. Commits are local; pushing is deferred. The user's heading-font change in `src/renderer/styles/app.css` is deliberately untouched.
+- Render Queue now exposes actual chunk progress, elapsed phase, bounded logs/errors, Select all/Deselect all/Clean, and cancel. Chapter export/delete and Sound Studio's Kind modal, selection controls, and improved spacing are in place. Save-dialog permission and explicit macOS icon verification were added.
+- Markdown is normalized before narration. Chapters have stable editable sections, non-destructive saved takes, manual Generate remaining and Assemble, measured section cues, waveform navigation, and section-scoped recording. Original Chatterbox voice conversion creates a preview take; choosing a take is explicit.
+- Turbo and Original English checkpoints have explicit install/retry/cancel actions with byte progress and disk use. AudioLDM 2 generation was removed; existing clips remain in the library.
+- Web build, six renderer tests, 27 Rust tests, and nine worker tests passed. A fresh arm64 `.app` passed architecture/signature/icon checks and packaged-app startup smoke. Real voice conversion has not been listened to because local Original weights/dependencies are not installed. The waveform selects whole narrated sections; free-range splicing and fades remain unfinished.
+
 ## 2026-09-22 — Reliable custom voice previews
 - Voice sample imports already normalize and copy source audio into app-owned storage; the UI now confirms users can move the original file.
 - Align voice sample counts to the right edge of each card.

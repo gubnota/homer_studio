@@ -4,7 +4,7 @@
 - File: `project.json` at the project root, with `project.json.bak` holding the previous revision.
 - Required fields: `schemaVersion`, UUID `id`, `title`, monotonic `revision`, millisecond timestamps, and ordered `chapters`.
 - Chapter fields: stable UUID, title, zero-based order, relative source/processed/audio paths, segments, `audioStale`, measured `audioDurationMs`, `audioOrigin`, and `reviewStatus`.
-- Segment fields: stable UUID, zero-based order, text, and optional selected take path.
+- Segment fields: stable UUID, zero-based order, text, optional selected take ID, and `takes[]` with ID, project-relative audio path, and measured duration. Old projects default missing take/cue fields.
 - Export history fields: stable UUID, relative M4A/timestamp paths, verified duration, creation time, source revision, and source content-update time.
 - Project-owned paths must be relative normal path components. Absolute paths and parent traversal are rejected.
 - Writes use a same-folder temporary file followed by rename. Mutations require the caller's expected revision.
@@ -18,12 +18,15 @@
 - `desktop_info() -> { platform, architecture, runtime }`.
 - `get_settings()`, `save_settings(settings) -> SettingsV1`; settings are stored atomically in the app configuration folder.
 - `tool_diagnostics() -> ToolDiagnostic[]`; resolution checks explicit overrides, process PATH, then bounded system and user Homebrew paths without a shell. Each result exposes `key`, `name`, effective `path`, `available`, `status`, `configuredPath`, and `detectedPath`. Ollama CLI and loopback server health are separate results.
-- `list_jobs() -> JobRecord[]`, `control_job(jobId, action)` where action is `pause`, `resume`, or `cancel` for an active job.
+- `list_jobs() -> JobRecord[]`, `control_job(jobId, action)` where action is `pause`, `resume`, or `cancel` for an active job; `dismiss_jobs(jobIds)` removes only terminal queue rows. Jobs carry bounded timestamped events, stage, progress, and errors.
 - `process_text(instruction, text) -> TextCandidate`; uses the configured local llama.cpp or loopback Ollama provider and does not mutate project files.
 - `accept_processed_text(rootPath, expectedRevision, chapterId, text) -> ProjectSnapshot`; stores a reviewed candidate separately from source text and regenerates segments.
 - `list_voices() -> Voice[]`; reads the app-data voice library, including the built-in Chatterbox model voice. `create_voice(name)`, `add_voice_sample(voiceId,name,sourcePath)`, `add_recorded_voice_sample(voiceId,name,bytes)`, `select_voice_sample(voiceId,sampleId)`, `voice_sample_url(voiceId,sampleId)`, and `delete_voice(voiceId)` manage local reference samples. Source audio is normalized into an app-owned WAV before import returns; custom voices need a selected sample before use.
 - `preview_voice(voiceId, rate) -> audio://localhost/<opaque-id>`; custom voice previews are synthesized in the background after adding or selecting a sample and cached as `voices/<voiceId>/preview.m4a`. Until ready, return `VOICE_PREVIEW_PENDING`; the UI can retry without holding a generation request open. The rate argument remains for IPC compatibility; neural generation does not use words-per-minute control.
-- `generate_chapter_audio(...) -> jobId` and `import_chapter_audio(...) -> jobId`; queue conversion to canonical AAC/M4A and only commit a measured, valid result.
+- `generate_chapter_audio(...) -> jobId` and `import_chapter_audio(...) -> jobId`; queue conversion to canonical AAC/M4A and only commit a measured, valid result. `generate_segment_audio(...) -> jobId` saves and selects one take; `assemble_chapter_takes(...) -> jobId` joins selected takes in source order.
+- `segment_take_url(...) -> audio://localhost/<opaque-id>` plays one saved take. `select_segment_take(...) -> ProjectSnapshot` selects it and marks assembled chapter audio stale. `convert_segment_recording(..., bytes) -> jobId` requires a valid project revision, selected narrator sample, FFmpeg, and the Original worker; it saves an unselected preview take.
+- `export_chapter_audio(...)` writes a chosen M4A via the save dialog; `delete_generated_chapter_audio(...)` removes current generated chapter audio.
+- `model_status(model) -> ModelStatus` and `install_model(model) -> jobId` cover pinned `turbo | original` checkpoints with byte progress, missing-file list, and disk use.
 - `set_chapter_review(...) -> ProjectSnapshot`; accepts `approved` or `changes_requested` for current chapter audio.
 - `audio_url(...) -> audio://localhost/<opaque-id>` and `audio_waveform(...) -> number[]`; expose only registered project audio, with byte-range playback and bounded peak data.
 - `export_project(...) -> jobId`; re-probes all current approved chapters, tries verified stream-copy concatenation, falls back to one canonical AAC encode, then commits the M4A/timestamp pair with export history.
@@ -38,15 +41,15 @@
 ## Local audio worker protocol v2
 - Each worker binds `127.0.0.1`. The Mac app accepts only `http://127.0.0.1:<port>`. `GET /v2/health` returns `protocolVersion`, `engine`, `model`, `ready`, `categories`, `maxDurationSeconds`, and `message`.
 - `POST /v2/jobs` takes the `SoundRequest` JSON and returns HTTP 202 `{id}`. `GET /v2/jobs/<id>` returns `{id,status,error,format}` with `queued | running | completed | failed | cancelled`; `DELETE` cancels. A completed job provides WAV bytes at `GET /v2/jobs/<id>/audio`.
-- `POST /v2/references` accepts a bounded WAV and returns an opaque reference ID. A speech or gesture job may include `referenceId`; Chatterbox consumes and deletes its staged file after the job. Effects jobs may include `negativePrompt`. No path from a worker request is trusted.
-- Chatterbox engine ID `chatterbox_turbo` supports speech and documented vocal tags. Sound effects accept engine ID `audioldm2` or `stable_audio_open` at the configured SFX URL. Worker errors use JSON `{error}`. Responses and audio are size bounded; model packages and checkpoints are never downloaded in request handling.
+- `POST /v2/references` accepts a bounded WAV and returns an opaque reference ID. A Chatterbox speech or gesture job may include `referenceId`. Original voice conversion uses category `voice_conversion` plus both `sourceId` and `referenceId`; the worker consumes and deletes both temporary WAVs after the job. Effects jobs may include `negativePrompt`. No path from a worker request is trusted.
+- Chatterbox engine ID `chatterbox_turbo` supports speech and documented vocal tags. Original engine ID `chatterbox_original` supports English speech and voice conversion, while `stable_audio_open` is the sole effects engine. Worker errors use JSON `{error}`. Responses and audio are size bounded; model packages and checkpoints are never downloaded in request handling.
 
 ## Settings v1
 - `llm`: `none`, `llama_cpp`, or `ollama`. Ollama URLs must use loopback HTTP.
-- `speech`: `chatterbox_turbo` and an app-data voice ID. Legacy `macos_say`, rate, `voicePresets`, and `selectedVoicePresetId` fields are accepted for migration, but macOS synthesis and preset selection are no longer offered. Custom voices need a selected sample.
+- `speech`: `chatterbox_turbo | chatterbox_original` and an app-data voice ID. Legacy `macos_say`, rate, `voicePresets`, and `selectedVoicePresetId` fields are accepted for migration, but macOS synthesis and preset selection are no longer offered. Custom voices need a selected sample.
 - Voice library: `voices/library.json` plus normalized, bounded local WAV sample files. One selected sample conditions each generation; distinct speakers are not blended.
 - Optional explicit FFmpeg, FFprobe, and Ollama executable paths. llama.cpp keeps its executable and GGUF model paths in its provider settings.
-- `sounds.chatterboxUrl` and `sounds.sfxUrl` default to ports 8765 and 8766. Existing settings migrate through defaults. Worker URLs must be loopback HTTP.
+- `sounds.chatterboxUrl`, `sounds.originalUrl`, and `sounds.sfxUrl` default to ports 8765, 8767, and 8766. Existing settings migrate through defaults. Worker URLs must be loopback HTTP.
 
 ## Job states
 - `queued -> running -> completed | failed | cancelled`.
