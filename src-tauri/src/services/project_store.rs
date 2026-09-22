@@ -321,6 +321,7 @@ pub fn commit_segment_take(
     segment_id: &str,
     staged_audio: &Path,
     duration_ms: u64,
+    select: bool,
 ) -> Result<ProjectSnapshot, CommandError> {
     let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
     let mut manifest = read_manifest(&root)?;
@@ -335,9 +336,11 @@ pub fn commit_segment_take(
     if let Some(parent) = destination.parent() { fs::create_dir_all(parent).map_err(|error| CommandError::io("Cannot create take folder", error))?; }
     fs::copy(staged_audio, &destination).map_err(|error| CommandError::io("Cannot store segment take", error))?;
     segment.takes.push(SegmentTake { id: take_id.clone(), audio_path: relative_path, duration_ms });
-    segment.selected_take = Some(take_id);
-    chapter.audio_stale = chapter.audio_path.is_some();
-    chapter.review_status = chapter.audio_path.as_ref().map(|_| "pending".into());
+    if select {
+        segment.selected_take = Some(take_id);
+        chapter.audio_stale = chapter.audio_path.is_some();
+        chapter.review_status = chapter.audio_path.as_ref().map(|_| "pending".into());
+    }
     manifest.revision += 1;
     manifest.updated_at_ms = now_ms();
     if let Err(error) = write_manifest(&root, &manifest) { let _ = fs::remove_file(destination); return Err(error); }

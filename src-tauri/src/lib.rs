@@ -81,6 +81,7 @@ pub fn run() {
             commands::production::audio_url,
             commands::production::segment_take_url,
             commands::production::select_segment_take,
+            commands::production::convert_segment_recording,
             commands::production::audio_waveform,
             commands::production::export_project,
             commands::production::export_audio_url,

@@ -36,3 +36,9 @@
 .segment-takes { display: grid; gap: .5rem; width: 100%; }
 .segment-take { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding: .45rem .6rem; border: 1px solid var(--line, #ddd); border-radius: .6rem; }
 .segment-take audio { min-width: 180px; max-width: 340px; flex: 1; }
+.section-recorder { display: grid; gap: .65rem; width: 100%; padding: .8rem; border: 1px solid var(--line, #ddd); border-radius: .7rem; background: #faf9ff; }
+.section-recorder p { margin: 0; }
+.section-recorder audio { width: min(100%, 420px); }
+.waveform[role="button"] { cursor: crosshair; }
+.waveform i.selected { background: #5145b5; }
+.waveform-selection { display: flex; align-items: center; justify-content: space-between; gap: .7rem; font-size: .85rem; }

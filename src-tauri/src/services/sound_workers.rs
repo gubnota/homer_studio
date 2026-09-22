@@ -34,7 +34,7 @@ pub fn health(url: &str, expected_engine: &str) -> WorkerHealth {
         ready: false,
         categories: match expected_engine {
             "chatterbox_turbo" => vec!["speech".into(), "vocal_gesture".into()],
-            "chatterbox_original" => vec!["speech".into()],
+            "chatterbox_original" => vec!["speech".into(), "voice_conversion".into()],
             _ => vec!["sound_effect".into()],
         },
         max_duration_seconds: 20,

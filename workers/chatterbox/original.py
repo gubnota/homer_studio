@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from worker_protocol import Worker, serve
 
 _model = None
+_vc_model = None
 
 
 def check_model(path):
@@ -23,11 +24,20 @@ def check_model(path):
 
 
 def generate(request, model_dir):
-    global _model
+    global _model, _vc_model
     import torch
     import torchaudio
     from chatterbox.tts import ChatterboxTTS
 
+    if request["category"] == "voice_conversion":
+        from chatterbox.vc import ChatterboxVC
+        device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+        if _vc_model is None:
+            _vc_model = ChatterboxVC.from_local(str(model_dir), device=device)
+        wave = _vc_model.generate(audio=request["sourcePath"], target_voice_path=request["referencePath"])
+        result = io.BytesIO()
+        torchaudio.save(result, wave.cpu(), _vc_model.sr, format="wav")
+        return result.getvalue()
     if request["category"] != "speech":
         raise ValueError("Original Chatterbox supports speech, not Turbo vocal tags.")
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
@@ -50,5 +60,5 @@ if __name__ == "__main__":
     model_dir = os.environ.get("HOMER_CHATTERBOX_ORIGINAL_MODEL_DIR", "")
     if not model_dir:
         raise SystemExit("Set HOMER_CHATTERBOX_ORIGINAL_MODEL_DIR to a local English Chatterbox checkpoint.")
-    serve(Worker("chatterbox_original", model_dir, ["speech"], generate, check_model),
+    serve(Worker("chatterbox_original", model_dir, ["speech", "voice_conversion"], generate, check_model),
           int(os.environ.get("HOMER_CHATTERBOX_ORIGINAL_PORT", "8767")))

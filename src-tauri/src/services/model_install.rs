@@ -32,9 +32,12 @@ fn model_dir(app: &AppHandle, model: &str) -> Result<PathBuf, CommandError> {
 pub fn status(app: &AppHandle, model: &str) -> Result<ModelStatus, CommandError> {
     let (_, _, files) = spec(model)?;
     let dir = model_dir(app, model)?;
-    let missing_files = files.iter().filter(|file| fs::metadata(dir.join(file)).map(|meta| !meta.is_file() || meta.len() == 0).unwrap_or(true)).map(|file| (*file).to_string()).collect::<Vec<_>>();
-    let bytes_on_disk = fs::read_dir(&dir).ok().into_iter().flatten().filter_map(Result::ok).filter_map(|entry| entry.metadata().ok()).filter(|meta| meta.is_file()).map(|meta| meta.len()).sum();
     let manifest: Vec<ManifestEntry> = fs::read(dir.join(".download-manifest.json")).ok().and_then(|data| serde_json::from_slice(&data).ok()).unwrap_or_default();
+    let missing_files = files.iter().filter(|file| {
+        let expected = manifest.iter().find(|entry| entry.file == **file).map(|entry| entry.bytes);
+        fs::metadata(dir.join(file)).map(|meta| !meta.is_file() || meta.len() == 0 || expected.is_some_and(|bytes| meta.len() != bytes)).unwrap_or(true)
+    }).map(|file| (*file).to_string()).collect::<Vec<_>>();
+    let bytes_on_disk = fs::read_dir(&dir).ok().into_iter().flatten().filter_map(Result::ok).filter_map(|entry| entry.metadata().ok()).filter(|meta| meta.is_file()).map(|meta| meta.len()).sum();
     let downloaded_bytes = manifest.iter().filter(|entry| files.contains(&entry.file.as_str())).map(|entry| {
         let complete = fs::metadata(dir.join(&entry.file)).map(|meta| meta.len()).unwrap_or(0);
         let partial = fs::metadata(dir.join(format!("{}.part", entry.file))).map(|meta| meta.len()).unwrap_or(0);

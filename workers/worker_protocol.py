@@ -59,12 +59,19 @@ class Worker:
         if negative is not None and (self.engine in ("chatterbox_turbo", "chatterbox_original") or not isinstance(negative, str) or len(negative) > 300):
             raise ValueError("Unwanted sounds must be text under 300 characters for effects only.")
         reference_id = request.get("referenceId")
+        source_id = request.get("sourceId")
+        if category == "voice_conversion" and (not isinstance(source_id, str) or not isinstance(reference_id, str)):
+            raise ValueError("Voice conversion needs a recording and a narrator sample.")
+        if source_id is not None and (self.engine != "chatterbox_original" or category != "voice_conversion" or source_id == reference_id):
+            raise ValueError("Recorded source is only supported by Original Chatterbox voice conversion.")
         if reference_id is not None:
             if self.engine not in ("chatterbox_turbo", "chatterbox_original") or not isinstance(reference_id, str):
                 raise ValueError("Reference audio is only supported for Chatterbox speech.")
             with self.lock:
                 if reference_id not in self.references:
                     raise ValueError("Reference audio expired. Try again.")
+                if source_id is not None and source_id not in self.references:
+                    raise ValueError("Recorded source expired. Try again.")
         with self.lock:
             if any(job["status"] in ("queued", "running") for job in self.jobs.values()):
                 raise RuntimeError("Worker is busy.")
@@ -73,6 +80,8 @@ class Worker:
             self.jobs[job_id] = {"status": "queued", "audio": None, "error": None, "cancelled": False}
             if reference_id:
                 request["referencePath"] = self.references.pop(reference_id)
+            if source_id:
+                request["sourcePath"] = self.references.pop(source_id)
         threading.Thread(target=self._run, args=(job_id, request), daemon=True).start()
         return job_id
 
@@ -81,18 +90,18 @@ class Worker:
             with self.lock:
                 job = self.jobs[job_id]
                 if job["cancelled"]:
-                    reference_path = request.get("referencePath")
-                    if reference_path:
-                        Path(reference_path).unlink(missing_ok=True)
+                    for key in ("referencePath", "sourcePath"):
+                        if request.get(key):
+                            Path(request[key]).unlink(missing_ok=True)
                     return
                 job["status"] = "running"
             try:
                 audio = self.generate(request, self.model_dir)
                 if not isinstance(audio, bytes) or not audio.startswith(b"RIFF") or len(audio) > MAX_WAV:
                     raise ValueError("Engine did not return a bounded WAV file.")
-                reference_path = request.get("referencePath")
-                if reference_path:
-                    Path(reference_path).unlink(missing_ok=True)
+                for key in ("referencePath", "sourcePath"):
+                    if request.get(key):
+                        Path(request[key]).unlink(missing_ok=True)
                 with self.lock:
                     if not job["cancelled"]:
                         job.update(status="completed", audio=audio)
@@ -101,9 +110,9 @@ class Worker:
                     if not job["cancelled"]:
                         job.update(status="failed", error=str(error)[:500])
             finally:
-                reference_path = request.get("referencePath")
-                if reference_path:
-                    Path(reference_path).unlink(missing_ok=True)
+                for key in ("referencePath", "sourcePath"):
+                    if request.get(key):
+                        Path(request[key]).unlink(missing_ok=True)
 
     def add_reference(self, audio):
         if self.engine not in ("chatterbox_turbo", "chatterbox_original"):

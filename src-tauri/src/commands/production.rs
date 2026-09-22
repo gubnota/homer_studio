@@ -315,8 +315,62 @@ pub fn generate_segment_audio(
         control.boundary()?;
         progress(90);
         let _guard = lock.lock().map_err(|_| CommandError::internal("project lock is unavailable"))?;
-        project_store::commit_segment_take(&root_path, expected_revision, &chapter_id, &segment_id, &staged, output.duration_ms)?;
+        project_store::commit_segment_take(&root_path, expected_revision, &chapter_id, &segment_id, &staged, output.duration_ms, true)?;
         Ok(())
+    }))
+}
+
+#[tauri::command]
+pub fn convert_segment_recording(app: AppHandle, state: State<'_, AppState>, root_path: String, expected_revision: u64, chapter_id: String, segment_id: String, bytes: Vec<u8>) -> Result<String, CommandError> {
+    if bytes.is_empty() || bytes.len() > 20 * 1024 * 1024 { return Err(CommandError::new("INVALID_RECORDING", "Record a passage shorter than 20 seconds.")); }
+    let snapshot = project_store::open(&root_path)?;
+    if snapshot.revision != expected_revision || !snapshot.chapters.iter().any(|chapter| chapter.chapter.id == chapter_id && chapter.chapter.segments.iter().any(|segment| segment.id == segment_id)) {
+        return Err(CommandError::new("REVISION_CONFLICT", "Reload the chapter before converting this section."));
+    }
+    let settings = settings::load(&app)?;
+    let narrator = crate::services::voice_store::selected_sample(&app, &settings.speech.voice_id)?
+        .ok_or_else(|| CommandError::new("VOICE_HAS_NO_SAMPLE", "Choose a narrator voice with a recorded sample before voice conversion."))?;
+    let health = crate::services::sound_workers::health(&settings.sounds.original_url, "chatterbox_original");
+    if !health.ready || !health.categories.iter().any(|category| category == "voice_conversion") {
+        return Err(CommandError::new("WORKER_UNAVAILABLE", "Start the updated Original Chatterbox worker with its local checkpoint before converting a recording."));
+    }
+    let lock = state.project_write_lock.clone();
+    Ok(state.jobs.enqueue("speech", "Convert recorded delivery".into(), move |control, progress| {
+        let ffmpeg = crate::services::process_runner::resolve_executable("ffmpeg", settings.ffmpeg_path.as_deref())
+            .ok_or_else(|| CommandError::new("FFMPEG_NOT_FOUND", "Set FFmpeg in Settings before converting a recording."))?;
+        let work = std::path::Path::new(&root_path).join(".work").join(format!("conversion-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&work).map_err(|error| CommandError::io("Cannot stage recording", error))?;
+        let result = (|| {
+            control.boundary()?;
+            let source = work.join("source.webm");
+            let wav = work.join("source.wav");
+            let converted = work.join("converted.wav");
+            let staged = work.join("converted.m4a");
+            std::fs::write(&source, &bytes).map_err(|error| CommandError::io("Cannot stage recording", error))?;
+            let args = vec!["-v".into(), "error".into(), "-y".into(), "-i".into(), source.to_string_lossy().to_string(), "-t".into(), "20".into(), "-ac".into(), "1".into(), "-ar".into(), "24000".into(), wav.to_string_lossy().to_string()];
+            let conversion = crate::services::process_runner::run_bounded(&ffmpeg, &args, std::time::Duration::from_secs(60), control.cancelled.clone())?;
+            if !conversion.success { return Err(CommandError::new("RECORDING_CONVERSION_FAILED", conversion.stderr)); }
+            let source_wav = std::fs::read(&wav).map_err(|error| CommandError::io("Cannot read recording", error))?;
+            progress(20);
+            let worker_url = &settings.sounds.original_url;
+            let source_id = crate::services::sound_workers::upload_reference(worker_url, &source_wav)?;
+            let reference_id = crate::services::sound_workers::upload_reference(worker_url, &narrator)?;
+            let request = serde_json::json!({"prompt":"Convert recorded delivery", "category":"voice_conversion", "durationSeconds":20, "seed":null, "sourceId":source_id, "referenceId":reference_id});
+            let result_wav = crate::services::sound_workers::generate(worker_url, &request, &control)?;
+            progress(75);
+            std::fs::write(&converted, result_wav).map_err(|error| CommandError::io("Cannot stage converted take", error))?;
+            let args = vec!["-v".into(), "error".into(), "-y".into(), "-i".into(), converted.to_string_lossy().to_string(), "-c:a".into(), "aac".into(), "-b:a".into(), "128k".into(), staged.to_string_lossy().to_string()];
+            let encode = crate::services::process_runner::run_bounded(&ffmpeg, &args, std::time::Duration::from_secs(60), control.cancelled.clone())?;
+            if !encode.success { return Err(CommandError::new("AUDIO_CONVERSION_FAILED", encode.stderr)); }
+            let duration = crate::services::speech::probe_duration(&staged, &settings)?;
+            control.boundary()?;
+            progress(90);
+            let _guard = lock.lock().map_err(|_| CommandError::internal("project lock is unavailable"))?;
+            project_store::commit_segment_take(&root_path, expected_revision, &chapter_id, &segment_id, &staged, duration, false)?;
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(work);
+        result
     }))
 }
 

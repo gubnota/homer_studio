@@ -113,6 +113,27 @@ class WorkerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             voice.start({"prompt": "[sigh]", "category": "vocal_gesture", "durationSeconds": 2})
 
+    def test_voice_conversion_uses_two_recordings_and_cleans_them(self):
+        paths = []
+        def convert(request, _model_dir):
+            paths.extend((Path(request["sourcePath"]), Path(request["referencePath"])))
+            self.assertTrue(all(path.is_file() for path in paths))
+            return silence(request, _model_dir)
+        voice = Worker("chatterbox_original", self.folder.name, ["speech", "voice_conversion"], convert)
+        source_id = voice.add_reference(silence(None, None))
+        reference_id = voice.add_reference(silence(None, None))
+        with self.assertRaises(ValueError):
+            voice.start({"prompt": "Convert", "category": "voice_conversion", "durationSeconds": 2, "referenceId": reference_id})
+        job_id = voice.start({"prompt": "Convert", "category": "voice_conversion", "durationSeconds": 2,
+                              "sourceId": source_id, "referenceId": reference_id})
+        for _ in range(50):
+            if voice.status(job_id)["status"] == "completed":
+                break
+            time.sleep(0.01)
+        self.assertEqual(voice.status(job_id)["status"], "completed")
+        self.assertTrue(all(not path.exists() for path in paths))
+        self.assertNotEqual(paths[0], paths[1])
+
 
 if __name__ == "__main__":
     unittest.main()
