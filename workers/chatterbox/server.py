@@ -13,8 +13,10 @@ _model = None
 
 
 def check_model(path):
-    if not (path / "conds.pt").is_file() or not (path / "t3_turbo_v1.safetensors").is_file():
-        return False, f"Chatterbox Turbo checkpoint missing in {path}"
+    required = ("conds.pt", "t3_turbo_v1.safetensors", "s3gen_meanflow.safetensors", "ve.safetensors", "tokenizer_config.json", "vocab.json", "merges.txt")
+    missing = [name for name in required if not (path / name).is_file()]
+    if missing:
+        return False, f"Chatterbox Turbo checkpoint missing {', '.join(missing)} in {path}"
     if any(importlib.util.find_spec(name) is None for name in ("torch", "torchaudio", "chatterbox")):
         return False, "Python packages missing. Install workers/chatterbox/requirements.txt."
     return True, "Checkpoint and packages found; ready to load on first request."

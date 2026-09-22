@@ -88,7 +88,7 @@ export interface ToolDiagnostic {
   name: string
   path: string | null
   available: boolean
-  status: 'configured' | 'invalid_configuration' | 'found_automatically' | 'not_found' | 'service_reachable' | 'service_unavailable'
+  status: 'configured' | 'invalid_configuration' | 'found_automatically' | 'not_found' | 'service_reachable' | 'service_unavailable' | 'service_ready' | 'no_models' | 'model_not_installed'
   configuredPath: string | null
   detectedPath: string | null
 }

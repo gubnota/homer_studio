@@ -201,22 +201,22 @@ pub fn diagnostics(settings: &Settings) -> Vec<ToolDiagnostic> {
             }
         })
         .collect();
-    let base_url = match &settings.llm {
-        LlmSettings::Ollama { base_url, .. } => base_url.as_str(),
-        _ => "http://127.0.0.1:11434",
+    let (base_url, selected_model) = match &settings.llm {
+        LlmSettings::Ollama { base_url, model, .. } => (base_url.as_str(), Some(model.as_str())),
+        _ => ("http://127.0.0.1:11434", None),
     };
-    let reachable = llm::ollama_reachable(base_url);
+    let status = match llm::ollama_models(base_url) {
+        Err(_) => "service_unavailable",
+        Ok(models) if models.is_empty() => "no_models",
+        Ok(models) if selected_model.is_some_and(|model| model.trim().is_empty() || !models.iter().any(|installed| installed == model)) => "model_not_installed",
+        Ok(_) => "service_ready",
+    };
     diagnostics.push(ToolDiagnostic {
         key: "ollama_service".into(),
         name: "Ollama server".into(),
         path: Some(base_url.into()),
-        available: reachable,
-        status: if reachable {
-            "service_reachable"
-        } else {
-            "service_unavailable"
-        }
-        .into(),
+        available: status == "service_ready",
+        status: status.into(),
         configured_path: Some(base_url.into()),
         detected_path: None,
     });

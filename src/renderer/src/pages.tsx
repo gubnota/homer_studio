@@ -336,7 +336,7 @@ export function SettingsPage(): JSX.Element {
     try { setSettings(await systemApi.saveSettings(settings)); setTools(await systemApi.diagnostics()); setMessage('Settings saved') } catch (cause) { setMessage(errorMessage(cause)) }
   }
   return <div className="page">
-    <Header eyebrow="System" title="Settings" copy="Configure local tools and model providers." action={<button className="primary" disabled={!settings} onClick={() => void save()}>Save settings</button>} />
+    <Header eyebrow="System" title="Settings" copy="Configure local tools and model providers." action={<><button disabled={!settings} onClick={() => void systemApi.diagnostics().then(setTools).catch((cause) => setMessage(errorMessage(cause)))}>Check status</button><button className="primary" disabled={!settings} onClick={() => void save()}>Save settings</button></>} />
     {message && <div className="status-banner">{message}</div>}
     <div className="settings-grid">
       <section className="panel">
@@ -351,7 +351,7 @@ export function SettingsPage(): JSX.Element {
 }
 
 function toolStatus(status: ToolDiagnostic['status']): string {
-  return ({ invalid_configuration: 'Configured path is invalid', not_found: 'Not found', service_unavailable: 'Server is not running', service_reachable: 'Server is reachable', configured: 'Configured', found_automatically: 'Found automatically' })[status]
+  return ({ invalid_configuration: 'Configured path is invalid', not_found: 'Not found', service_unavailable: 'Server API is unavailable', service_reachable: 'Server is reachable', service_ready: 'Ready', no_models: 'Running, but no models installed', model_not_installed: 'Selected model is not installed', configured: 'Configured', found_automatically: 'Found automatically' })[status]
 }
 
 function SettingsForm({ settings, tools, onChange }: { settings: Settings; tools: ToolDiagnostic[]; onChange: (value: Settings) => void }): JSX.Element {

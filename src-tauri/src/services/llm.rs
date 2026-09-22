@@ -193,10 +193,29 @@ fn post_loopback(base_url: &str, path: &str, body: &str) -> Result<String, Comma
     Ok(body.to_string())
 }
 
-pub fn ollama_reachable(base_url: &str) -> bool {
-    loopback_address(base_url)
-        .and_then(|(host, port)| connect_loopback(&host, port))
-        .is_ok()
+pub fn ollama_models(base_url: &str) -> Result<Vec<String>, CommandError> {
+    #[derive(Deserialize)]
+    struct Tag { name: String }
+    #[derive(Deserialize)]
+    struct Tags { models: Vec<Tag> }
+    let (host, port) = loopback_address(base_url)?;
+    let mut stream = connect_loopback(&host, port)?;
+    stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
+    write!(stream, "GET /api/tags HTTP/1.1\r\nHost: {host}:{port}\r\nConnection: close\r\n\r\n")
+        .map_err(|error| CommandError::io("Cannot query Ollama models", error))?;
+    let mut response = Vec::new();
+    stream.take(1024 * 1024).read_to_end(&mut response)
+        .map_err(|error| CommandError::io("Cannot read Ollama models", error))?;
+    let split = response.windows(4).position(|part| part == b"\r\n\r\n")
+        .ok_or_else(|| CommandError::new("INVALID_OLLAMA_RESPONSE", "Ollama returned invalid HTTP."))?;
+    let head = std::str::from_utf8(&response[..split])
+        .map_err(|_| CommandError::new("INVALID_OLLAMA_RESPONSE", "Ollama returned invalid HTTP."))?;
+    if !head.starts_with("HTTP/1.1 200") && !head.starts_with("HTTP/1.0 200") {
+        return Err(CommandError::new("OLLAMA_UNAVAILABLE", "Ollama model API is unavailable."));
+    }
+    let tags: Tags = serde_json::from_slice(&response[split + 4..])
+        .map_err(|_| CommandError::new("INVALID_OLLAMA_RESPONSE", "Ollama returned invalid model data."))?;
+    Ok(tags.models.into_iter().map(|model| model.name).collect())
 }
 
 fn loopback_address(base_url: &str) -> Result<(String, u16), CommandError> {
@@ -225,9 +244,9 @@ fn loopback_address(base_url: &str) -> Result<(String, u16), CommandError> {
     Ok((host.to_string(), port))
 }
 
-fn connect_loopback(host: &str, port: u16) -> Result<TcpStream, CommandError> {
+fn connect_loopback(_host: &str, port: u16) -> Result<TcpStream, CommandError> {
     TcpStream::connect_timeout(
-        &format!("{host}:{port}")
+        &format!("127.0.0.1:{port}")
             .parse()
             .map_err(|_| CommandError::new("INVALID_OLLAMA_URL", "Ollama URL is invalid."))?,
         Duration::from_secs(3),
@@ -254,6 +273,7 @@ fn concise(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::TcpListener;
     #[test]
     fn rejects_oversized_input() {
         assert_eq!(
@@ -269,5 +289,20 @@ mod tests {
             candidate("  ".into(), "test", "test").unwrap_err().code,
             "EMPTY_LLM_OUTPUT"
         );
+    }
+
+    #[test]
+    fn ollama_readiness_reads_models_not_just_a_socket() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut input = [0u8; 512];
+            let count = stream.read(&mut input).unwrap();
+            assert!(String::from_utf8_lossy(&input[..count]).contains("GET /api/tags"));
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"models\":[]}").unwrap();
+        });
+        assert!(ollama_models(&format!("http://localhost:{port}")).unwrap().is_empty());
+        server.join().unwrap();
     }
 }
