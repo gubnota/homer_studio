@@ -6,6 +6,7 @@ import { StudioLayout } from './components/StudioLayout'
 import { EditorPage, ExportsPage, ImportPage, ProjectsPage, QueuePage, ReviewPage, SettingsPage, StudioPage, VoicesPage } from './pages'
 import { chooseFolder, errorMessage, isDesktop, projectApi } from './native'
 import { SoundStudioPage } from './SoundStudioPage'
+import { VoiceLabPage } from './VoiceLabPage'
 
 function initialRoute(): RouteId {
   const value = window.location.hash.slice(1)
@@ -45,6 +46,7 @@ export function App(): JSX.Element {
       case 'review': return <ReviewPage project={project} onProjectChange={remember} />
       case 'voices': return <VoicesPage />
       case 'sounds': return <SoundStudioPage />
+      case 'voice-lab': return <VoiceLabPage />
       case 'queue': return <QueuePage />
       case 'exports': return <ExportsPage project={project} onProjectChange={remember} />
       case 'settings': return <SettingsPage />

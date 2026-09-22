@@ -11,7 +11,7 @@
 ## Current milestone
 - Version 0.2.0 now includes explicit English model installation, per-section narration and takes, queue progress/cleanup, and recording-to-narrator conversion; Apple Silicon packaging is the current release checkpoint.
 - The Tauri app, durable project storage, drag-and-drop import, optional local text providers, local neural voice library, narration/import, review, export, and packaging are implemented.
-- The current arm64 app bundle is being rebuilt and verified; no new release has been pushed or tagged.
+- The current arm64 app bundle is being rebuilt and verified; no new release has been pushed or tagged. Review, Exports, and clip libraries now have bulk save/delete controls; Voice Lab converts standalone recordings; Review has zoomable waveform playback.
 - The user explicitly deferred pushing; keep this implementation and its commits local until asked.
 
 ## Technology
@@ -48,7 +48,8 @@
 7. Listen to takes, choose the preferred one, assemble the chapter, then flag or approve it.
 8. Combine complete chapter audio using FFmpeg.
 9. Save the final audio and measured chapter timestamps.
-10. Independently, prompt speech with supported Turbo gesture tags or a Stable Audio Open effect in Sound Studio, then play, compare, retry, or export clips.
+10. Independently, prompt speech with supported Turbo gesture tags or a Stable Audio Open effect in Sound Studio, then play, compare, retry, or export clips. Effects may render in segments for up to two minutes.
+11. In Voice Lab, record or import up to two minutes, convert delivery to a chosen narrator with Original Chatterbox, and save or delete the result.
 
 ## UI reference
 - Projects and Import screens.

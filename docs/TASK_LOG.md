@@ -93,3 +93,9 @@
 - Renderer build (6 tests), full native suite (24 tests), arm64 signature verification, packaged startup smoke test, ZIP creation, and `git diff --check` passed.
 - Apple Silicon DMG bundling failed in `bundle_dmg.sh` both within and outside the restricted sandbox; app bundle and ZIP were produced and verified instead.
 - GitHub remote publishing remains to be attempted after the local release commit and tag are ready.
+
+# 2026-09-23 — Audio libraries, Voice Lab, and review player
+- Added Review, Exports, and Sound Studio save/delete selection controls with store-specific ownership checks. First stage committed as `0ecc6cb Add save and delete controls to audio libraries`.
+- Added standalone Voice Lab recording/import and Original Chatterbox voice conversion; up to two minutes are divided into 15-second worker requests and joined into one saved clip. Sound effects now allow up to two minutes via joined 20-second worker renders.
+- Review playback now uses custom play/pause/stop controls, bounded waveform-window loading, zoom, panning, seeking, and passage selection. Added a bundled built-in Turbo narrator preview and immediate selected-sample fallback for custom voices.
+- Replaced the sidebar H badge with the exact macOS app icon asset. Renderer build (six tests), 28 Rust tests, nine worker tests, arm64 package/signature verification, and packaged-app startup smoke passed. Changes remain local until the user requests a push.

@@ -25,9 +25,9 @@
 - `src-tauri/src/services/audio_protocol.rs`: registry-backed project audio delivery with byte-range support.
 - `src-tauri/src/services/exports.rs`: re-probed chapter assembly, copy/re-encode fallback, duration verification, and timestamp generation.
 - `src-tauri/src/services/sound_workers.rs`: bounded loopback worker client, health, job polling, cancellation, and WAV transfer.
-- `src-tauri/src/services/sound_render.rs`: standalone request validation, generation, media verification, and conversion.
+- `src-tauri/src/services/sound_render.rs`: standalone request validation, segmented long effects, media verification, and conversion.
 - `src-tauri/src/services/sound_store.rs`: independent versioned clip library and safe asset paths.
-- `src-tauri/src/commands/sounds.rs`: narrow generate/list/play/export commands.
+- `src-tauri/src/commands/sounds.rs`: generate/list/play/export/delete commands and segmented standalone voice conversion.
 - `src-tauri/src/commands/system.rs`: settings, diagnostics, and job-control commands.
 - `src-tauri/src/commands/production.rs`: text candidates, disposable voice previews, queued narration/import/export, per-section takes, recorded-delivery conversion, audio playback, waveforms, chapter review, and export retrieval.
 - `src/shared/`: serializable contracts and pure chapter/time logic.
@@ -35,7 +35,9 @@
 - `src-tauri/src/services/voice_store.rs`: app-data voice library, normalized reference samples, selected sample, and deletion.
 - `src/renderer/src/VoicePicker.tsx`: searchable modal voice picker shared across production screens.
 - `src/renderer/`: React project library, drop-enabled importer, source/candidate chapter editor, neural voices, sample recording, and previews, narration/review, verified export history/timestamps, live queue, settings/tool status, shared controls, and prototype-derived styles.
-- `src/renderer/src/SoundStudioPage.tsx`: book-independent prompt, worker status, clip library, playback, retry, and export.
+- `src/renderer/src/SoundStudioPage.tsx`: book-independent prompt, worker status, clip library, playback, retry, export, and deletion.
+- `src/renderer/src/VoiceLabPage.tsx`: standalone recording/import, Original Chatterbox conversion, and converted-clip library.
+- `src/renderer/public/`: bundled app icon for the sidebar and built-in Turbo voice preview.
 - `workers/`: local Turbo/Original Chatterbox and Stable Audio Open Python companions, shared versioned protocol, launcher, tests, and setup guide.
 - `tests/standalone-audio.test.tsx`: no-project and sound request UI checks.
 - `tests/manuscript-drop.test.ts` and `tests/standalone-audio.test.tsx`: focused renderer behavior tests.

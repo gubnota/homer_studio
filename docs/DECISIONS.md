@@ -97,3 +97,13 @@ Context: Authors need visible chapter progress, manual section repair, natural v
 Decision: Retain Turbo for its nine documented English gesture tags, add Original for expressive English speech and voice conversion from a recorded delivery, and use Stable Audio Open alone for effects. Pin allow-listed Turbo/Original checkpoint downloads behind explicit Settings actions. Store each narrated section as a project-owned take; conversion creates an unselected preview that must be chosen and assembled. A selected waveform passage can be spliced into a new take with short edge fades. Queue cleanup removes records, never project media.
 Consequences: Voice conversion and model quality require real listening. Existing AudioLDM 2 clips remain readable; its generation path is retired. Chapter cues are section/line timed, not word aligned; selection is bounded within one section. Python environments and worker startup remain separate from checkpoint installation.
 Related files: `src-tauri/src/services/model_install.rs`, `src-tauri/src/services/project_store.rs`, `src-tauri/src/commands/production.rs`, `workers/chatterbox/original.py`, `src/renderer/src/pages.tsx`.
+
+# ADR-0011: Keep audio deletion within its owning library
+
+Date: 2026-09-23
+Status: Accepted
+
+Context: Review, Exports, and standalone clips all store audio with different ownership and recovery rules.
+Decision: Validate and delete within each owning store. Review only deletes generated chapter audio; Exports removes project-owned audio/timestamp pairs; the standalone sound store removes its own WAV/M4A pairs. Extend the standalone store to voice-converted clips. Longer effect and voice-conversion requests are split into worker-sized jobs and joined locally.
+Consequences: Source manuscripts, imported chapter recordings, and copied voice samples are never deleted by library cleanup. Long renders can be cancelled between segments. Segment joins may have audible boundaries and should be reviewed before export.
+Related files: `src-tauri/src/services/project_store.rs`, `src-tauri/src/services/sound_store.rs`, `src-tauri/src/services/sound_render.rs`, `src-tauri/src/commands/sounds.rs`.

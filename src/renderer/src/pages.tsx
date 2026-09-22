@@ -320,6 +320,10 @@ function SectionRecorder({ disabled, range, onConvert }: { disabled: boolean; ra
 function ChapterAudio({ project, chapter, onEditCue }: { project: ProjectSnapshot; chapter: Chapter; onEditCue: (order: number, range?: { startMs: number; endMs: number }) => void }): JSX.Element {
   const [url, setUrl] = useState('')
   const [waveform, setWaveform] = useState<number[]>([])
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState(0)
+  const [currentMs, setCurrentMs] = useState(0)
+  const [playing, setPlaying] = useState(false)
   const [activeCue, setActiveCue] = useState(-1)
   const [selectedCue, setSelectedCue] = useState(-1)
   const [selectedEditRange, setSelectedEditRange] = useState<{ startMs: number; endMs: number } | null>(null)
@@ -328,15 +332,27 @@ function ChapterAudio({ project, chapter, onEditCue }: { project: ProjectSnapsho
   const cue = chapter.cues[selectedCue]
   const highlightedRange = selectedEditRange ?? cue
   const audio = useRef<HTMLAudioElement>(null)
+  const totalMs = chapter.audioDurationMs ?? 0
+  const visibleMs = Math.min(totalMs, 3_600_000, Math.max(1000, totalMs / zoom))
+  const windowStart = Math.round(Math.max(0, totalMs - visibleMs) * pan / 1000)
+  const windowEnd = Math.min(totalMs, Math.ceil(windowStart + visibleMs))
   useEffect(() => { void productionApi.audioUrl(project, chapter.id).then(setUrl).catch(() => setUrl('')) }, [project.rootPath, chapter.id, chapter.audioPath])
-  useEffect(() => { void productionApi.waveform(project, chapter.id).then(setWaveform).catch(() => setWaveform([])) }, [project.rootPath, chapter.id, chapter.audioPath])
+  useEffect(() => {
+    if (windowEnd <= windowStart) { setWaveform([]); return }
+    let active = true
+    const timer = window.setTimeout(() => {
+      void productionApi.waveformWindow(project, chapter.id, windowStart, windowEnd).then((peaks) => { if (active) setWaveform(peaks) }).catch(() => { if (active) setWaveform([]) })
+    }, 120)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [project.rootPath, chapter.id, chapter.audioPath, windowStart, windowEnd])
   function timeAt(clientX: number, element: HTMLElement): number {
     const ratio = Math.max(0, Math.min(1, (clientX - element.getBoundingClientRect().left) / element.clientWidth))
-    return ratio * (chapter.audioDurationMs ?? 0)
+    return windowStart + ratio * visibleMs
   }
   function chooseRange(from: number, to: number): void {
     const start = Math.min(from, to)
     const end = Math.max(from, to)
+    if (audio.current) audio.current.currentTime = start / 1000
     const index = chapter.cues.findIndex((item) => start >= item.startMs && start < item.endMs)
     if (index < 0) return
     const selected = chapter.cues[index]
@@ -347,14 +363,17 @@ function ChapterAudio({ project, chapter, onEditCue }: { project: ProjectSnapsho
     if (audio.current) audio.current.currentTime = start / 1000
   }
   return url ? <div className="chapter-player">
+    <div className="review-transport"><button onClick={() => { if (!audio.current) return; if (audio.current.paused) void audio.current.play(); else audio.current.pause() }}>{playing ? 'Pause' : 'Play'}</button><button onClick={() => { if (!audio.current) return; audio.current.pause(); audio.current.currentTime = 0; setCurrentMs(0) }}>Stop</button><span>{formatDuration(currentMs)} / {formatDuration(totalMs)}</span><button disabled={zoom <= 1} onClick={() => setZoom((value) => Math.max(1, value / 2))}>Zoom out</button><button disabled={zoom >= 16} onClick={() => setZoom((value) => Math.min(16, value * 2))}>Zoom in</button><span>{zoom}×</span></div>
+    {totalMs > visibleMs && <label className="waveform-pan">Scroll through chapter <input type="range" min="0" max="1000" value={pan} onChange={(event) => setPan(Number(event.target.value))} /><span>{formatDuration(windowStart)}–{formatDuration(windowEnd)}</span></label>}
     {waveform.length > 0 && <div className="waveform" role={canEditCues ? 'button' : undefined} tabIndex={canEditCues ? 0 : undefined} aria-label={canEditCues ? 'Drag to select up to 20 seconds within a spoken section' : 'Audio waveform'}
-      onPointerDown={(event) => { if (!canEditCues) return; dragStart.current = timeAt(event.clientX, event.currentTarget); event.currentTarget.setPointerCapture(event.pointerId) }}
+      onWheel={(event) => { if (totalMs > visibleMs && (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY))) { event.preventDefault(); setPan((value) => Math.max(0, Math.min(1000, value + Math.sign(event.deltaX || event.deltaY) * 40))) } }}
+      onPointerDown={(event) => { dragStart.current = timeAt(event.clientX, event.currentTarget); event.currentTarget.setPointerCapture(event.pointerId) }}
       onPointerUp={(event) => { if (dragStart.current === null) return; chooseRange(dragStart.current, timeAt(event.clientX, event.currentTarget)); dragStart.current = null; event.currentTarget.releasePointerCapture(event.pointerId) }}
       onKeyDown={(event) => { if (canEditCues && event.key === 'Enter') { event.preventDefault(); setSelectedCue(activeCue >= 0 ? activeCue : 0); setSelectedEditRange(null) } }}>
-      {waveform.map((peak, index) => <i key={index} className={highlightedRange && chapter.audioDurationMs && index / waveform.length >= highlightedRange.startMs / chapter.audioDurationMs && index / waveform.length <= highlightedRange.endMs / chapter.audioDurationMs ? 'selected' : ''} style={{ height: `${Math.max(8, peak * 100)}%` }} />)}
+      {waveform.map((peak, index) => { const at = windowStart + index / waveform.length * visibleMs; return <i key={index} className={highlightedRange && at >= highlightedRange.startMs && at <= highlightedRange.endMs ? 'selected' : currentMs >= at && currentMs < at + visibleMs / waveform.length ? 'playing' : ''} style={{ height: `${Math.max(8, peak * 100)}%` }} /> })}
     </div>}
     {cue && canEditCues && <div className="waveform-selection"><span>{selectedEditRange ? 'Selected passage' : 'Selected section'}: {formatDuration(highlightedRange?.startMs ?? cue.startMs)}–{formatDuration(highlightedRange?.endMs ?? cue.endMs)}</span><button onClick={() => onEditCue(selectedCue, selectedEditRange ? { startMs: Math.round(selectedEditRange.startMs - cue.startMs), endMs: Math.round(selectedEditRange.endMs - cue.startMs) } : undefined)}>Record replacement</button></div>}
-    <audio ref={audio} controls preload="metadata" src={url} onTimeUpdate={(event) => { const ms = event.currentTarget.currentTime * 1000; setActiveCue(chapter.cues.findIndex((item) => ms >= item.startMs && ms < item.endMs)) }} />
+    <audio ref={audio} preload="metadata" src={url} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onTimeUpdate={(event) => { const ms = event.currentTarget.currentTime * 1000; setCurrentMs(ms); setActiveCue(chapter.cues.findIndex((item) => ms >= item.startMs && ms < item.endMs)) }} />
     {chapter.cues.length > 0 ? <div className="spoken-cues" aria-label="Spoken lines">{chapter.cues.map((item) => <button key={item.order} className={activeCue === item.order ? 'active' : ''} onClick={() => { if (audio.current) audio.current.currentTime = item.startMs / 1000 }}>{item.text}</button>)}</div> : <span className="field-note">Line timing is available for newly generated narration.</span>}
   </div> : <span>Preparing player…</span>
 }
@@ -404,8 +423,16 @@ export function VoicesPage(): JSX.Element {
   }
   async function preview(voice: Voice): Promise<void> {
     setPreviewUrl(''); setMessage('Loading voice preview…')
+    if (voice.id === 'chatterbox-default') { setPreviewUrl('/default-voice-preview.m4a'); setMessage('Preview ready'); return }
     try { setPreviewUrl(await productionApi.previewVoice(voice.id, 180)); setMessage('Preview ready') }
-    catch (cause) { const detail = errorMessage(cause); setMessage(detail.toLowerCase().includes('still being prepared') ? 'Your voice preview is still being prepared. Try Preview again shortly.' : detail) }
+    catch (cause) {
+      const detail = errorMessage(cause)
+      if (voice.selectedSampleId) {
+        try { setPreviewUrl(await productionApi.voiceSampleUrl(voice.id, voice.selectedSampleId)); setMessage(`${detail} Playing your saved reference recording.`); return }
+        catch { /* Show the original preview error. */ }
+      }
+      setMessage(detail)
+    }
   }
   async function listenSample(voice: Voice, sampleId: string): Promise<void> {
     try { setSampleUrl(await productionApi.voiceSampleUrl(voice.id, sampleId)) } catch (cause) { setMessage(errorMessage(cause)) }

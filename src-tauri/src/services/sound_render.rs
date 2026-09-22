@@ -20,8 +20,8 @@ pub fn validate(request: &SoundRequest) -> Result<(), CommandError> {
     if count == 0 || count > 500 || request.prompt.trim().is_empty() {
         return Err(CommandError::new("INVALID_SOUND_PROMPT", "Enter a prompt of 1–500 characters."));
     }
-    if !request.duration_seconds.is_finite() || !(1.0..=20.0).contains(&request.duration_seconds) {
-        return Err(CommandError::new("INVALID_SOUND_DURATION", "Choose a duration between 1 and 20 seconds."));
+    if !request.duration_seconds.is_finite() || !(1.0..=if request.category == "sound_effect" { 120.0 } else { 20.0 }).contains(&request.duration_seconds) {
+        return Err(CommandError::new("INVALID_SOUND_DURATION", "Choose 1–120 seconds for effects or 1–20 seconds for speech."));
     }
     match request.category.as_str() {
         "speech" | "sound_effect" => (),
@@ -52,28 +52,48 @@ pub fn render(app: &AppHandle, settings: &Settings, request: &SoundRequest, cont
         super::voice_store::selected_sample(app, &settings.speech.voice_id)?
             .map(|bytes| sound_workers::upload_reference(url, &bytes)).transpose()?
     } else { None };
-    let payload = serde_json::json!({"prompt": request.prompt, "category": request.category, "durationSeconds": request.duration_seconds, "seed": request.seed, "referenceId": reference_id, "negativePrompt": request.negative_prompt});
-    let wav = sound_workers::generate(url, &payload, control)?;
-    control.boundary()?;
-    progress(70);
     let id = uuid::Uuid::new_v4().to_string();
     let root = sound_store::root(app)?;
     let stage = root.join("staging").join(&id);
     fs::create_dir_all(&stage).map_err(|error| CommandError::io("Cannot stage sound clip", error))?;
     let result = (|| {
-        let original = stage.join("worker.wav");
         let master = stage.join("master.wav");
         let preview = stage.join("preview.m4a");
-        fs::write(&original, wav).map_err(|error| CommandError::io("Cannot stage worker audio", error))?;
-        let original_ms = super::speech::probe_duration(&original, settings)?;
-        if original_ms == 0 || original_ms > 22000 { return Err(CommandError::new("INVALID_WORKER_AUDIO", "Worker audio is empty or longer than 22 seconds.")); }
-        convert(settings, &original, &master, "pcm_s24le", control)?;
+        let count = if request.category == "sound_effect" { (request.duration_seconds / 20.0).ceil() as u32 } else { 1 };
+        let mut list_entries = String::new();
+        for index in 0..count {
+            control.boundary()?;
+            let segment_seconds = request.duration_seconds / count as f32;
+            let payload = serde_json::json!({"prompt": request.prompt, "category": request.category, "durationSeconds": segment_seconds, "seed": request.seed.map(|seed| seed.wrapping_add(index) & 0x7fff_ffff), "referenceId": reference_id, "negativePrompt": request.negative_prompt});
+            let wav = sound_workers::generate(url, &payload, control)?;
+            let original = stage.join(format!("worker-{index}.wav"));
+            let normalized = stage.join(format!("segment-{index}.wav"));
+            fs::write(&original, wav).map_err(|error| CommandError::io("Cannot stage worker audio", error))?;
+            let original_ms = super::speech::probe_duration(&original, settings)?;
+            if original_ms == 0 || original_ms > 22000 { return Err(CommandError::new("INVALID_WORKER_AUDIO", "Worker audio is empty or longer than 22 seconds.")); }
+            convert(settings, &original, &normalized, "pcm_s24le", control)?;
+            list_entries.push_str(&format!("file 'segment-{index}.wav'\n"));
+            progress((10 + (index + 1) * 65 / count) as u8);
+        }
+        if count == 1 {
+            fs::rename(stage.join("segment-0.wav"), &master).map_err(|error| CommandError::io("Cannot prepare sound clip", error))?;
+        } else {
+            let list = stage.join("segments.txt");
+            fs::write(&list, list_entries).map_err(|error| CommandError::io("Cannot stage sound segments", error))?;
+            let ffmpeg = process_runner::resolve_executable("ffmpeg", settings.ffmpeg_path.as_deref())
+                .ok_or_else(|| CommandError::new("FFMPEG_NOT_FOUND", "Install FFmpeg or set its path in Settings."))?;
+            let args = vec!["-v".into(), "error".into(), "-y".into(), "-f".into(), "concat".into(), "-safe".into(), "0".into(), "-i".into(), list.to_string_lossy().to_string(), "-c:a".into(), "pcm_s24le".into(), master.to_string_lossy().to_string()];
+            let joined = process_runner::run_bounded(&ffmpeg, &args, Duration::from_secs(120), control.cancelled.clone())?;
+            if !joined.success { return Err(CommandError::new("AUDIO_CONVERSION_FAILED", joined.stderr)); }
+            fs::remove_file(list).ok();
+        }
+        for index in 0..count { fs::remove_file(stage.join(format!("worker-{index}.wav"))).ok(); fs::remove_file(stage.join(format!("segment-{index}.wav"))).ok(); }
+
         convert(settings, &master, &preview, "aac", control)?;
         let duration_ms = super::speech::probe_duration(&master, settings)?;
-        if duration_ms == 0 || duration_ms > 22000 { return Err(CommandError::new("INVALID_WORKER_AUDIO", "Converted audio is empty or too long.")); }
+        if duration_ms == 0 || duration_ms > if request.category == "sound_effect" { (request.duration_seconds * 1100.0) as u64 + 2000 } else { 22000 } { return Err(CommandError::new("INVALID_WORKER_AUDIO", "Converted audio is empty or too long.")); }
         let preview_ms = super::speech::probe_duration(&preview, settings)?;
         if preview_ms == 0 { return Err(CommandError::new("INVALID_WORKER_AUDIO", "Playback audio is empty.")); }
-        fs::remove_file(&original).map_err(|error| CommandError::io("Cannot clear temporary audio", error))?;
         control.boundary()?;
         progress(90);
         let asset = SoundAsset {
@@ -112,6 +132,10 @@ mod tests {
         request.prompt = "[sigh]".into();
         assert!(validate(&request).is_ok());
         request.duration_seconds = 25.0;
+        assert!(validate(&request).is_err());
+        request.category = "sound_effect".into();
+        assert!(validate(&request).is_ok());
+        request.duration_seconds = 121.0;
         assert!(validate(&request).is_err());
     }
 }

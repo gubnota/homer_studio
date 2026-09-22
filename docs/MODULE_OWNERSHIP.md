@@ -22,6 +22,8 @@ Rules:
 - Shared TypeScript code never imports renderer code or native implementations.
 - Speech generation and text LLM processing have separate interfaces.
 - The voice store owns app-data voice identities and reference samples. Speech generation reads the selected sample and sends it through the worker client. The renderer never passes worker filesystem paths.
+- Voice Lab recordings and converted clips belong to the standalone sound store; chapter recordings and replacement takes belong to the project store.
+- Review deletes generated chapter audio only; Exports deletes project-owned export pairs; standalone clip deletion affects app-owned sound assets only.
 - Standalone sounds never require or mutate a book project. The renderer uses narrow Tauri commands; only Rust talks to local workers.
 - Tool discovery is bounded to inherited PATH and documented system/user installation prefixes; the renderer can only select explicit files.
 - Services report structured results; the renderer displays them without inventing progress.

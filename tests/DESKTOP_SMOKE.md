@@ -15,3 +15,9 @@ For a release candidate, also check these actions manually:
 9. Confirm the timestamp file matches the chapter order.
 10. With no project open, visit Sound Studio. Confirm both workers show unavailable when stopped and generation is disabled.
 11. After configuring local model checkpoints and starting each worker, generate a short speech clip and a fabric clip. Set a negative prompt and compare three effect variations. Listen, retry, export WAV/M4A, and reopen the app to confirm the clip library persists. Treat panting as experimental and assess the result by listening.
+
+12. In Review, zoom and pan the waveform, seek by clicking, select a range, and use Play/Pause and Stop. Save and delete selected generated chapter audio; confirm imported audio is not removed.
+13. In Exports and Sound Studio, select/deselect all, save selected files, delete selected/all, and confirm exported copies remain available.
+14. In Voice Lab, record or import a longer clip, convert it with Original Chatterbox, play the result, and save/delete it. Cancel a conversion mid-job and check that no incomplete clip appears.
+15. Preview the built-in voice with the bundled recording. For a custom voice, verify the copied selected sample plays when a generated preview is unavailable.
+16. Generate an effect longer than 20 seconds, verify its final duration, and listen at each segment boundary.

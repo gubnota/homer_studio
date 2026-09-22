@@ -84,3 +84,10 @@ Generated chapter audio stores optional `cues` on each chapter. A cue has `order
 - Exact payloads, filenames, state transitions, and error codes are specified in `docs/IMPLEMENTATION_PLAN.md`.
 
 Add exact payloads, state transitions, and errors here as each later stage lands.
+
+## Audio library and review additions (2026-09-23)
+- `delete_sounds(ids) -> SoundAsset[]` removes selected app-owned clips. `convert_voice_clip(voiceId, sourcePath?, bytes?) -> jobId` accepts one recording (1–120 seconds, at most 100 MB), splits it into worker-sized segments, and publishes one `voice_conversion` asset. The two input forms are mutually exclusive.
+- `audio_waveform_window(rootPath, chapterId, startMs, endMs) -> number[]` returns bounded peaks for a visible chapter range. The Review player keeps playback and selection within project-owned audio.
+- Review bulk actions delete generated chapter audio only. Export history bulk deletion removes project-owned M4A and timestamp pairs. Bulk saves copy selected outputs into a chosen folder; originals remain owned by the project.
+- Sound effects accept a 1–120 second request; Rust divides longer effects into worker jobs of at most 20 seconds and concatenates verified WAV segments. Speech and gesture requests stay at 1–20 seconds. Standalone conversion accepts up to 120 seconds by dividing source recordings into segments of at most 15 seconds.
+- The built-in Turbo narrator preview is a bundled model-generated M4A. Custom voice previews are cached per voice; when unavailable, the UI can play the copied selected sample and report the generation error.

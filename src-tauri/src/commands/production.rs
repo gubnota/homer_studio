@@ -100,6 +100,7 @@ fn queue_voice_preview(app: AppHandle, voice_id: String) {
             return;
         };
         let marker = output.with_file_name("preview.generating");
+        let failure = output.with_file_name("preview.error");
         let Ok(_guard) = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -108,19 +109,19 @@ fn queue_voice_preview(app: AppHandle, voice_id: String) {
             return;
         };
         let _ = std::fs::remove_file(&output);
+        let _ = std::fs::remove_file(&failure);
         let temp = output.with_file_name("preview.pending.m4a");
         let _ = std::fs::remove_file(&temp);
-        if crate::services::speech::generate(
+        match crate::services::speech::generate(
             &app,
             "Welcome to Homer Studio. This is a preview of your audiobook voice.",
             &voice_id,
             &temp,
             &settings,
             &crate::services::jobs::JobControl::preview(),
-        )
-        .is_ok()
-        {
-            let _ = std::fs::rename(temp, output);
+        ) {
+            Ok(_) => { if let Err(error) = std::fs::rename(temp, output) { let _ = std::fs::write(&failure, format!("Cannot save voice preview: {error}")); } }
+            Err(error) => { let _ = std::fs::write(&failure, error.message); }
         }
         let _ = std::fs::remove_file(marker);
     });
@@ -169,9 +170,13 @@ pub fn preview_voice(
     if voice_id != crate::services::voice_store::DEFAULT_VOICE {
         let output = crate::services::voice_store::preview_path(&app, &voice_id)?;
         if !output.is_file() {
+            let failure = output.with_file_name("preview.error");
+            if let Ok(message) = std::fs::read_to_string(failure) {
+                return Err(CommandError::new("VOICE_PREVIEW_FAILED", format!("Voice preview failed: {message}. Select the sample again to retry.")));
+            }
             return Err(CommandError::new(
                 "VOICE_PREVIEW_PENDING",
-                "The voice preview is still being prepared. Try again in a moment.",
+                "The narrator preview is generating. You can listen to the saved reference sample now.",
             ));
         }
         let id = uuid::Uuid::new_v4().to_string();
@@ -569,6 +574,12 @@ pub fn audio_waveform(
 ) -> Result<Vec<f32>, CommandError> {
     let path = project_store::chapter_audio_path(&root_path, &chapter_id)?;
     crate::services::speech::waveform(&path, &settings::load(&app)?)
+}
+
+#[tauri::command]
+pub fn audio_waveform_window(app: AppHandle, root_path: String, chapter_id: String, start_ms: u64, end_ms: u64) -> Result<Vec<f32>, CommandError> {
+    let path = project_store::chapter_audio_path(&root_path, &chapter_id)?;
+    crate::services::speech::waveform_window(&path, &settings::load(&app)?, start_ms, end_ms)
 }
 
 #[tauri::command]

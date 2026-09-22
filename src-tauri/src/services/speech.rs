@@ -448,6 +448,20 @@ pub fn waveform(path: &Path, settings: &Settings) -> Result<Vec<f32>, CommandErr
     result
 }
 
+pub fn waveform_window(path: &Path, settings: &Settings, start_ms: u64, end_ms: u64) -> Result<Vec<f32>, CommandError> {
+    if !path.is_file() { return Err(CommandError::new("AUDIO_NOT_FOUND", "The chapter audio file was not found.")); }
+    if end_ms <= start_ms || end_ms - start_ms > 3_600_000 { return Err(CommandError::new("INVALID_WAVEFORM_RANGE", "Choose a waveform window of at most one hour.")); }
+    let ffmpeg = process_runner::resolve_executable("ffmpeg", settings.ffmpeg_path.as_deref())
+        .ok_or_else(|| CommandError::new("FFMPEG_NOT_FOUND", "Set FFmpeg in Settings."))?;
+    let raw = path.with_extension(format!("{}.raw", uuid::Uuid::new_v4()));
+    let args = vec!["-v".into(), "error".into(), "-y".into(), "-ss".into(), format!("{:.3}", start_ms as f64 / 1000.0), "-i".into(), path_string(path), "-t".into(), format!("{:.3}", (end_ms - start_ms) as f64 / 1000.0), "-ac".into(), "1".into(), "-ar".into(), "4000".into(), "-f".into(), "s16le".into(), path_string(&raw)];
+    let result = process_runner::run_bounded(&ffmpeg, &args, Duration::from_secs(60), Default::default())?;
+    if !result.success { let _ = fs::remove_file(&raw); return Err(CommandError::new("WAVEFORM_FAILED", concise(&result.stderr))); }
+    let peaks = waveform_from_raw(&raw, 240);
+    let _ = fs::remove_file(raw);
+    peaks
+}
+
 fn waveform_from_raw(path: &Path, bins: usize) -> Result<Vec<f32>, CommandError> {
     let sample_count = fs::metadata(path)
         .map_err(|error| CommandError::io("Cannot inspect decoded audio", error))?

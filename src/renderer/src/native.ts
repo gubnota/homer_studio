@@ -129,6 +129,8 @@ export const productionApi = {
     invoke<string>('audio_url', { rootPath: project.rootPath, chapterId }),
   waveform: (project: ProjectSnapshot, chapterId: string) =>
     invoke<number[]>('audio_waveform', { rootPath: project.rootPath, chapterId }),
+  waveformWindow: (project: ProjectSnapshot, chapterId: string, startMs: number, endMs: number) =>
+    invoke<number[]>('audio_waveform_window', { rootPath: project.rootPath, chapterId, startMs, endMs }),
   takeUrl: (project: ProjectSnapshot, chapterId: string, segmentId: string, takeId: string) =>
     invoke<string>('segment_take_url', { rootPath: project.rootPath, chapterId, segmentId, takeId }),
   selectTake: (project: ProjectSnapshot, chapterId: string, segmentId: string, takeId: string) =>
@@ -168,6 +170,7 @@ export const soundsApi = {
   workers: () => invoke<WorkerHealth[]>('sound_workers'),
   list: () => invoke<SoundAsset[]>('list_sounds'),
   generate: (request: SoundRequest) => invoke<string>('generate_sound', { request }),
+  convertVoiceClip: (voiceId: string, sourcePath?: string, bytes?: number[]) => invoke<string>('convert_voice_clip', { voiceId, sourcePath: sourcePath ?? null, bytes: bytes ?? null }),
   audioUrl: (id: string) => invoke<string>('sound_audio_url', { id }),
   export: async (asset: SoundAsset, format: 'wav' | 'm4a') => {
     const destination = await save({ title: 'Export sound clip', defaultPath: `sound-${asset.id.slice(0, 8)}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] })

@@ -12,7 +12,7 @@ export function StudioLayout({ route, routes: items, onNavigate, children }: Pro
   return (
     <div className="studio-shell">
       <aside className="sidebar">
-        <div className="brand"><span className="brand-mark">H</span><span>Homer Studio</span></div>
+        <div className="brand"><img className="brand-mark" src="/app-icon.png" alt="" /><span>Homer Studio</span></div>
         <nav aria-label="Studio navigation">
           {groups.map((group) => (
             <section className="nav-group" key={group}>

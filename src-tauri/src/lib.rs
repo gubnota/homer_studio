@@ -88,6 +88,7 @@ pub fn run() {
             commands::production::select_segment_take,
             commands::production::convert_segment_recording,
             commands::production::audio_waveform,
+            commands::production::audio_waveform_window,
             commands::production::export_project,
             commands::production::export_audio_url,
             commands::production::read_export_timestamps
@@ -95,6 +96,7 @@ pub fn run() {
             ,commands::sounds::list_sounds
             ,commands::sounds::delete_sounds
             ,commands::sounds::generate_sound
+            ,commands::sounds::convert_voice_clip
             ,commands::sounds::sound_audio_url
             ,commands::sounds::export_sound
             ,commands::sounds::export_sounds
