@@ -43,7 +43,7 @@ export function App(): JSX.Element {
       case 'projects': return <ProjectsPage project={project} busy={busy} onImport={() => navigate('import')} onOpen={openExisting} onEdit={() => navigate('editor')} onProjectChange={remember} />
       case 'import': return <ImportPage onCreated={(created) => { remember(created); navigate('projects') }} />
       case 'editor': return <EditorPage project={project} onProjectChange={remember} />
-      case 'review': return <ReviewPage project={project} onProjectChange={remember} />
+      case 'review': return <ReviewPage project={project} onProjectChange={remember} onOpenQueue={() => navigate('queue')} />
       case 'voices': return <VoicesPage />
       case 'sounds': return <SoundStudioPage />
       case 'voice-lab': return <VoiceLabPage />

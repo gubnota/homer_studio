@@ -104,3 +104,8 @@
 - Removed sound-effect generation controls and availability reporting; existing clips remain playable, exportable, and deletable. The launcher defaults to Chatterbox only.
 - Sound Studio accepts maximum duration up to 120 seconds for speech. Longer text is split into bounded Turbo requests and joined in source order. Dedicated vocal-gesture requests retain the 120-second native limit; inline gesture tags remain available in speech.
 - Renderer typecheck, six tests, production web build, 29 native tests, nine worker tests, arm64 app/signature verification, and packaged-app startup smoke passed. The build remains local; no push was requested.
+
+# 2026-09-23 — Batch chapter narration from Review
+- Approved `docs/IMPLEMENTATION_PLAN_REVIEW_BATCH_NARRATION.md` and added one revision-aware queue job to narrate chapters in project order. Each committed chapter remains available after a later failure or cancellation; queue events show the current/completed chapter and errors.
+- Review now selects chapters with or without audio, offers **Generate pending chapters** and **(Re)Generate selected**, confirms replacement of existing audio, and tracks the batch across tab navigation. Existing bulk save/delete filtering remains audio-aware.
+- Frontend typecheck/build and nine tests, all 33 native tests, `git diff --check`, arm64 app/signature verification, and packaged-app startup smoke passed. The packaged app is local; a live multi-chapter Chatterbox listening test remains manual.

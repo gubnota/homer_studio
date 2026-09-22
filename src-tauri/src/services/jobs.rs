@@ -89,6 +89,13 @@ impl JobStore {
     where
         F: FnOnce(JobControl, Box<dyn Fn(u8) + Send>) -> Result<(), CommandError> + Send + 'static,
     {
+        self.enqueue_with_report(kind, label, move |control, progress, _report| task(control, progress))
+    }
+
+    pub fn enqueue_with_report<F>(&self, kind: &str, label: String, task: F) -> String
+    where
+        F: FnOnce(JobControl, Box<dyn Fn(u8) + Send>, Box<dyn Fn(String) + Send>) -> Result<(), CommandError> + Send + 'static,
+    {
         let id = Uuid::new_v4().to_string();
         let cancelled = Arc::new(AtomicBool::new(false));
         let paused = Arc::new(AtomicBool::new(false));
@@ -127,7 +134,18 @@ impl JobStore {
                     None,
                 )
             });
-            let result = task(JobControl { cancelled, paused }, progress);
+            let report_records = records.clone();
+            let report_id = task_id.clone();
+            let report = Box::new(move |message: String| {
+                if let Ok(mut records) = report_records.lock() {
+                    if let Some(record) = records.iter_mut().find(|record| record.id == report_id) {
+                        record.message = Some(message.clone());
+                        record.events.push(JobEvent { at_ms: now_ms(), status: record.status.clone(), progress: record.progress, message });
+                        if record.events.len() > 100 { record.events.remove(0); }
+                    }
+                }
+            });
+            let result = task(JobControl { cancelled, paused }, progress, report);
             match result {
                 Ok(()) => update(&records, &task_id, "completed", 100, None),
                 Err(error) if error.code == "JOB_CANCELLED" => {
@@ -230,5 +248,45 @@ mod tests {
         store.control(&id, "cancel").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(80));
         assert_eq!(store.list()[0].status, "cancelled");
+    }
+
+    #[test]
+    fn reports_chapter_progress_in_order() {
+        let store = JobStore::new();
+        let id = store.enqueue_with_report("speech", "Batch".into(), |_control, progress, report| {
+            report("Chapter 1 of 2: One".into());
+            progress(50);
+            report("Completed chapter 1 of 2: One".into());
+            report("Chapter 2 of 2: Two".into());
+            progress(99);
+            Ok(())
+        });
+        for _ in 0..100 {
+            if store.list()[0].status == "completed" { break; }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let record = store.list().into_iter().find(|item| item.id == id).unwrap();
+        assert_eq!(record.status, "completed");
+        assert_eq!(record.progress, 100);
+        let messages: Vec<&str> = record.events.iter().map(|event| event.message.as_str()).collect();
+        assert!(messages.iter().position(|message| *message == "Chapter 1 of 2: One") < messages.iter().position(|message| *message == "Chapter 2 of 2: Two"));
+    }
+
+    #[test]
+    fn batch_failure_is_visible_and_events_stay_bounded() {
+        let store = JobStore::new();
+        let id = store.enqueue_with_report("speech", "Batch".into(), |_control, _progress, report| {
+            for number in 0..105 { report(format!("Chapter update {number}")); }
+            Err(CommandError::new("SPEECH_FAILED", "Chapter 2 of 3 (Two): Worker stopped"))
+        });
+        for _ in 0..100 {
+            if store.list()[0].status == "failed" { break; }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let record = store.list().into_iter().find(|item| item.id == id).unwrap();
+        assert_eq!(record.status, "failed");
+        assert!(record.message.unwrap().contains("Chapter 2 of 3 (Two)"));
+        assert_eq!(record.events.len(), 100);
+        assert!(record.events.last().unwrap().message.contains("Worker stopped"));
     }
 }

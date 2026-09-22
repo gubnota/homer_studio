@@ -9,7 +9,7 @@
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
-- Version 0.2.0 now includes explicit English model installation, per-section narration and takes, queue progress/cleanup, and recording-to-narrator conversion; Apple Silicon packaging is the current release checkpoint.
+- Version 0.2.0 now includes explicit English model installation, per-section narration and takes, batch chapter narration from Review, queue progress/cleanup, and recording-to-narrator conversion; Apple Silicon packaging is the current release checkpoint.
 - The Tauri app, durable project storage, drag-and-drop import, optional local text providers, local neural voice library, narration/import, review, export, and packaging are implemented.
 - The current arm64 app bundle is being rebuilt and verified; no new release has been pushed or tagged. Review, Exports, and clip libraries now have bulk save/delete controls; Voice Lab converts standalone recordings; Review has zoomable waveform playback.
 - The user explicitly deferred pushing; keep this implementation and its commits local until asked.
@@ -44,7 +44,7 @@
 3. Inspect chapter boundaries and ordering.
 4. Edit chapter/segment text.
 5. Optionally process text using a selected local LLM.
-6. Choose a built-in or custom voice, install/start the English worker, then narrate a chapter or individual section; record and convert a section as a preview take when needed.
+6. Choose a built-in or custom voice, install/start the English worker, then narrate pending chapters in one batch, regenerate selected chapters, or narrate an individual section; record and convert a section as a preview take when needed.
 7. Listen to takes, choose the preferred one, assemble the chapter, then flag or approve it.
 8. Combine complete chapter audio using FFmpeg.
 9. Save the final audio and measured chapter timestamps.

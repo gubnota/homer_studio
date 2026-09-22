@@ -5,7 +5,7 @@ use crate::services::{
 };
 use crate::AppState;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
 use tauri::{AppHandle, Manager, State};
@@ -290,6 +290,82 @@ pub fn generate_chapter_audio(
             Ok(())
         },
     ))
+}
+
+#[derive(Debug)]
+struct BatchChapter {
+    id: String,
+    title: String,
+    text: String,
+}
+
+fn batch_chapters(snapshot: &ProjectSnapshot, chapter_ids: &[String]) -> Result<Vec<BatchChapter>, CommandError> {
+    if chapter_ids.is_empty() || chapter_ids.len() > snapshot.chapters.len() {
+        return Err(CommandError::new("INVALID_BATCH", "Select at least one chapter to narrate."));
+    }
+    let wanted: HashSet<&str> = chapter_ids.iter().map(String::as_str).collect();
+    if wanted.len() != chapter_ids.len() || wanted.iter().any(|id| !snapshot.chapters.iter().any(|chapter| chapter.chapter.id == *id)) {
+        return Err(CommandError::new("INVALID_BATCH", "The selected chapters contain a duplicate or missing chapter."));
+    }
+    snapshot.chapters.iter().filter(|chapter| wanted.contains(chapter.chapter.id.as_str())).map(|chapter| {
+        let text = chapter.processed_text.as_ref().unwrap_or(&chapter.source_text).clone();
+        if text.trim().is_empty() { return Err(CommandError::new("EMPTY_TEXT", format!("{} has no text to narrate.", chapter.chapter.title))); }
+        Ok(BatchChapter { id: chapter.chapter.id.clone(), title: chapter.chapter.title.clone(), text })
+    }).collect()
+}
+
+#[tauri::command]
+pub fn generate_chapters_audio(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    root_path: String,
+    expected_revision: u64,
+    chapter_ids: Vec<String>,
+) -> Result<String, CommandError> {
+    let snapshot = project_store::open(&root_path)?;
+    if snapshot.revision != expected_revision {
+        return Err(CommandError::new("REVISION_CONFLICT", "The project changed. Reload it before starting batch narration."));
+    }
+    let chapters = batch_chapters(&snapshot, &chapter_ids)?;
+    let settings = settings::load(&app)?;
+    let lock = state.project_write_lock.clone();
+    let total = chapters.len();
+    Ok(state.jobs.enqueue_with_report("speech", format!("Narrate {total} chapters"), move |control, progress, report| {
+        let mut revision = expected_revision;
+        {
+            let _guard = lock.lock().map_err(|_| CommandError::internal("project lock is unavailable"))?;
+            if project_store::open(&root_path)?.revision != revision {
+                return Err(CommandError::new("REVISION_CONFLICT", "The project changed before batch narration started."));
+            }
+        }
+        for (index, chapter) in chapters.iter().enumerate() {
+            control.boundary()?;
+            report(format!("Chapter {} of {}: {}", index + 1, total, chapter.title));
+            let staged = crate::services::speech::staged_path(&root_path, &chapter.id);
+            let result = (|| {
+                let speech = crate::services::speech::generate_with_progress(
+                    &app, &chapter.text, &settings.speech.voice_id, &staged, &settings, &control,
+                    &|done, count| {
+                        let chapter_progress = done.saturating_mul(90) / count.max(1);
+                        progress(((index * 100 + chapter_progress) / total).min(99) as u8);
+                    },
+                )?;
+                control.boundary()?;
+                let _guard = lock.lock().map_err(|_| CommandError::internal("project lock is unavailable"))?;
+                let committed = project_store::commit_chapter_audio(&root_path, revision, &chapter.id, &staged, speech.duration_ms, "generated", speech.cues)?;
+                revision = committed.revision;
+                Ok::<(), CommandError>(())
+            })();
+            if let Err(error) = result {
+                let _ = std::fs::remove_file(&staged);
+                if error.code == "JOB_CANCELLED" { return Err(error); }
+                return Err(CommandError::new(error.code, format!("Chapter {} of {} ({}): {}", index + 1, total, chapter.title, error.message)));
+            }
+            progress((((index + 1) * 100) / total).min(99) as u8);
+            report(format!("Completed chapter {} of {}: {}", index + 1, total, chapter.title));
+        }
+        Ok(())
+    }))
 }
 
 #[tauri::command]
@@ -776,6 +852,43 @@ pub fn read_export_timestamps(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn batch_chapters_validate_and_follow_project_order() {
+        let parent = std::env::temp_dir().join(format!("homer-batch-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&parent).unwrap();
+        let project = project_store::create(parent.to_str().unwrap(), "Batch Test", "# One\nFirst.\n# Two\nSecond.").unwrap();
+        let first = project.chapters[0].chapter.id.clone();
+        let second = project.chapters[1].chapter.id.clone();
+        let ordered = batch_chapters(&project, &[second.clone(), first.clone()]).unwrap();
+        assert_eq!(ordered.iter().map(|item| item.title.as_str()).collect::<Vec<_>>(), ["One", "Two"]);
+        assert_eq!(batch_chapters(&project, &[first.clone(), first]).unwrap_err().code, "INVALID_BATCH");
+        assert_eq!(batch_chapters(&project, &["missing".into()]).unwrap_err().code, "INVALID_BATCH");
+        assert_eq!(batch_chapters(&project, &[]).unwrap_err().code, "INVALID_BATCH");
+        std::fs::remove_dir_all(parent).unwrap();
+    }
+
+    #[test]
+    fn batch_commits_advance_revision_and_preserve_earlier_chapters() {
+        let parent = std::env::temp_dir().join(format!("homer-batch-revision-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&parent).unwrap();
+        let project = project_store::create(parent.to_str().unwrap(), "Batch Test", "# One\nFirst.\n# Two\nSecond.").unwrap();
+        let first = &project.chapters[0].chapter.id;
+        let second = &project.chapters[1].chapter.id;
+        let first_file = parent.join("first.m4a");
+        std::fs::write(&first_file, b"test audio").unwrap();
+        let committed = project_store::commit_chapter_audio(&project.root_path, project.revision, first, &first_file, 1000, "generated", vec![]).unwrap();
+        assert_eq!(committed.revision, project.revision + 1);
+        assert!(committed.chapters[0].chapter.audio_path.is_some());
+        assert!(committed.chapters[1].chapter.audio_path.is_none());
+        let second_file = parent.join("second.m4a");
+        std::fs::write(&second_file, b"test audio").unwrap();
+        assert_eq!(project_store::commit_chapter_audio(&project.root_path, project.revision, second, &second_file, 1000, "generated", vec![]).unwrap_err().code, "REVISION_CONFLICT");
+        let finished = project_store::commit_chapter_audio(&project.root_path, committed.revision, second, &second_file, 1000, "generated", vec![]).unwrap();
+        assert_eq!(finished.revision, project.revision + 2);
+        assert!(finished.chapters.iter().all(|item| item.chapter.audio_path.is_some()));
+        std::fs::remove_dir_all(parent).unwrap();
+    }
 
     #[test]
     fn splices_recorded_passage_at_middle_and_edges() {
