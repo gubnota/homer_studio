@@ -1,5 +1,14 @@
 # Task log
 
+## 2026-09-22 — Local sound worker repair
+- User reported both sound workers unavailable, Ollama falsely available, and odd effect output. Push remains deferred.
+- Ollama is running locally but `/api/tags` reports no installed models. Diagnostics now query the model API and distinguish unreachable service, empty model list, missing selected model, and ready service.
+- Installed Chatterbox Turbo in a repo-local Python 3.10 environment and its complete checkpoint; tested direct generation and the versioned worker API on port 8765.
+- Stable Audio Open's checkpoint requires separate access, so added publicly downloadable AudioLDM 2 as an effects engine behind the same port 8766 contract. Installed its complete local checkpoint, fixed published-checkpoint compatibility with current Diffusers, and generated a measured four-second fabric WAV through both the model and worker API. AudioLDM 2 is noncommercial, and sound quality requires listening review.
+- Added a launcher for both installed workers, actionable offline guidance, category-specific prompts, and checkpoint engine selection. Local workers are running for this verification; launch them again after a restart.
+- Renderer typecheck, nine renderer tests, production web build, 24 Rust tests including FFmpeg integration, five Python worker tests, and worker API generation passed.
+- Built and verified the ad-hoc signed arm64 `.app`; packaged startup passed with normal macOS GUI access. The packaged Sound Studio displayed both workers as ready and retained generated effects clips; Settings displayed Ollama as running with no models installed. The restricted sandbox cannot launch the app UI and exits with `SIGABRT`.
+
 ## 2026-09-22 — Standalone prompt-to-audio studio
 - User approved `docs/IMPLEMENTATION_PLAN_STANDALONE_AUDIO.md`; work remains local and pushes are deferred.
 - Added versioned loopback Python workers for Chatterbox Turbo speech/tags and Stable Audio Open effects, with stub protocol tests and manual checkpoint setup instructions.

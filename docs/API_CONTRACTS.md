@@ -38,7 +38,7 @@
 ## Local audio worker protocol v1
 - Each worker binds `127.0.0.1`. The Mac app accepts only `http://127.0.0.1:<port>`. `GET /v1/health` returns `protocolVersion`, `engine`, `model`, `ready`, `categories`, `maxDurationSeconds`, and `message`.
 - `POST /v1/jobs` takes the `SoundRequest` JSON and returns HTTP 202 `{id}`. `GET /v1/jobs/<id>` returns `{id,status,error,format}` with `queued | running | completed | failed | cancelled`; `DELETE` cancels. A completed job provides WAV bytes at `GET /v1/jobs/<id>/audio`.
-- Chatterbox engine ID `chatterbox_turbo` supports speech and documented vocal tags. Stable Audio engine ID `stable_audio_open` supports sound effects. Worker errors use JSON `{error}`. Responses and audio are size bounded; model packages and checkpoints are never downloaded in request handling.
+- Chatterbox engine ID `chatterbox_turbo` supports speech and documented vocal tags. Sound effects accept engine ID `audioldm2` or `stable_audio_open` at the configured SFX URL. Worker errors use JSON `{error}`. Responses and audio are size bounded; model packages and checkpoints are never downloaded in request handling.
 
 ## Settings v1
 - `llm`: `none`, `llama_cpp`, or `ollama`. Ollama URLs must use loopback HTTP.

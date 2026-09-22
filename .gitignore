@@ -11,5 +11,7 @@ playwright-report/
 __pycache__/
 *.pyc
 workers/**/.venv/
+workers/**/models/
+workers/**/.cache/
 .env
 .env.*

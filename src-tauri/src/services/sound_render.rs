@@ -37,7 +37,7 @@ pub fn render(app: &AppHandle, settings: &Settings, request: &SoundRequest, cont
     validate(request)?;
     control.boundary()?;
     let (url, engine) = if request.category == "sound_effect" {
-        (&settings.sounds.sfx_url, "stable_audio_open")
+        (&settings.sounds.sfx_url, "sound_effect")
     } else { (&settings.sounds.chatterbox_url, "chatterbox_turbo") };
     let health = sound_workers::health(url, engine);
     if !health.ready { return Err(CommandError::new("WORKER_UNAVAILABLE", health.message)); }
@@ -69,7 +69,7 @@ pub fn render(app: &AppHandle, settings: &Settings, request: &SoundRequest, cont
         progress(90);
         let asset = SoundAsset {
             id: id.clone(), prompt: request.prompt.trim().into(), category: request.category.clone(),
-            provider: engine.into(), model: health.model, requested_duration_seconds: request.duration_seconds,
+            provider: health.engine, model: health.model, requested_duration_seconds: request.duration_seconds,
             duration_ms, seed: request.seed, created_at_ms: sound_store::now_ms(),
             master_path: format!("clips/{id}/master.wav"), preview_path: format!("clips/{id}/preview.m4a"),
         };

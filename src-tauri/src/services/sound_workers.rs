@@ -37,7 +37,7 @@ pub fn health(url: &str, expected_engine: &str) -> WorkerHealth {
     };
     match request(url, "GET", "/v1/health", None, MAX_JSON)
         .and_then(|body| serde_json::from_slice::<WorkerHealth>(&body).map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned invalid health data."))) {
-        Ok(value) if value.protocol_version == 1 && value.engine == expected_engine => value,
+        Ok(value) if value.protocol_version == 1 && (value.engine == expected_engine || (expected_engine == "sound_effect" && matches!(value.engine.as_str(), "audioldm2" | "stable_audio_open"))) => value,
         Ok(_) => fallback("Worker protocol or engine does not match.".into()),
         Err(error) => fallback(error.message),
     }
@@ -85,7 +85,7 @@ fn request(url: &str, method: &str, path: &str, body: Option<&[u8]>, max_body: u
     let port: u16 = url.rsplit(':').next().unwrap().parse().unwrap();
     let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
     let mut stream = TcpStream::connect_timeout(&address.into(), Duration::from_secs(2))
-        .map_err(|_| CommandError::new("WORKER_UNAVAILABLE", format!("Cannot reach the local sound worker at {url}. Start it or check Settings.")))?;
+        .map_err(|_| CommandError::new("WORKER_UNAVAILABLE", format!("Cannot reach the local sound worker at {url}. From the repository folder, run python3 workers/start_local.py; then check Settings if it still cannot connect.")))?;
     stream.set_read_timeout(Some(Duration::from_secs(15))).ok();
     stream.set_write_timeout(Some(Duration::from_secs(15))).ok();
     let payload = body.unwrap_or_default();

@@ -23,7 +23,7 @@
 - FFmpeg, FFprobe, llama.cpp, and Ollama executables are discovered in bounded system and user Homebrew locations or selected explicitly in Settings.
 - Replaceable local text providers: llama.cpp / GGUF and Ollama.
 - Speech uses installed macOS voices plus imported audio.
-- Sound Studio uses local Chatterbox Turbo and Stable Audio Open Python workers through versioned loopback HTTP; model checkpoints are user-managed.
+- Sound Studio uses a local Chatterbox Turbo worker for speech and a local AudioLDM 2 or Stable Audio Open worker for effects through versioned loopback HTTP; model checkpoints are user-managed.
 - GitHub Actions builds and verifies packages on macOS arm64.
 
 ## Hard constraints

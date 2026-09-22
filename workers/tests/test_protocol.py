@@ -6,6 +6,7 @@ import wave
 from pathlib import Path
 
 from workers.worker_protocol import Worker
+from workers.sfx.server import engine_for
 
 
 def silence(_request, _model_dir):
@@ -62,6 +63,14 @@ class WorkerTests(unittest.TestCase):
         self.assertFalse(missing.health()["ready"])
         with self.assertRaises(ValueError):
             missing.start({"prompt": "fabric", "category": "sound_effect", "durationSeconds": 2})
+
+    def test_effect_checkpoint_selects_supported_engine(self):
+        model_index = Path(self.folder.name, "model_index.json")
+        for checkpoint, engine in (("AudioLDM2Pipeline", "audioldm2"), ("StableAudioPipeline", "stable_audio_open")):
+            model_index.write_text('{"_class_name": "' + checkpoint + '"}')
+            self.assertEqual(engine_for(Path(self.folder.name)), engine)
+        model_index.write_text('{"_class_name": "UnrelatedPipeline"}')
+        self.assertIsNone(engine_for(Path(self.folder.name)))
 
 
 if __name__ == "__main__":

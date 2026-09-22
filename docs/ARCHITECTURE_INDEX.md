@@ -33,7 +33,7 @@
 - `src/renderer/src/voice-presets.ts`: pure preset selection, creation, update, deletion, and built-in reset rules.
 - `src/renderer/`: React project library, drop-enabled importer, source/candidate chapter editor, voice presets and previews, narration/review, verified export history/timestamps, live queue, settings/tool status, shared controls, and prototype-derived styles.
 - `src/renderer/src/SoundStudioPage.tsx`: book-independent prompt, worker status, clip library, playback, retry, and export.
-- `workers/`: local Chatterbox and Stable Audio Open Python companions, shared versioned protocol, stub tests, and setup guide.
+- `workers/`: local Chatterbox and AudioLDM 2/Stable Audio Open Python companions, shared versioned protocol, launcher, tests, and setup guide.
 - `tests/standalone-audio.test.tsx`: no-project and sound request UI checks.
 - `tests/manuscript-drop.test.ts` and `tests/voice-presets.test.ts`: focused renderer behavior tests.
 - `tests/DESKTOP_SMOKE.md`: automated and manual packaged-app smoke procedure.
