@@ -9,10 +9,10 @@
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
-- Version 0.1.0 implements the local manuscript-to-audiobook workflow and standalone prompt-to-audio clip flow.
+- Version 0.2.0 adds project import defaults, long-text local processing, shared Sound Studio clip selection/export, expressive speech cues, line-level playback navigation, and refreshed app artwork; Apple Silicon packaging is the current release checkpoint.
 - The Tauri app, durable project storage, drag-and-drop import, optional local text providers, local neural voice library, narration/import, review, export, and packaging are implemented.
-- The release target is a locally verified Apple Silicon app, DMG, and ZIP with GitHub CI/release automation.
-- Remote pushes remain deferred until the user asks.
+- The locally verified release deliverables are the Apple Silicon app bundle and ZIP with GitHub CI/release automation; DMG assembly is currently failing in the macOS bundler.
+- User authorized publishing the arm64 release artifact/tag after local verification; push only after package checks pass.
 
 ## Technology
 - Tauri 2 desktop shell with a narrow Rust command boundary.

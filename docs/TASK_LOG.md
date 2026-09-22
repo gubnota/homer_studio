@@ -80,3 +80,9 @@
 - Generated chapter manifests now persist line cues; review playback can seek to and highlight each cue. Imported files correctly have no generated line timings.
 - Documented expressive markup, example dramatic pacing, cue behavior, and current line timing limitations in the UI and API contract.
 - Validation/build/release status: in progress.
+
+## 2026-09-22 — Apple Silicon 0.2.0 release checkpoint
+- Refreshed the app icon set and aligned package/app versions at 0.2.0; saved the approved implementation/release plan.
+- Renderer build (6 tests), full native suite (24 tests), arm64 signature verification, packaged startup smoke test, ZIP creation, and `git diff --check` passed.
+- Apple Silicon DMG bundling failed in `bundle_dmg.sh` both within and outside the restricted sandbox; app bundle and ZIP were produced and verified instead.
+- GitHub remote publishing remains to be attempted after the local release commit and tag are ready.

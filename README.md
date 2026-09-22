@@ -62,4 +62,4 @@ npm run package:mac
 
 The final command creates an Apple Silicon `.app`, `.dmg`, and `.zip` below `src-tauri/target/release/bundle/`. Local packages are ad-hoc signed for development and direct testing. A public distribution can add an Apple Developer ID signature and notarization later.
 
-GitHub CI repeats the checks on an Apple Silicon macOS runner. Tags matching the package version, such as `v0.1.0`, run the release workflow and publish the DMG and ZIP.
+GitHub CI repeats the checks on an Apple Silicon macOS runner. Tags matching the package version, such as `v0.2.0`, run the release workflow and publish the DMG and ZIP.
