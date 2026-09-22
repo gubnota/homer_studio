@@ -8,5 +8,8 @@ coverage/
 test-results/
 playwright-report/
 *.log
+__pycache__/
+*.pyc
+workers/**/.venv/
 .env
 .env.*
