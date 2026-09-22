@@ -22,6 +22,24 @@ pub struct Settings {
     pub voice_presets: Vec<VoicePreset>,
     #[serde(default)]
     pub selected_voice_preset_id: Option<String>,
+    #[serde(default)]
+    pub sounds: SoundSettings,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SoundSettings {
+    pub chatterbox_url: String,
+    pub sfx_url: String,
+}
+
+impl Default for SoundSettings {
+    fn default() -> Self {
+        Self {
+            chatterbox_url: "http://127.0.0.1:8765".into(),
+            sfx_url: "http://127.0.0.1:8766".into(),
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -88,6 +106,7 @@ impl Default for Settings {
             ollama_path: None,
             voice_presets: Vec::new(),
             selected_voice_preset_id: None,
+            sounds: SoundSettings::default(),
         }
     }
 }
@@ -216,6 +235,8 @@ fn llama_override(llm: &LlmSettings) -> Option<&str> {
 }
 
 fn validate(settings: &Settings) -> Result<(), CommandError> {
+    validate_worker_url(&settings.sounds.chatterbox_url)?;
+    validate_worker_url(&settings.sounds.sfx_url)?;
     if settings.schema_version != 1 {
         return Err(CommandError::new(
             "UNSUPPORTED_SETTINGS_VERSION",
@@ -270,6 +291,14 @@ fn validate(settings: &Settings) -> Result<(), CommandError> {
                 "Ollama must use a loopback HTTP address.",
             ));
         }
+    }
+    Ok(())
+}
+
+pub fn validate_worker_url(value: &str) -> Result<(), CommandError> {
+    let port = value.strip_prefix("http://127.0.0.1:").ok_or_else(|| CommandError::new("UNSAFE_WORKER_URL", "Worker URL must be http://127.0.0.1:PORT."))?;
+    if port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()) || port.parse::<u16>().ok().filter(|port| *port > 0).is_none() {
+        return Err(CommandError::new("UNSAFE_WORKER_URL", "Worker URL must be http://127.0.0.1:PORT."));
     }
     Ok(())
 }

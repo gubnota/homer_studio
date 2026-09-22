@@ -69,6 +69,11 @@ pub fn run() {
             commands::production::export_project,
             commands::production::export_audio_url,
             commands::production::read_export_timestamps
+            ,commands::sounds::sound_workers
+            ,commands::sounds::list_sounds
+            ,commands::sounds::generate_sound
+            ,commands::sounds::sound_audio_url
+            ,commands::sounds::export_sound
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Homer Studio");
