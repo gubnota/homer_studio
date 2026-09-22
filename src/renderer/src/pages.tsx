@@ -115,6 +115,7 @@ function ChapterEditor({ project, chapter, onProjectChange }: { project: Project
   const [text, setText] = useState(chapter.sourceText)
   const [instruction, setInstruction] = useState('Improve narration flow while preserving meaning and factual details.')
   const [candidate, setCandidate] = useState(chapter.processedText ?? '')
+  const [candidatePieces, setCandidatePieces] = useState<string[]>([])
   const [processing, setProcessing] = useState(false)
   const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = useState('')
@@ -125,7 +126,7 @@ function ChapterEditor({ project, chapter, onProjectChange }: { project: Project
   }
   async function process(): Promise<void> {
     setProcessing(true); setError('')
-    try { setCandidate((await productionApi.processText(instruction, text)).text) }
+    try { const result = await productionApi.processText(instruction, text); setCandidate(result.text); setCandidatePieces(result.pieces) }
     catch (cause) { setError(errorMessage(cause)) }
     finally { setProcessing(false) }
   }
@@ -135,6 +136,8 @@ function ChapterEditor({ project, chapter, onProjectChange }: { project: Project
     catch (cause) { setError(errorMessage(cause)) }
     finally { setProcessing(false) }
   }
+  function updatePiece(index: number, value: string): void { const next = candidatePieces.map((item, itemIndex) => itemIndex === index ? value : item); setCandidatePieces(next); setCandidate(next.join('\n\n')) }
+  function removePiece(index: number): void { const next = candidatePieces.filter((_, itemIndex) => itemIndex !== index); setCandidatePieces(next); setCandidate(next.join('\n\n')) }
   return <section className="panel chapter-editor">
     {error && <div className="inline-error">{error}</div>}
     <label>Chapter title<input value={title} onChange={(event) => { setTitle(event.target.value); setState('idle') }} /></label>
@@ -144,7 +147,7 @@ function ChapterEditor({ project, chapter, onProjectChange }: { project: Project
       <div><h2>Local text processing</h2><span>{chapter.processedText ? 'An accepted version is saved.' : 'Create a candidate without changing the source.'}</span></div>
       <label>Instruction<input value={instruction} onChange={(event) => setInstruction(event.target.value)} /></label>
       <button disabled={processing || !instruction.trim() || !text.trim()} onClick={() => void process()}>{processing ? 'Working locally…' : 'Create candidate'}</button>
-      {candidate && <div className="candidate"><label>Candidate<textarea value={candidate} onChange={(event) => setCandidate(event.target.value)} /></label><div className="candidate-actions"><button onClick={() => setCandidate('')}>Discard</button><button className="primary" disabled={processing || !candidate.trim()} onClick={() => void accept()}>Accept candidate</button></div></div>}
+      {candidate && <div className="candidate"><h3>Review {candidatePieces.length || 1} editable piece{candidatePieces.length === 1 ? '' : 's'}</h3>{candidatePieces.length > 0 ? candidatePieces.map((piece, index) => <div className="candidate-piece" key={index}><label>Piece {index + 1}<textarea value={piece} onChange={(event) => updatePiece(index, event.target.value)} /></label><button onClick={() => removePiece(index)}>Remove piece</button></div>) : null}<label>Combined preview<textarea value={candidate} onChange={(event) => setCandidate(event.target.value)} /></label><div className="candidate-actions"><button onClick={() => { setCandidate(''); setCandidatePieces([]) }}>Discard</button><button className="primary" disabled={processing || !candidate.trim()} onClick={() => void accept()}>Accept candidate</button></div></div>}
     </div>
   </section>
 }

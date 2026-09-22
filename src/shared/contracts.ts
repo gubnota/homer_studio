@@ -47,6 +47,7 @@ export interface ProjectSnapshot {
 
 export interface TextCandidate {
   text: string
+  pieces: string[]
   provider: string
   model: string
 }

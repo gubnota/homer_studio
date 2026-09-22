@@ -11,17 +11,42 @@ use std::{
 use super::{process_runner, project_store::CommandError, settings::LlmSettings};
 
 const MAX_INPUT_CHARS: usize = 16_000;
+const MAX_MANUSCRIPT_CHARS: usize = 300_000;
 const MAX_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextCandidate {
     pub text: String,
+    pub pieces: Vec<String>,
     pub provider: String,
     pub model: String,
 }
 
 pub fn process(
+    config: &LlmSettings,
+    instruction: &str,
+    text: &str,
+) -> Result<TextCandidate, CommandError> {
+    if instruction.trim().is_empty() { return Err(CommandError::new("EMPTY_INSTRUCTION", "Enter an instruction for the text model.")); }
+    if text.trim().is_empty() { return Err(CommandError::new("EMPTY_TEXT", "There is no text to process.")); }
+    if text.chars().count() > MAX_MANUSCRIPT_CHARS { return Err(CommandError::new("LLM_INPUT_TOO_LARGE", "This text exceeds the 300,000 character local processing limit.")); }
+    let chunks = split_text(text, MAX_INPUT_CHARS);
+    let mut pieces = Vec::with_capacity(chunks.len());
+    let mut provider = String::new();
+    let mut model = String::new();
+    for chunk in chunks {
+        let result = process_single(config, instruction, &chunk)?;
+        provider = result.provider;
+        model = result.model;
+        pieces.push(result.text);
+    }
+    let combined = pieces.join("\n\n");
+    if combined.len() > MAX_OUTPUT_BYTES { return Err(CommandError::new("LLM_OUTPUT_TOO_LARGE", "The combined candidate is larger than 2 MB.")); }
+    Ok(TextCandidate { text: combined, pieces, provider, model })
+}
+
+fn process_single(
     config: &LlmSettings,
     instruction: &str,
     text: &str,
@@ -113,6 +138,22 @@ pub fn process(
     }
 }
 
+fn split_text(text: &str, max_chars: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut remaining = text.trim();
+    while remaining.chars().count() > max_chars {
+        let boundary = remaining.char_indices().take(max_chars).map(|(i, _)| i).last().unwrap_or(0);
+        let preferred = remaining[..boundary].rfind("\n\n").filter(|i| *i > max_chars / 2)
+            .or_else(|| remaining[..boundary].rfind(['.', '!', '?']).filter(|i| *i > max_chars / 2).map(|i| i + 1))
+            .unwrap_or(boundary);
+        let piece = remaining[..preferred].trim();
+        if !piece.is_empty() { chunks.push(piece.to_string()); }
+        remaining = remaining[preferred..].trim();
+    }
+    if !remaining.is_empty() { chunks.push(remaining.to_string()); }
+    chunks
+}
+
 fn validate_request(instruction: &str, text: &str) -> Result<(), CommandError> {
     if instruction.trim().is_empty() {
         return Err(CommandError::new(
@@ -126,12 +167,7 @@ fn validate_request(instruction: &str, text: &str) -> Result<(), CommandError> {
             "There is no text to process.",
         ));
     }
-    if text.chars().count() > MAX_INPUT_CHARS {
-        return Err(CommandError::new(
-            "LLM_INPUT_TOO_LARGE",
-            "This chapter is over 16,000 characters. Split it before local processing.",
-        ));
-    }
+    if text.chars().count() > MAX_INPUT_CHARS { return Err(CommandError::new("LLM_INPUT_TOO_LARGE", "A text processing piece exceeds the 16,000 character limit.")); }
     Ok(())
 }
 
@@ -158,6 +194,7 @@ fn candidate(text: String, provider: &str, model: &str) -> Result<TextCandidate,
         ));
     }
     Ok(TextCandidate {
+        pieces: vec![text.clone()],
         text,
         provider: provider.into(),
         model: model.into(),
@@ -277,11 +314,20 @@ mod tests {
     #[test]
     fn rejects_oversized_input() {
         assert_eq!(
-            process(&LlmSettings::None, "Edit", &"a".repeat(MAX_INPUT_CHARS + 1))
+            process(&LlmSettings::None, "Edit", &"a".repeat(MAX_MANUSCRIPT_CHARS + 1))
                 .unwrap_err()
                 .code,
             "LLM_INPUT_TOO_LARGE"
         );
+    }
+    #[test]
+    fn splits_long_text_without_losing_unicode_or_order() {
+        let source = format!("{}\n\n{}", "é".repeat(10_000), "章".repeat(10_000));
+        let pieces = split_text(&source, 16_000);
+        assert_eq!(pieces.len(), 2);
+        assert!(pieces[0].starts_with('é'));
+        assert!(pieces[1].starts_with('章'));
+        assert_eq!(pieces.iter().map(|piece| piece.chars().count()).sum::<usize>(), 20_000);
     }
     #[test]
     fn rejects_empty_candidate() {
