@@ -20,3 +20,10 @@
 .kind-field button { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #d7d6d0; border-radius: 7px; background: #fff; text-align: left; }
 .gesture-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .gesture-list button { padding: 6px 9px; border: 1px solid #deddd7; border-radius: 6px; background: #fff; font-size: 11px; }
+.segment-editor { width: 100%; margin-top: 12px; border-top: 1px solid #ecebe7; padding-top: 12px; }
+.segment-editor summary { cursor: pointer; font-weight: 650; }
+.segment-editor > .actions { margin: 12px 0; }
+.segment-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; border-top: 1px solid #f0efeb; padding: 10px 0; }
+.segment-row p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.segment-row span { color: #77766f; font-size: 12px; }
+@media (max-width: 720px) { .segment-row { grid-template-columns: 1fr; } }

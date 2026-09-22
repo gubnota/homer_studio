@@ -5,6 +5,7 @@ export interface Segment {
   order: number
   text: string
   selectedTake: string | null
+  takes: { id: string; audioPath: string; durationMs: number }[]
 }
 
 export interface Chapter {

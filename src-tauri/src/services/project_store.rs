@@ -46,6 +46,16 @@ pub struct Segment {
     pub order: usize,
     pub text: String,
     pub selected_take: Option<String>,
+    #[serde(default)]
+    pub takes: Vec<SegmentTake>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SegmentTake {
+    pub id: String,
+    pub audio_path: String,
+    pub duration_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -221,7 +231,7 @@ pub fn update_chapter(
         .unwrap_or(true);
     atomic_write(&source_path, source_text.as_bytes())?;
     chapter.title = title;
-    chapter.segments = segment_text(source_text);
+    chapter.segments = preserve_segments(segment_text(source_text), &chapter.segments);
     chapter.audio_stale = chapter.audio_path.is_some();
     if source_changed {
         if let Some(processed_path) = chapter.processed_path.take() {
@@ -254,7 +264,7 @@ pub fn accept_processed(
     let relative_path = format!("chapters/{chapter_id}/processed.txt");
     atomic_write(&owned_path(&root, &relative_path)?, text.as_bytes())?;
     chapter.processed_path = Some(relative_path);
-    chapter.segments = segment_text(text);
+    chapter.segments = preserve_segments(segment_text(text), &chapter.segments);
     chapter.audio_stale = chapter.audio_path.is_some();
     chapter.review_status = chapter.audio_path.as_ref().map(|_| "pending".into());
     manifest.revision += 1;
@@ -302,6 +312,51 @@ pub fn commit_chapter_audio(
         return Err(error);
     }
     snapshot(&root, manifest)
+}
+
+pub fn commit_segment_take(
+    root_path: &str,
+    expected_revision: u64,
+    chapter_id: &str,
+    segment_id: &str,
+    staged_audio: &Path,
+    duration_ms: u64,
+) -> Result<ProjectSnapshot, CommandError> {
+    let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let mut manifest = read_manifest(&root)?;
+    require_revision(&manifest, expected_revision)?;
+    let chapter = manifest.chapters.iter_mut().find(|item| item.id == chapter_id)
+        .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
+    let segment = chapter.segments.iter_mut().find(|item| item.id == segment_id)
+        .ok_or_else(|| CommandError::new("SEGMENT_NOT_FOUND", "The segment no longer exists."))?;
+    let take_id = Uuid::new_v4().to_string();
+    let relative_path = format!("chapters/{chapter_id}/takes/{take_id}.m4a");
+    let destination = owned_path(&root, &relative_path)?;
+    if let Some(parent) = destination.parent() { fs::create_dir_all(parent).map_err(|error| CommandError::io("Cannot create take folder", error))?; }
+    fs::copy(staged_audio, &destination).map_err(|error| CommandError::io("Cannot store segment take", error))?;
+    segment.takes.push(SegmentTake { id: take_id.clone(), audio_path: relative_path, duration_ms });
+    segment.selected_take = Some(take_id);
+    chapter.audio_stale = chapter.audio_path.is_some();
+    chapter.review_status = chapter.audio_path.as_ref().map(|_| "pending".into());
+    manifest.revision += 1;
+    manifest.updated_at_ms = now_ms();
+    if let Err(error) = write_manifest(&root, &manifest) { let _ = fs::remove_file(destination); return Err(error); }
+    let _ = fs::remove_file(staged_audio);
+    snapshot(&root, manifest)
+}
+
+pub fn selected_segment_takes(root_path: &str, chapter_id: &str) -> Result<Vec<(Segment, PathBuf)>, CommandError> {
+    let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let manifest = read_manifest(&root)?;
+    let chapter = manifest.chapters.iter().find(|item| item.id == chapter_id)
+        .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
+    chapter.segments.iter().map(|segment| {
+        let take = segment.takes.iter().find(|take| Some(&take.id) == segment.selected_take.as_ref())
+            .ok_or_else(|| CommandError::new("SEGMENT_NOT_NARRATED", format!("Segment {} needs a take before assembly.", segment.order + 1)))?;
+        let path = owned_path(&root, &take.audio_path)?;
+        if !path.is_file() { return Err(CommandError::new("TAKE_MISSING", format!("Audio for segment {} is missing.", segment.order + 1))); }
+        Ok((segment.clone(), path))
+    }).collect()
 }
 
 pub fn delete_generated_audio(
@@ -720,18 +775,13 @@ fn heading_title(line: &str) -> Option<String> {
 
 fn segment_text(text: &str) -> Vec<Segment> {
     let mut chunks = Vec::new();
-    let mut current = String::new();
     for paragraph in text
         .split("\n\n")
         .map(str::trim)
         .filter(|part| !part.is_empty())
     {
-        if !current.is_empty()
-            && current.chars().count() + paragraph.chars().count() + 2 > MAX_SEGMENT_CHARS
-        {
-            chunks.push(std::mem::take(&mut current));
-        }
         if paragraph.chars().count() > MAX_SEGMENT_CHARS {
+            let mut current = String::new();
             for sentence in paragraph.split_inclusive(['.', '!', '?']) {
                 for piece in split_at_char_limit(sentence.trim(), MAX_SEGMENT_CHARS) {
                     if !current.is_empty()
@@ -745,15 +795,10 @@ fn segment_text(text: &str) -> Vec<Segment> {
                     current.push_str(&piece);
                 }
             }
+            if !current.is_empty() { chunks.push(current); }
         } else {
-            if !current.is_empty() {
-                current.push_str("\n\n");
-            }
-            current.push_str(paragraph);
+            chunks.push(paragraph.to_string());
         }
-    }
-    if !current.is_empty() {
-        chunks.push(current);
     }
     chunks
         .into_iter()
@@ -763,8 +808,21 @@ fn segment_text(text: &str) -> Vec<Segment> {
             order,
             text,
             selected_take: None,
+            takes: Vec::new(),
         })
         .collect()
+}
+
+fn preserve_segments(mut next: Vec<Segment>, previous: &[Segment]) -> Vec<Segment> {
+    let mut used = std::collections::HashSet::new();
+    for segment in &mut next {
+        if let Some(old) = previous.iter().find(|old| old.text == segment.text && used.insert(old.id.clone())) {
+            segment.id = old.id.clone();
+            segment.selected_take = old.selected_take.clone();
+            segment.takes = old.takes.clone();
+        }
+    }
+    next
 }
 
 fn split_at_char_limit(text: &str, limit: usize) -> Vec<String> {
@@ -831,6 +889,20 @@ mod tests {
         assert!(segments
             .iter()
             .all(|segment| segment.text.chars().count() <= MAX_SEGMENT_CHARS));
+    }
+
+    #[test]
+    fn retains_takes_for_unchanged_segments_only() {
+        let mut before = segment_text("First paragraph.\n\nSecond paragraph.");
+        before[0].selected_take = Some("take-one".into());
+        before[0].takes.push(SegmentTake { id: "take-one".into(), audio_path: "chapters/a/takes/one.m4a".into(), duration_ms: 1234 });
+        let after = preserve_segments(segment_text("First paragraph.\n\nA replacement."), &before);
+        assert_eq!(after[0].id, before[0].id);
+        assert_eq!(after[0].selected_take.as_deref(), Some("take-one"));
+        assert_ne!(after[1].id, before[1].id);
+        assert!(after[1].takes.is_empty());
+        let legacy: Segment = serde_json::from_value(serde_json::json!({"id":"old","order":0,"text":"Hello","selectedTake":null})).unwrap();
+        assert!(legacy.takes.is_empty());
     }
 
     #[test]

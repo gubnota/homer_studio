@@ -70,6 +70,8 @@ pub fn run() {
             commands::production::delete_voice,
             commands::production::preview_voice,
             commands::production::generate_chapter_audio,
+            commands::production::generate_segment_audio,
+            commands::production::assemble_chapter_takes,
             commands::production::import_chapter_audio,
             commands::production::export_chapter_audio,
             commands::production::delete_generated_chapter_audio,

@@ -101,6 +101,10 @@ export const productionApi = {
   previewVoice: (voiceId: string, rate: number) => invoke<string>('preview_voice', { voiceId, rate }),
   generateAudio: (project: ProjectSnapshot, chapterId: string) =>
     invoke<string>('generate_chapter_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId }),
+  generateSegment: (project: ProjectSnapshot, chapterId: string, segmentId: string) =>
+    invoke<string>('generate_segment_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId, segmentId }),
+  assembleTakes: (project: ProjectSnapshot, chapterId: string) =>
+    invoke<string>('assemble_chapter_takes', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId }),
   importAudio: (project: ProjectSnapshot, chapterId: string, sourcePath: string) =>
     invoke<string>('import_chapter_audio', { rootPath: project.rootPath, expectedRevision: project.revision, chapterId, sourcePath }),
   exportChapterAudio: async (project: ProjectSnapshot, chapterId: string, title: string) => {

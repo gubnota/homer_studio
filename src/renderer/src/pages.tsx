@@ -184,6 +184,23 @@ export function ReviewPage({ project, onProjectChange }: { project: ProjectSnaps
     setBusyId(chapterId); setError('')
     try { await waitForJob(await productionApi.generateAudio(activeProject, chapterId)) } catch (cause) { setError(errorMessage(cause)) } finally { setBusyId('') }
   }
+  async function generateSegment(chapterId: string, segmentId: string): Promise<void> {
+    setBusyId(segmentId); setError('')
+    try { await waitForJob(await productionApi.generateSegment(activeProject, chapterId, segmentId)) } catch (cause) { setError(errorMessage(cause)) } finally { setBusyId('') }
+  }
+  async function generateRemaining(chapter: Chapter): Promise<void> {
+    setBusyId(chapter.id); setError('')
+    try {
+      for (const segment of chapter.segments.filter((item) => !item.selectedTake)) {
+        const fresh = await projectApi.open(activeProject.rootPath)
+        await waitForJob(await productionApi.generateSegment(fresh, chapter.id, segment.id))
+      }
+    } catch (cause) { setError(errorMessage(cause)) } finally { setBusyId('') }
+  }
+  async function assemble(chapterId: string): Promise<void> {
+    setBusyId(chapterId); setError('')
+    try { await waitForJob(await productionApi.assembleTakes(activeProject, chapterId)) } catch (cause) { setError(errorMessage(cause)) } finally { setBusyId('') }
+  }
   async function importAudio(chapterId: string): Promise<void> {
     const source = await chooseAudio(); if (!source) return
     setBusyId(chapterId); setError('')
@@ -210,7 +227,7 @@ export function ReviewPage({ project, onProjectChange }: { project: ProjectSnaps
   return <div className="page"><Header eyebrow={project.title} title="Narrate and review" copy="Generate with a local Chatterbox voice or import existing chapter audio." />
     {error && <div className="inline-error">{error}</div>}
     <section className="panel review-voice"><div><strong>Narration voice</strong><span>{selectedVoice?.name ?? 'Loading voices…'}</span></div><button onClick={() => setPickerOpen(true)} disabled={!settings}>Choose voice</button></section>
-    <section className="review-list">{project.chapters.map((chapter) => <article className="panel review-card" key={chapter.id}><div className="review-copy"><small>Chapter {chapter.order + 1}</small><h2>{chapter.title}</h2><span>{chapter.audioPath ? `${formatDuration(chapter.audioDurationMs)} · ${chapter.audioOrigin}${chapter.audioStale ? ' · stale' : ''}` : `${chapter.segments.length} text segments`}</span></div><div className="review-controls">{chapter.audioPath && !chapter.audioStale && <ChapterAudio project={project} chapter={chapter} />}<div className="actions"><button disabled={Boolean(busyId)} onClick={() => void importAudio(chapter.id)}>Import audio</button><button className="primary" disabled={Boolean(busyId)} onClick={() => void generate(chapter.id)}>{busyId === chapter.id ? 'Processing…' : chapter.audioPath ? 'Regenerate' : 'Generate audio'}</button>{chapter.audioPath && <button disabled={Boolean(busyId)} onClick={() => void exportAudio(chapter)}>Export audio</button>}{chapter.audioOrigin === 'generated' && <button disabled={Boolean(busyId)} onClick={() => void deleteAudio(chapter)}>Delete generation</button>}</div>{chapter.audioPath && !chapter.audioStale && <div className="review-actions"><button className={chapter.reviewStatus === 'changes_requested' ? 'selected' : ''} onClick={() => void review(chapter.id, 'changes_requested')}>Needs changes</button><button className={chapter.reviewStatus === 'approved' ? 'selected approved' : ''} onClick={() => void review(chapter.id, 'approved')}>Approve</button></div>}</div></article>)}</section>
+    <section className="review-list">{project.chapters.map((chapter) => <article className="panel review-card" key={chapter.id}><div className="review-copy"><small>Chapter {chapter.order + 1}</small><h2>{chapter.title}</h2><span>{chapter.audioPath ? `${formatDuration(chapter.audioDurationMs)} · ${chapter.audioOrigin}${chapter.audioStale ? ' · stale' : ''}` : `${chapter.segments.length} text segments`}</span></div><div className="review-controls">{chapter.audioPath && !chapter.audioStale && <ChapterAudio project={project} chapter={chapter} />}<div className="actions"><button disabled={Boolean(busyId)} onClick={() => void importAudio(chapter.id)}>Import audio</button><button className="primary" disabled={Boolean(busyId)} onClick={() => void generate(chapter.id)}>{busyId === chapter.id ? 'Processing…' : chapter.audioPath ? 'Regenerate' : 'Generate audio'}</button>{chapter.audioPath && <button disabled={Boolean(busyId)} onClick={() => void exportAudio(chapter)}>Export audio</button>}{chapter.audioOrigin === 'generated' && <button disabled={Boolean(busyId)} onClick={() => void deleteAudio(chapter)}>Delete generation</button>}</div><details className="segment-editor"><summary>Manual sections · {chapter.segments.filter((item) => item.selectedTake).length}/{chapter.segments.length} narrated</summary><div className="actions"><button disabled={Boolean(busyId) || chapter.segments.every((item) => item.selectedTake)} onClick={() => void generateRemaining(chapter)}>Generate remaining</button><button disabled={Boolean(busyId) || !chapter.segments.length || chapter.segments.some((item) => !item.selectedTake)} onClick={() => void assemble(chapter.id)}>Assemble chapter</button></div>{chapter.segments.map((segment) => <div className="segment-row" key={segment.id}><p>{segment.text}</p><span>{segment.selectedTake ? `Narrated · ${segment.takes.length} take${segment.takes.length === 1 ? '' : 's'}` : 'Needs narration'}</span><button disabled={Boolean(busyId)} onClick={() => void generateSegment(chapter.id, segment.id)}>{busyId === segment.id ? 'Working…' : segment.selectedTake ? 'Record new take' : 'Narrate section'}</button></div>)}</details>{chapter.audioPath && !chapter.audioStale && <div className="review-actions"><button className={chapter.reviewStatus === 'changes_requested' ? 'selected' : ''} onClick={() => void review(chapter.id, 'changes_requested')}>Needs changes</button><button className={chapter.reviewStatus === 'approved' ? 'selected approved' : ''} onClick={() => void review(chapter.id, 'approved')}>Approve</button></div>}</div></article>)}</section>
     <VoicePicker open={pickerOpen} voices={voices} selectedId={selectedVoice?.id ?? ''} onSelect={(voice) => void selectVoice(voice)} onClose={() => setPickerOpen(false)} />
   </div>
 }

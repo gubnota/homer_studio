@@ -288,6 +288,81 @@ pub fn generate_chapter_audio(
 }
 
 #[tauri::command]
+pub fn generate_segment_audio(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    root_path: String,
+    expected_revision: u64,
+    chapter_id: String,
+    segment_id: String,
+) -> Result<String, CommandError> {
+    let snapshot = project_store::open(&root_path)?;
+    if snapshot.revision != expected_revision { return Err(CommandError::new("REVISION_CONFLICT", "Reload the project before narrating.")); }
+    let chapter = snapshot.chapters.iter().find(|item| item.chapter.id == chapter_id)
+        .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
+    let segment = chapter.chapter.segments.iter().find(|item| item.id == segment_id)
+        .ok_or_else(|| CommandError::new("SEGMENT_NOT_FOUND", "The segment no longer exists."))?;
+    let text = segment.text.clone();
+    let label = format!("Narrate {} · section {}", chapter.chapter.title, segment.order + 1);
+    let settings = settings::load(&app)?;
+    let lock = state.project_write_lock.clone();
+    Ok(state.jobs.enqueue("speech", label, move |control, progress| {
+        control.boundary()?;
+        progress(10);
+        let staged = crate::services::speech::staged_path(&root_path, &chapter_id);
+        let output = crate::services::speech::generate_with_progress(&app, &text, &settings.speech.voice_id, &staged, &settings, &control,
+            &|done, total| progress((10 + done.saturating_mul(75) / total.max(1)).min(85) as u8))?;
+        control.boundary()?;
+        progress(90);
+        let _guard = lock.lock().map_err(|_| CommandError::internal("project lock is unavailable"))?;
+        project_store::commit_segment_take(&root_path, expected_revision, &chapter_id, &segment_id, &staged, output.duration_ms)?;
+        Ok(())
+    }))
+}
+
+#[tauri::command]
+pub fn assemble_chapter_takes(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    root_path: String,
+    expected_revision: u64,
+    chapter_id: String,
+) -> Result<String, CommandError> {
+    if project_store::open(&root_path)?.revision != expected_revision { return Err(CommandError::new("REVISION_CONFLICT", "Reload the project before assembling.")); }
+    let takes = project_store::selected_segment_takes(&root_path, &chapter_id)?;
+    if takes.is_empty() { return Err(CommandError::new("NO_SEGMENTS", "This chapter has no segments.")); }
+    let settings = settings::load(&app)?;
+    let lock = state.project_write_lock.clone();
+    Ok(state.jobs.enqueue("speech", "Assemble chapter takes".into(), move |control, progress| {
+        control.boundary()?;
+        let ffmpeg = crate::services::process_runner::resolve_executable("ffmpeg", settings.ffmpeg_path.as_deref())
+            .ok_or_else(|| CommandError::new("FFMPEG_NOT_FOUND", "Set FFmpeg in Settings before assembling."))?;
+        let staged = crate::services::speech::staged_path(&root_path, &chapter_id);
+        let list = staged.with_extension("txt");
+        let contents = takes.iter().map(|(_, path)| format!("file '{}'\n", path.to_string_lossy().replace('\'', "'\\''"))).collect::<String>();
+        std::fs::write(&list, contents).map_err(|error| CommandError::io("Cannot stage take list", error))?;
+        let args = vec!["-v".into(), "error".into(), "-y".into(), "-f".into(), "concat".into(), "-safe".into(), "0".into(), "-i".into(), list.to_string_lossy().to_string(), "-vn".into(), "-c:a".into(), "aac".into(), "-b:a".into(), "128k".into(), "-ar".into(), "48000".into(), "-ac".into(), "2".into(), staged.to_string_lossy().to_string()];
+        progress(20);
+        let result = crate::services::process_runner::run_bounded(&ffmpeg, &args, std::time::Duration::from_secs(3600), control.cancelled.clone())?;
+        let _ = std::fs::remove_file(list);
+        if !result.success { return Err(CommandError::new("AUDIO_CONVERSION_FAILED", result.stderr)); }
+        control.boundary()?;
+        progress(90);
+        let duration = crate::services::speech::probe_duration(&staged, &settings)?;
+        let mut offset = 0;
+        let cues = takes.iter().enumerate().map(|(order, (segment, path))| {
+            let measured = crate::services::speech::probe_duration(path, &settings)?;
+            let cue = project_store::LineCue { order, text: crate::services::spoken_text::lines(&segment.text).join(" "), start_ms: offset, end_ms: offset + measured };
+            offset += measured;
+            Ok(cue)
+        }).collect::<Result<Vec<_>, CommandError>>()?;
+        let _guard = lock.lock().map_err(|_| CommandError::internal("project lock is unavailable"))?;
+        project_store::commit_chapter_audio(&root_path, expected_revision, &chapter_id, &staged, duration, "generated", cues)?;
+        Ok(())
+    }))
+}
+
+#[tauri::command]
 pub fn import_chapter_audio(
     app: AppHandle,
     state: State<'_, AppState>,
