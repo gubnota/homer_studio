@@ -186,19 +186,31 @@ export function ReviewPage({ project, onProjectChange, onOpenQueue }: { project:
     void projectApi.open(project.rootPath).then(onProjectChange).catch((cause) => setError(errorMessage(cause)))
   }, [project?.rootPath])
   useEffect(() => {
-    if (!batchJobId) return
-    const refresh = (): void => { void systemApi.jobs().then((jobs) => {
-      const current = jobs.find((job) => job.id === batchJobId)
-      if (!current || !['completed', 'failed', 'cancelled'].includes(current.status)) return
-      setBatchJobId('')
-      if (project?.rootPath) window.sessionStorage.removeItem(`review-batch:${project.rootPath}`)
-      setBatchMessage(current.status === 'completed' ? 'Batch narration finished.' : '')
-      if (current.status !== 'completed') setError(current.message ?? `Batch narration ${current.status}.`)
-      if (project?.rootPath) void projectApi.open(project.rootPath).then(onProjectChange).catch((cause) => setError(errorMessage(cause)))
-    }).catch((cause) => setError(errorMessage(cause))) }
-    refresh()
+    if (!batchJobId || !project?.rootPath) return
+    const rootPath = project.rootPath
+    let lastRevision = project.revision
+    let refreshing = false
+    let disposed = false
+    const refresh = async (): Promise<void> => {
+      if (refreshing || disposed) return
+      refreshing = true
+      try {
+        const jobs = await systemApi.jobs()
+        const current = jobs.find((job) => job.id === batchJobId)
+        const fresh = await projectApi.open(rootPath)
+        if (disposed) return
+        if (fresh.revision > lastRevision) { lastRevision = fresh.revision; onProjectChange(fresh) }
+        if (current && !['completed', 'failed', 'cancelled'].includes(current.status)) return
+        setBatchJobId('')
+        window.sessionStorage.removeItem(`review-batch:${rootPath}`)
+        setBatchMessage(current?.status === 'completed' ? 'Batch narration finished.' : '')
+        if (current?.status === 'failed' || current?.status === 'cancelled') setError(current.message ?? `Batch narration ${current.status}.`)
+      } catch (cause) { if (!disposed) setError(errorMessage(cause)) }
+      finally { refreshing = false }
+    }
+    void refresh()
     const timer = window.setInterval(refresh, 1000)
-    return () => window.clearInterval(timer)
+    return () => { disposed = true; window.clearInterval(timer) }
   }, [batchJobId, project?.rootPath])
   if (!project) return <div className="page"><Header eyebrow="Production" title="Review" copy="Listen to chapter audio and approve it." /><section className="panel placeholder"><h2>Open a project first</h2></section></div>
   const activeProject = project
@@ -302,7 +314,7 @@ export function ReviewPage({ project, onProjectChange, onOpenQueue }: { project:
       <button className="primary" disabled={busy || !selectedRenderIds.length} onClick={() => void startBatch(selectedRenderIds, true)}>(Re)Generate selected · {selectedRenderIds.length}</button>
       <button disabled={!selectedChapters.some((id) => project.chapters.some((chapter) => chapter.id === id && chapter.audioPath))} onClick={() => void saveSelectedChapters()}>Save selected</button>
       <button disabled={!selectedChapters.some((id) => project.chapters.some((chapter) => chapter.id === id && chapter.audioOrigin === 'generated'))} onClick={() => void deleteSelectedChapters()}>Delete selected generations</button>
-    </div></section><section className="review-list">{project.chapters.map((chapter) => <article className="panel review-card" key={chapter.id}><div className="review-copy"><label className="sound-select"><input type="checkbox" aria-label={`Select ${chapter.title}`} checked={selectedChapters.includes(chapter.id)} onChange={(event) => setSelectedChapters((ids) => event.target.checked ? [...ids, chapter.id] : ids.filter((id) => id !== chapter.id))} /> Select</label><small>Chapter {chapter.order + 1}</small><h2>{chapter.title}</h2><span>{chapter.audioPath ? `${formatDuration(chapter.audioDurationMs)} · ${chapter.audioOrigin}${chapter.audioStale ? ' · stale' : ''}` : `${chapter.segments.length} text segments`}</span></div><div className="review-controls">{chapter.audioPath && !chapter.audioStale && <ChapterAudio project={project} chapter={chapter} onEditCue={(order, range) => { setRecordingSegmentId(chapter.segments[order]?.id ?? ''); setRecordingRange(range) }} />}<div className="actions"><button disabled={busy} onClick={() => void importAudio(chapter.id)}>Import audio</button><button className="primary" disabled={busy} onClick={() => void generate(chapter.id)}>{busyId === chapter.id ? 'Processing…' : chapter.audioPath ? 'Regenerate' : 'Generate audio'}</button>{chapter.audioPath && <button disabled={busy} onClick={() => void exportAudio(chapter)}>Export audio</button>}{chapter.audioOrigin === 'generated' && <button disabled={busy} onClick={() => void deleteAudio(chapter)}>Delete generation</button>}</div><details className="segment-editor" open={chapter.segments.some((item) => item.id === recordingSegmentId) ? true : undefined}><summary>Manual sections · {chapter.segments.filter((item) => item.selectedTake).length}/{chapter.segments.length} narrated</summary><div className="actions"><button disabled={busy || chapter.segments.every((item) => item.selectedTake)} onClick={() => void generateRemaining(chapter)}>Generate remaining</button><button disabled={busy || !chapter.segments.length || chapter.segments.some((item) => !item.selectedTake)} onClick={() => void assemble(chapter.id)}>Assemble chapter</button></div>{chapter.segments.map((segment) => <div className="segment-row" key={segment.id}><p>{segment.text}</p><span>{segment.selectedTake ? `Narrated · ${segment.takes.length} take${segment.takes.length === 1 ? '' : 's'}` : 'Needs narration'}</span><button disabled={busy} onClick={() => void generateSegment(chapter.id, segment.id)}>{busyId === segment.id ? 'Working…' : 'Narrate section'}</button><button disabled={busy} onClick={() => { setRecordingSegmentId(recordingSegmentId === segment.id ? '' : segment.id); setRecordingRange(undefined) }}>{recordingSegmentId === segment.id ? 'Close recorder' : 'Record delivery'}</button>{recordingSegmentId === segment.id && <SectionRecorder disabled={busy} range={recordingRange} onConvert={(bytes) => void convertRecording(chapter.id, segment.id, bytes)} />}{segment.takes.length > 0 && <div className="segment-takes">{segment.takes.map((take, index) => <SegmentTakePlayer key={take.id} project={project} chapterId={chapter.id} segmentId={segment.id} takeId={take.id} label={`Take ${index + 1}${segment.selectedTake === take.id ? ' · selected' : ''}`} selected={segment.selectedTake === take.id} onSelect={() => void selectTake(chapter.id, segment.id, take.id)} />)}</div>}</div>)}</details>{chapter.audioPath && !chapter.audioStale && <div className="review-actions"><button className={chapter.reviewStatus === 'changes_requested' ? 'selected' : ''} onClick={() => void review(chapter.id, 'changes_requested')}>Needs changes</button><button className={chapter.reviewStatus === 'approved' ? 'selected approved' : ''} onClick={() => void review(chapter.id, 'approved')}>Approve</button></div>}</div></article>)}</section>
+    </div></section><section className="review-list">{project.chapters.map((chapter) => <article className="panel review-card" key={chapter.id}><div className="review-copy"><label className="sound-select"><input type="checkbox" aria-label={`Select ${chapter.title}`} checked={selectedChapters.includes(chapter.id)} onChange={(event) => setSelectedChapters((ids) => event.target.checked ? [...ids, chapter.id] : ids.filter((id) => id !== chapter.id))} /> Select</label><small>Chapter {chapter.order + 1}</small><h2>{chapter.title}</h2><span>{chapter.audioPath ? `${formatDuration(chapter.audioDurationMs)} · ${chapter.audioOrigin}${chapter.audioStale ? ' · stale' : ''}` : `${chapter.segments.length} text segments`}</span></div><div className="review-controls">{chapter.audioPath && !chapter.audioStale && <ChapterAudio project={project} chapter={chapter} onEditCue={(order, range) => { setRecordingSegmentId(chapter.segments[order]?.id ?? ''); setRecordingRange(range) }} />}<div className="actions"><button disabled={busy} onClick={() => void importAudio(chapter.id)}>Import audio</button><button className="primary" disabled={busy} onClick={() => void generate(chapter.id)}>{busyId === chapter.id ? 'Processing…' : chapter.audioPath ? 'Regenerate' : 'Generate audio'}</button>{chapter.audioPath && <button onClick={() => void exportAudio(chapter)}>Save chapter audio</button>}{chapter.audioOrigin === 'generated' && <button disabled={busy} onClick={() => void deleteAudio(chapter)}>Delete generation</button>}</div><details className="segment-editor" open={chapter.segments.some((item) => item.id === recordingSegmentId) ? true : undefined}><summary>Manual sections · {chapter.segments.filter((item) => item.selectedTake).length}/{chapter.segments.length} narrated</summary><div className="actions"><button disabled={busy || chapter.segments.every((item) => item.selectedTake)} onClick={() => void generateRemaining(chapter)}>Generate remaining</button><button disabled={busy || !chapter.segments.length || chapter.segments.some((item) => !item.selectedTake)} onClick={() => void assemble(chapter.id)}>Assemble chapter</button></div>{chapter.segments.map((segment) => <div className="segment-row" key={segment.id}><p>{segment.text}</p><span>{segment.selectedTake ? `Narrated · ${segment.takes.length} take${segment.takes.length === 1 ? '' : 's'}` : 'Needs narration'}</span><button disabled={busy} onClick={() => void generateSegment(chapter.id, segment.id)}>{busyId === segment.id ? 'Working…' : 'Narrate section'}</button><button disabled={busy} onClick={() => { setRecordingSegmentId(recordingSegmentId === segment.id ? '' : segment.id); setRecordingRange(undefined) }}>{recordingSegmentId === segment.id ? 'Close recorder' : 'Record delivery'}</button>{recordingSegmentId === segment.id && <SectionRecorder disabled={busy} range={recordingRange} onConvert={(bytes) => void convertRecording(chapter.id, segment.id, bytes)} />}{segment.takes.length > 0 && <div className="segment-takes">{segment.takes.map((take, index) => <SegmentTakePlayer key={take.id} project={project} chapterId={chapter.id} segmentId={segment.id} takeId={take.id} label={`Take ${index + 1}${segment.selectedTake === take.id ? ' · selected' : ''}`} selected={segment.selectedTake === take.id} onSelect={() => void selectTake(chapter.id, segment.id, take.id)} />)}</div>}</div>)}</details>{chapter.audioPath && !chapter.audioStale && <div className="review-actions"><button className={chapter.reviewStatus === 'changes_requested' ? 'selected' : ''} onClick={() => void review(chapter.id, 'changes_requested')}>Needs changes</button><button className={chapter.reviewStatus === 'approved' ? 'selected approved' : ''} onClick={() => void review(chapter.id, 'approved')}>Approve</button></div>}</div></article>)}</section>
     <VoicePicker open={pickerOpen} voices={voices} selectedId={selectedVoice?.id ?? ''} onSelect={(voice) => void selectVoice(voice)} onClose={() => setPickerOpen(false)} />
   </div>
 }
@@ -556,6 +568,18 @@ export function ExportsPage({ project, onProjectChange }: { project: ProjectSnap
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   useEffect(() => setSelected((ids) => ids.filter((id) => project?.exports.some((item) => item.id === id) ?? false)), [project])
+  useEffect(() => {
+    if (!project?.rootPath || !isDesktop()) return
+    let disposed = false
+    const refresh = (): void => {
+      void projectApi.open(project.rootPath).then((fresh) => {
+        if (!disposed && fresh.revision > project.revision) onProjectChange(fresh)
+      }).catch((cause) => { if (!disposed) setError(errorMessage(cause)) })
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 3000)
+    return () => { disposed = true; window.clearInterval(timer) }
+  }, [project?.rootPath, project?.revision])
   if (!project) return <div className="page"><Header eyebrow="Output" title="Exports" copy="Combine approved chapters and create measured timestamps." /><section className="panel placeholder"><h2>Open a project first</h2></section></div>
   const activeProject = project
   const ready = activeProject.chapters.filter((chapter) => chapter.audioPath && !chapter.audioStale && chapter.reviewStatus === 'approved').length
@@ -579,6 +603,11 @@ export function ExportsPage({ project, onProjectChange }: { project: ProjectSnap
     setError('')
     try { await productionApi.saveExports(activeProject, selected) } catch (cause) { setError(errorMessage(cause)) }
   }
+  async function saveChapter(chapter: Chapter): Promise<void> {
+    setError('')
+    try { await productionApi.exportChapterAudio(activeProject, chapter.id, chapter.title) }
+    catch (cause) { setError(errorMessage(cause)) }
+  }
   async function deleteOne(id: string): Promise<void> {
     if (!window.confirm("Delete this export and its files?")) return
     setError("")
@@ -593,6 +622,7 @@ export function ExportsPage({ project, onProjectChange }: { project: ProjectSnap
     {error && <div className="inline-error">{error}</div>}
     {ready !== project.chapters.length && <div className="status-banner">{ready} of {project.chapters.length} chapters have current, approved audio.</div>}
     {ready === project.chapters.length && youtubeNote && <div className="status-banner">The audiobook can be exported. YouTube may not activate chapter marks because {youtubeNote}.</div>}
+    <section className="panel chapter-downloads"><h2>Download individual chapters</h2><p className="field-note">A saved chapter can be downloaded before the full audiobook is approved.</p>{project.chapters.map((chapter) => <div className="chapter-download-row" key={chapter.id}><div><strong>{chapter.title}</strong><small>{chapter.audioPath ? `${formatDuration(chapter.audioDurationMs)}${chapter.audioStale ? ' · text changed since narration' : ''}` : 'Audio not generated yet'}</small></div><button disabled={!chapter.audioPath} onClick={() => void saveChapter(chapter)}>Download chapter</button></div>)}</section>
     <section className="panel export-history"><div className="library-heading"><h2>Export history</h2><div className="actions"><button disabled={!project.exports.length} onClick={() => setSelected(project.exports.map((item) => item.id))}>Select all</button><button disabled={!selected.length} onClick={() => setSelected([])}>Deselect all</button><button disabled={!selected.length} onClick={() => void saveSelected()}>Save selected</button><button disabled={!selected.length} onClick={() => void deleteSelected()}>Delete selected</button></div></div>{project.exports.length === 0 ? <div className="table-empty">No exports yet.</div> : [...project.exports].reverse().map((item) => <ExportItem key={item.id} project={project} item={item} stale={item.sourceUpdatedAtMs !== project.updatedAtMs} selected={selected.includes(item.id)} onSelect={(checked) => setSelected((ids) => checked ? [...ids, item.id] : ids.filter((id) => id !== item.id))} onDelete={() => void deleteOne(item.id)} />)}</section>
   </div>
 }

@@ -135,3 +135,7 @@
 - A user process sample confirmed an 18 GB worker footprint and 30.6 GB peak during a batch; cache clearing alone was insufficient.
 - Local Chatterbox workers now report successful generation count and restart after every two completed jobs before receiving the next voice reference. Narration chunks are limited to 180 characters. Existing staged audio and chapter commits survive a restart at the chunk boundary.
 - Native suite (36 tests), Python protocol tests (10), renderer build (9 tests), and arm64 app/DMG/ZIP verification passed. The installed-app long-running memory test remains pending; the user's currently running 0.2.3 batch was not interrupted.
+
+# 2026-09-23 — Download completed chapters during a batch
+- Review now refreshes when each chapter is committed and keeps Save chapter audio available while later chapters render. Exports exposes per-chapter downloads without requiring full-audiobook approval.
+- Renderer typecheck, nine tests, production web build, and local arm64 app/signature verification passed. The installed app still needs the updated bundle to show these controls.

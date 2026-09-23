@@ -90,6 +90,7 @@ dt { color: #77766f; } dd { margin: 0; font-family: ui-monospace, monospace; }
 .spoken-cues button { padding: 7px 10px; text-align: left; font-size: .82rem; }
 .spoken-cues button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
 .export-history { display: grid; gap: 12px; }.export-row { display: grid; grid-template-columns: minmax(160px, .8fr) minmax(220px, 1fr) minmax(220px, 1fr) auto; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid #ecebe7; }.export-row > div { display: grid; gap: 4px; }.export-row small { color: #77766f; }.export-row audio { width: 100%; height: 34px; }.export-row textarea { min-height: 74px; resize: vertical; font-family: ui-monospace, monospace; font-size: 11px; }
+.chapter-downloads { display: grid; gap: 10px; }.chapter-downloads > h2 { margin: 0; }.chapter-downloads > p { margin: 0 0 4px; }.chapter-download-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid #ecebe7; }.chapter-download-row > div { display: grid; gap: 4px; min-width: 0; }.chapter-download-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.chapter-download-row small { color: #77766f; }.chapter-download-row button { flex: none; }
 @media (max-width: 1150px) { .page { padding-inline: 34px; }.settings-grid { grid-template-columns: 1fr; } }
 .sound-page { max-width: 1280px; }
 .sound-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, .8fr); gap: 20px; margin-bottom: 20px; }
