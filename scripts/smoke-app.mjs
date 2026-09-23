@@ -21,6 +21,10 @@ const executablePath = join(
 if (!existsSync(executablePath)) {
   throw new Error(`Build the app before running the smoke test: ${executablePath}`);
 }
+for (const resource of ["start_local.py", "worker_protocol.py", "chatterbox/server.py", "chatterbox/original.py", "chatterbox/requirements.txt"]) {
+  const path = join(dirname(dirname(executablePath)), "Resources", "workers", resource);
+  if (!existsSync(path)) throw new Error(`Packaged worker file missing: ${path}`);
+}
 
 const smokeDataRoot = mkdtempSync(join(tmpdir(), "homer-studio-smoke-"));
 const child = spawn(executablePath, [], {

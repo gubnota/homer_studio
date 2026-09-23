@@ -45,6 +45,15 @@ requireFile(executablePath, "Application executable");
 const iconName = run("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIconFile", join(appPath, "Contents", "Info.plist")]);
 if (!iconName) throw new Error("The app bundle has no icon declaration.");
 requireFile(join(appPath, "Contents", "Resources", iconName.endsWith(".icns") ? iconName : `${iconName}.icns`), "Application icon");
+for (const resource of [
+  "workers/start_local.py",
+  "workers/worker_protocol.py",
+  "workers/chatterbox/server.py",
+  "workers/chatterbox/original.py",
+  "workers/chatterbox/requirements.txt",
+]) {
+  requireFile(join(appPath, "Contents", "Resources", resource), `Bundled worker ${resource}`);
+}
 
 const architecture = run("/usr/bin/file", [executablePath]);
 if (!architecture.includes("arm64")) {

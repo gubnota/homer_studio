@@ -32,4 +32,5 @@ Rules:
 - No shared-framework extraction from the absent reference application.
 
 - `model_install.rs` owns pinned, allow-listed download paths. Workers load installed checkpoints and never initiate downloads.
+- `worker_runtime.rs` owns the app-data Python environment and bundled worker paths; the launcher must not depend on a checkout or mutate its source directory.
 - `project_store.rs` owns non-destructive take selection and revision checks; UI recording never writes project files directly.

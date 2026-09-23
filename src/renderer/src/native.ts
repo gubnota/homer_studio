@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
-import type { JobRecord, ModelStatus, ProjectSnapshot, Settings, SoundAsset, SoundRequest, TextCandidate, ToolDiagnostic, Voice, WorkerHealth } from '../../shared/contracts'
+import type { JobRecord, ModelStatus, ProjectSnapshot, Settings, SoundAsset, SoundRequest, TextCandidate, ToolDiagnostic, Voice, WorkerHealth, WorkerRuntimeStatus } from '../../shared/contracts'
 
 export function isDesktop(): boolean {
   return '__TAURI_INTERNALS__' in window
@@ -163,6 +163,8 @@ export const systemApi = {
   diagnostics: () => invoke<ToolDiagnostic[]>('tool_diagnostics'),
   modelStatus: (model: 'turbo' | 'original') => invoke<ModelStatus>('model_status', { model }),
   installModel: (model: 'turbo' | 'original') => invoke<string>('install_model', { model }),
+  workerRuntimeStatus: (pythonPath?: string | null) => invoke<WorkerRuntimeStatus>('worker_runtime_status', { pythonPath: pythonPath ?? null }),
+  installWorkerRuntime: (pythonPath?: string | null) => invoke<string>('install_worker_runtime', { pythonPath: pythonPath ?? null }),
   jobs: () => invoke<JobRecord[]>('list_jobs'),
   controlJob: (jobId: string, action: 'pause' | 'resume' | 'cancel') => invoke<void>('control_job', { jobId, action }),
   dismissJobs: (jobIds: string[]) => invoke<number>('dismiss_jobs', { jobIds })

@@ -72,6 +72,7 @@ export interface Settings {
   ffmpegPath: string | null
   ffprobePath: string | null
   ollamaPath: string | null
+  pythonPath?: string | null
   voicePresets: VoicePreset[]
   selectedVoicePresetId: string | null
   sounds: { chatterboxUrl: string; originalUrl: string; sfxUrl: string }
@@ -102,3 +103,4 @@ export interface ToolDiagnostic {
 export interface JobEvent { atMs: number; status: string; progress: number; message: string }
 export interface JobRecord { id: string; kind: string; label: string; status: 'queued' | 'running' | 'completed' | 'cancelled' | 'failed'; progress: number; message: string | null; createdAtMs: number; events: JobEvent[] }
 export interface ModelStatus { model: 'turbo' | 'original'; path: string; installed: boolean; bytesOnDisk: number; downloadedBytes: number; totalBytes: number | null; missingFiles: string[] }
+export interface WorkerRuntimeStatus { path: string; installed: boolean; pythonPath: string | null; message: string }

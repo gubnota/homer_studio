@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
-import type { Chapter, JobRecord, ModelStatus, ProjectSnapshot, Settings, ToolDiagnostic, Voice } from '../../shared/contracts'
+import type { Chapter, JobRecord, ModelStatus, ProjectSnapshot, Settings, ToolDiagnostic, Voice, WorkerRuntimeStatus } from '../../shared/contracts'
 import type { RouteId } from '../../shared/navigation'
 import { chooseAudio, chooseFolder, chooseManuscript, chooseTool, defaultProjectParent, errorMessage, isDesktop, loadDroppedManuscript, productionApi, projectApi, systemApi } from './native'
 import { VoicePicker } from './VoicePicker'
@@ -621,11 +621,16 @@ export function SettingsPage(): JSX.Element {
   const [tools, setTools] = useState<ToolDiagnostic[]>([])
   const [message, setMessage] = useState('')
   const [models, setModels] = useState<ModelStatus[]>([])
+  const [runtime, setRuntime] = useState<WorkerRuntimeStatus | null>(null)
+  const [runtimeJobId, setRuntimeJobId] = useState<string | null>(null)
   const [installJobs, setInstallJobs] = useState<Partial<Record<'turbo' | 'original', string>>>({})
   const [jobs, setJobs] = useState<JobRecord[]>([])
   const refreshModels = async (): Promise<void> => { setModels(await Promise.all(['turbo', 'original'].map((model) => systemApi.modelStatus(model as 'turbo' | 'original')))) }
   useEffect(() => { if ('__TAURI_INTERNALS__' in window) { void invoke<DesktopInfo>('desktop_info').then(setDesktop); void Promise.all([systemApi.settings(), systemApi.diagnostics()]).then(([value, found]) => { setSettings(value); setTools(found) }).catch((cause) => setMessage(errorMessage(cause))) } }, [])
-  useEffect(() => { if (!isDesktop()) return; void refreshModels().catch((cause) => setMessage(errorMessage(cause))); const timer = window.setInterval(() => { void refreshModels().catch(() => {}); void systemApi.jobs().then(setJobs).catch(() => {}) }, 1000); return () => window.clearInterval(timer) }, [])
+  useEffect(() => { if (!isDesktop()) return; void refreshModels().catch((cause) => setMessage(errorMessage(cause))); void systemApi.workerRuntimeStatus(settings?.pythonPath).then(setRuntime).catch((cause) => setMessage(errorMessage(cause))); const timer = window.setInterval(() => { void refreshModels().catch(() => {}); void systemApi.workerRuntimeStatus(settings?.pythonPath).then(setRuntime).catch(() => {}); void systemApi.jobs().then(setJobs).catch(() => {}) }, 1000); return () => window.clearInterval(timer) }, [settings?.pythonPath])
+  async function installRuntime(): Promise<void> {
+    try { const id = await systemApi.installWorkerRuntime(settings?.pythonPath); setRuntimeJobId(id); setJobs(await systemApi.jobs()) } catch (cause) { setMessage(errorMessage(cause)) }
+  }
   async function install(model: 'turbo' | 'original'): Promise<void> {
     try { const id = await systemApi.installModel(model); setInstallJobs((previous) => ({ ...previous, [model]: id })); setJobs(await systemApi.jobs()) } catch (cause) { setMessage(errorMessage(cause)) }
   }
@@ -643,8 +648,11 @@ export function SettingsPage(): JSX.Element {
         <dl><div><dt>Platform</dt><dd>{desktop.platform}</dd></div><div><dt>Architecture</dt><dd>{desktop.architecture}</dd></div><div><dt>Runtime</dt><dd>{desktop.runtime}</dd></div></dl>
         <h2>Local tools</h2>
         <div className="tool-list">{tools.map((tool) => <div key={tool.name}><span className={tool.available ? 'dot available' : 'dot'} /><strong>{tool.name}</strong><span className="tool-result"><small>{toolStatus(tool.status)}</small>{tool.path && <small title={tool.path}>{tool.path}</small>}</span></div>)}</div>
+        <h2>Chatterbox Python runtime</h2>
+        <p className="field-note">Uses Python 3.10 and installs packages into Homer Studio's Application Support folder. Setup downloads packages and may take several minutes.</p>
+        {runtime && <div className="model-install"><div className="model-install-heading"><strong>Local worker runtime</strong><span>{runtime.installed ? 'Ready' : 'Setup needed'}</span></div><small title={runtime.path}>{runtime.path}</small><small>{runtime.message}</small>{(() => { const job = jobs.find((item) => item.id === runtimeJobId); const active = job?.status === 'queued' || job?.status === 'running'; return <><div className="model-install-actions"><button type="button" disabled={active || runtime.installed} onClick={() => void installRuntime()}>{job?.status === 'failed' || job?.status === 'cancelled' ? 'Retry setup' : 'Install runtime'}</button>{active && <button type="button" onClick={() => void systemApi.controlJob(job!.id, 'cancel').catch((cause) => setMessage(errorMessage(cause)))}>Cancel</button>}</div>{active && <progress max={100} value={job?.progress ?? 0} />}{job?.status === 'failed' && <small className="error-text">{job.message}</small>}</> })()}</div>}
         <h2>Chatterbox checkpoints</h2>
-        <p className="field-note">Install only the models you use. Downloads stay on this Mac and can resume after cancellation. Start the local Python worker separately.</p>
+        <p className="field-note">Install only the models you use. Downloads stay on this Mac and can resume after cancellation. The app starts an installed worker when its runtime and checkpoint are ready.</p>
         {models.map((model) => { const job = jobs.find((item) => item.id === installJobs[model.model]); const active = job?.status === 'running' || job?.status === 'queued'; return <div className="model-install" key={model.model}>
           <div className="model-install-heading"><strong>{model.model === 'turbo' ? 'Chatterbox Turbo' : 'Original Chatterbox'}</strong><span>{model.installed ? 'Installed' : active ? `${job?.progress ?? 0}%` : 'Not installed'}</span></div>
           <small title={model.path}>{model.path}</small>
@@ -690,7 +698,8 @@ function SettingsForm({ settings, tools, onChange }: { settings: Settings; tools
     {pathField('FFmpeg path', settings.ffmpegPath ?? '', (path) => onChange({ ...settings, ffmpegPath: path || null }), 'ffmpeg')}
     {pathField('FFprobe path', settings.ffprobePath ?? '', (path) => onChange({ ...settings, ffprobePath: path || null }), 'ffprobe')}
     <h2>Sound workers</h2>
-    <p className="field-note">Start each local worker separately. Sound Studio shows whether its model is ready.</p>
+    <p className="field-note">Homer Studio starts the selected local worker when its runtime and checkpoint are installed. Sound Studio shows whether its model is ready.</p>
+    {pathField('Python 3.10 executable', settings.pythonPath ?? '', (path) => onChange({ ...settings, pythonPath: path || null }))}
     <label>Chatterbox URL<input value={settings.sounds.chatterboxUrl} onChange={(event) => onChange({ ...settings, sounds: { ...settings.sounds, chatterboxUrl: event.target.value } })} /></label>
     <label>Original Chatterbox URL<input value={settings.sounds.originalUrl} onChange={(event) => onChange({ ...settings, sounds: { ...settings.sounds, originalUrl: event.target.value } })} /></label>
     <h2>Text processing</h2>

@@ -137,3 +137,12 @@ Context: The manual worker launcher detaches Python processes, so Chatterbox mod
 Decision: The shared worker protocol exposes graceful `POST /v2/shutdown`. On Tauri exit, the app checks protocol version and exact engine at each configured local Chatterbox URL, then requests shutdown with bounded timeouts. Remove the retired effects option from the launcher. Do not manage Ollama or unrelated services.
 Consequences: Start local Chatterbox workers again for each app session. Older workers require a restart with the updated protocol before automatic shutdown works. This handles normal app exits, not forced termination or system crashes.
 Related files: `src-tauri/src/lib.rs`, `src-tauri/src/services/sound_workers.rs`, `workers/worker_protocol.py`, `workers/start_local.py`.
+# ADR-0015: Package Chatterbox workers with an app-owned Python environment
+
+Date: 2026-09-23
+Status: Accepted
+
+Context: The previous release launched worker code and a virtual environment from the developer's checkout, so a copied app could not start speech on another Mac. Turbo waveform synthesis also ran outside an enclosing inference-mode scope and the MPS cache was retained after requests.
+Decision: Bundle the minimal Python worker source as Tauri resources. Create and verify the pinned Python 3.10 environment under the app's Application Support directory only after the user starts setup in Settings. Keep checkpoints, cache, and logs there as well. Wrap complete synthesis in inference mode and release unused MPS cache after each request.
+Consequences: A new Mac needs Python 3.10 and an explicit package/checkpoint install, but no repository checkout. Package setup uses disk and network access. Model weights remain resident while a worker is active; quitting the app stops it.
+Related files: `src-tauri/src/services/worker_runtime.rs`, `src-tauri/tauri.conf.json`, `workers/start_local.py`, `workers/chatterbox/server.py`, `workers/chatterbox/original.py`.

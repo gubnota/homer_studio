@@ -18,6 +18,8 @@ pub struct Settings {
     #[serde(default)]
     pub ollama_path: Option<String>,
     #[serde(default)]
+    pub python_path: Option<String>,
+    #[serde(default)]
     pub voice_presets: Vec<VoicePreset>,
     #[serde(default)]
     pub selected_voice_preset_id: Option<String>,
@@ -34,7 +36,9 @@ pub struct SoundSettings {
     pub sfx_url: String,
 }
 
-fn default_original_url() -> String { "http://127.0.0.1:8767".into() }
+fn default_original_url() -> String {
+    "http://127.0.0.1:8767".into()
+}
 
 impl Default for SoundSettings {
     fn default() -> Self {
@@ -77,8 +81,12 @@ pub struct SpeechSettings {
     pub cfg_weight: f32,
 }
 
-fn default_exaggeration() -> f32 { 0.5 }
-fn default_cfg_weight() -> f32 { 0.5 }
+fn default_exaggeration() -> f32 {
+    0.5
+}
+fn default_cfg_weight() -> f32 {
+    0.5
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -117,6 +125,7 @@ impl Default for Settings {
             ffmpeg_path: None,
             ffprobe_path: None,
             ollama_path: None,
+            python_path: None,
             voice_presets: Vec::new(),
             selected_voice_preset_id: None,
             sounds: SoundSettings::default(),
@@ -145,10 +154,15 @@ pub fn save(app: &AppHandle, settings: Settings) -> Result<Settings, CommandErro
     let settings = migrate_speech(settings);
     validate(&settings)?;
     let voices = super::voice_store::list(app)?;
-    let selected = voices.iter().find(|voice| voice.id == settings.speech.voice_id)
+    let selected = voices
+        .iter()
+        .find(|voice| voice.id == settings.speech.voice_id)
         .ok_or_else(|| CommandError::new("VOICE_NOT_FOUND", "Select a voice from the library."))?;
     if !selected.built_in && selected.selected_sample_id.is_none() {
-        return Err(CommandError::new("VOICE_HAS_NO_SAMPLE", "Add a spoken sample before selecting this voice."));
+        return Err(CommandError::new(
+            "VOICE_HAS_NO_SAMPLE",
+            "Add a spoken sample before selecting this voice.",
+        ));
     }
     let path = path(app)?;
     fs::create_dir_all(path.parent().unwrap())
@@ -219,13 +233,21 @@ pub fn diagnostics(settings: &Settings) -> Vec<ToolDiagnostic> {
         })
         .collect();
     let (base_url, selected_model) = match &settings.llm {
-        LlmSettings::Ollama { base_url, model, .. } => (base_url.as_str(), Some(model.as_str())),
+        LlmSettings::Ollama {
+            base_url, model, ..
+        } => (base_url.as_str(), Some(model.as_str())),
         _ => ("http://127.0.0.1:11434", None),
     };
     let status = match llm::ollama_models(base_url) {
         Err(_) => "service_unavailable",
         Ok(models) if models.is_empty() => "no_models",
-        Ok(models) if selected_model.is_some_and(|model| model.trim().is_empty() || !models.iter().any(|installed| installed == model)) => "model_not_installed",
+        Ok(models)
+            if selected_model.is_some_and(|model| {
+                model.trim().is_empty() || !models.iter().any(|installed| installed == model)
+            }) =>
+        {
+            "model_not_installed"
+        }
         Ok(_) => "service_ready",
     };
     diagnostics.push(ToolDiagnostic {
@@ -239,15 +261,34 @@ pub fn diagnostics(settings: &Settings) -> Vec<ToolDiagnostic> {
     });
     let speech = super::sound_workers::health(&settings.sounds.chatterbox_url, "chatterbox_turbo");
     diagnostics.push(ToolDiagnostic {
-        key: "speech".into(), name: "Chatterbox Turbo".into(), path: Some(settings.sounds.chatterbox_url.clone()),
-        available: speech.ready, status: if speech.ready { "service_ready" } else { "service_unavailable" }.into(),
-        configured_path: Some(settings.sounds.chatterbox_url.clone()), detected_path: None,
+        key: "speech".into(),
+        name: "Chatterbox Turbo".into(),
+        path: Some(settings.sounds.chatterbox_url.clone()),
+        available: speech.ready,
+        status: if speech.ready {
+            "service_ready"
+        } else {
+            "service_unavailable"
+        }
+        .into(),
+        configured_path: Some(settings.sounds.chatterbox_url.clone()),
+        detected_path: None,
     });
-    let original = super::sound_workers::health(&settings.sounds.original_url, "chatterbox_original");
+    let original =
+        super::sound_workers::health(&settings.sounds.original_url, "chatterbox_original");
     diagnostics.push(ToolDiagnostic {
-        key: "original_speech".into(), name: "Original Chatterbox".into(), path: Some(settings.sounds.original_url.clone()),
-        available: original.ready, status: if original.ready { "service_ready" } else { "service_unavailable" }.into(),
-        configured_path: Some(settings.sounds.original_url.clone()), detected_path: None,
+        key: "original_speech".into(),
+        name: "Original Chatterbox".into(),
+        path: Some(settings.sounds.original_url.clone()),
+        available: original.ready,
+        status: if original.ready {
+            "service_ready"
+        } else {
+            "service_unavailable"
+        }
+        .into(),
+        configured_path: Some(settings.sounds.original_url.clone()),
+        detected_path: None,
     });
     diagnostics
 }
@@ -273,12 +314,25 @@ fn validate(settings: &Settings) -> Result<(), CommandError> {
             "Only settings version 1 is supported.",
         ));
     }
-    if !matches!(settings.speech.provider.as_str(), "chatterbox_turbo" | "chatterbox_original") || settings.speech.voice_id.trim().is_empty() {
-        return Err(CommandError::new("INVALID_SPEECH_PROVIDER", "Choose a Chatterbox voice."));
+    if !matches!(
+        settings.speech.provider.as_str(),
+        "chatterbox_turbo" | "chatterbox_original"
+    ) || settings.speech.voice_id.trim().is_empty()
+    {
+        return Err(CommandError::new(
+            "INVALID_SPEECH_PROVIDER",
+            "Choose a Chatterbox voice.",
+        ));
     }
-    if !settings.speech.exaggeration.is_finite() || !(0.25..=2.0).contains(&settings.speech.exaggeration)
-        || !settings.speech.cfg_weight.is_finite() || !(0.0..=1.0).contains(&settings.speech.cfg_weight) {
-        return Err(CommandError::new("INVALID_EXPRESSION", "Set expression between 0.25 and 2, and pace between 0 and 1."));
+    if !settings.speech.exaggeration.is_finite()
+        || !(0.25..=2.0).contains(&settings.speech.exaggeration)
+        || !settings.speech.cfg_weight.is_finite()
+        || !(0.0..=1.0).contains(&settings.speech.cfg_weight)
+    {
+        return Err(CommandError::new(
+            "INVALID_EXPRESSION",
+            "Set expression between 0.25 and 2, and pace between 0 and 1.",
+        ));
     }
     if let LlmSettings::Ollama { base_url, .. } = &settings.llm {
         if !(base_url.starts_with("http://127.0.0.1:") || base_url.starts_with("http://localhost:"))
@@ -293,15 +347,29 @@ fn validate(settings: &Settings) -> Result<(), CommandError> {
 }
 
 pub fn validate_worker_url(value: &str) -> Result<(), CommandError> {
-    let port = value.strip_prefix("http://127.0.0.1:").ok_or_else(|| CommandError::new("UNSAFE_WORKER_URL", "Worker URL must be http://127.0.0.1:PORT."))?;
-    if port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()) || port.parse::<u16>().ok().filter(|port| *port > 0).is_none() {
-        return Err(CommandError::new("UNSAFE_WORKER_URL", "Worker URL must be http://127.0.0.1:PORT."));
+    let port = value.strip_prefix("http://127.0.0.1:").ok_or_else(|| {
+        CommandError::new(
+            "UNSAFE_WORKER_URL",
+            "Worker URL must be http://127.0.0.1:PORT.",
+        )
+    })?;
+    if port.is_empty()
+        || !port.bytes().all(|byte| byte.is_ascii_digit())
+        || port.parse::<u16>().ok().filter(|port| *port > 0).is_none()
+    {
+        return Err(CommandError::new(
+            "UNSAFE_WORKER_URL",
+            "Worker URL must be http://127.0.0.1:PORT.",
+        ));
     }
     Ok(())
 }
 
 fn migrate_speech(mut settings: Settings) -> Settings {
-    if !matches!(settings.speech.provider.as_str(), "chatterbox_turbo" | "chatterbox_original") {
+    if !matches!(
+        settings.speech.provider.as_str(),
+        "chatterbox_turbo" | "chatterbox_original"
+    ) {
         settings.speech.provider = "chatterbox_turbo".into();
         settings.speech.voice_id = super::voice_store::DEFAULT_VOICE.into();
     }
@@ -331,9 +399,18 @@ mod tests {
         let mut settings = Settings::default();
         settings.speech.provider = "macos_say".into();
         settings.speech.voice_id = "Karen".into();
-        settings.voice_presets.push(VoicePreset { id: "old".into(), name: "Old".into(), voice_id: "Karen".into(), rate: 180, built_in: true });
+        settings.voice_presets.push(VoicePreset {
+            id: "old".into(),
+            name: "Old".into(),
+            voice_id: "Karen".into(),
+            rate: 180,
+            built_in: true,
+        });
         let migrated = migrate_speech(settings);
-        assert_eq!(migrated.speech.voice_id, crate::services::voice_store::DEFAULT_VOICE);
+        assert_eq!(
+            migrated.speech.voice_id,
+            crate::services::voice_store::DEFAULT_VOICE
+        );
         assert!(migrated.voice_presets.is_empty());
     }
 }

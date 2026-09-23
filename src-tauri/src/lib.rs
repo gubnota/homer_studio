@@ -37,10 +37,20 @@ pub fn run() {
     let protocol_assets = audio_assets.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .setup(|_app| {
-            std::thread::spawn(|| {
-                if let Err(error) = services::sound_workers::start_turbo_worker() {
-                    eprintln!("Could not start Chatterbox Turbo: {}", error.message);
+        .setup(|app| {
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let selected = services::settings::load(&handle)
+                    .unwrap_or_default()
+                    .speech
+                    .provider;
+                let name = if selected == "chatterbox_original" {
+                    "original"
+                } else {
+                    "chatterbox"
+                };
+                if let Err(error) = services::sound_workers::start_local_worker(&handle, name) {
+                    eprintln!("Could not start Chatterbox: {}", error.message);
                 }
             });
             Ok(())
@@ -69,6 +79,8 @@ pub fn run() {
             commands::system::dismiss_jobs,
             commands::system::model_status,
             commands::system::install_model,
+            commands::system::worker_runtime_status,
+            commands::system::install_worker_runtime,
             commands::production::process_text,
             commands::production::accept_processed_text,
             commands::production::list_voices,
@@ -100,15 +112,15 @@ pub fn run() {
             commands::production::audio_waveform_window,
             commands::production::export_project,
             commands::production::export_audio_url,
-            commands::production::read_export_timestamps
-            ,commands::sounds::sound_workers
-            ,commands::sounds::list_sounds
-            ,commands::sounds::delete_sounds
-            ,commands::sounds::generate_sound
-            ,commands::sounds::convert_voice_clip
-            ,commands::sounds::sound_audio_url
-            ,commands::sounds::export_sound
-            ,commands::sounds::export_sounds
+            commands::production::read_export_timestamps,
+            commands::sounds::sound_workers,
+            commands::sounds::list_sounds,
+            commands::sounds::delete_sounds,
+            commands::sounds::generate_sound,
+            commands::sounds::convert_voice_clip,
+            commands::sounds::sound_audio_url,
+            commands::sounds::export_sound,
+            commands::sounds::export_sounds
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Homer Studio")

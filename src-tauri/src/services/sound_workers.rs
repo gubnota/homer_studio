@@ -1,14 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::{
     io::{Read, Write},
-    net::{TcpStream, SocketAddrV4, Ipv4Addr},
-    path::PathBuf,
+    net::{Ipv4Addr, SocketAddrV4, TcpStream},
     process::{Command, Stdio},
     sync::atomic::Ordering,
     time::{Duration, Instant},
 };
 
+use super::worker_runtime;
 use super::{jobs::JobControl, project_store::CommandError, settings::validate_worker_url};
+use tauri::AppHandle;
 
 const MAX_JSON: usize = 64 * 1024;
 const MAX_WAV: usize = 32 * 1024 * 1024;
@@ -27,11 +28,19 @@ pub struct WorkerHealth {
 }
 
 #[derive(Deserialize)]
-struct Created { id: String }
+struct Created {
+    id: String,
+}
 #[derive(Deserialize)]
-struct RemoteJob { status: String, error: Option<String>, format: String }
+struct RemoteJob {
+    status: String,
+    error: Option<String>,
+    format: String,
+}
 #[derive(Deserialize)]
-struct RemoteError { error: String }
+struct RemoteError {
+    error: String,
+}
 
 pub fn health(url: &str, expected_engine: &str) -> WorkerHealth {
     let fallback = |message: String| WorkerHealth {
@@ -47,66 +56,116 @@ pub fn health(url: &str, expected_engine: &str) -> WorkerHealth {
         max_duration_seconds: 20,
         message,
     };
-    match request(url, "GET", "/v2/health", None, MAX_JSON)
-        .and_then(|body| serde_json::from_slice::<WorkerHealth>(&body).map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned invalid health data."))) {
-        Ok(value) if value.protocol_version == 2 && (value.engine == expected_engine || (expected_engine == "sound_effect" && value.engine == "stable_audio_open")) => value,
-        Ok(_) => fallback("Worker version is out of date. Restart the local workers from this repository.".into()),
+    match request(url, "GET", "/v2/health", None, MAX_JSON).and_then(|body| {
+        serde_json::from_slice::<WorkerHealth>(&body).map_err(|_| {
+            CommandError::new("WORKER_PROTOCOL", "Worker returned invalid health data.")
+        })
+    }) {
+        Ok(value)
+            if value.protocol_version == 2
+                && (value.engine == expected_engine
+                    || (expected_engine == "sound_effect"
+                        && value.engine == "stable_audio_open")) =>
+        {
+            value
+        }
+        Ok(_) => fallback(
+            "Worker version is out of date. Restart the local workers from this repository.".into(),
+        ),
         Err(error) => fallback(error.message),
     }
 }
 
-/// Start the repository-installed Turbo worker in the background. The launcher
-/// is idempotent, so reopening Homer Studio after a normal quit restores the
-/// worker without duplicating an already healthy process.
-pub fn start_turbo_worker() -> Result<(), CommandError> {
-    let launcher = worker_launcher().ok_or_else(|| CommandError::new(
-        "WORKER_LAUNCHER_NOT_FOUND",
-        "Cannot find the local Chatterbox launcher. Reinstall the worker setup from the Homer Studio repository.",
-    ))?;
-    let python = std::env::var_os("HOMER_WORKER_LAUNCHER_PYTHON").unwrap_or_else(|| "python3".into());
-    Command::new(python)
+/// Start a packaged local worker using the app-owned Python environment.
+pub fn start_local_worker(app: &AppHandle, name: &str) -> Result<(), CommandError> {
+    if name != "chatterbox" && name != "original" {
+        return Err(CommandError::new(
+            "INVALID_WORKER",
+            "Choose Chatterbox Turbo or Original.",
+        ));
+    }
+    let python = worker_runtime::runtime_python(app)?;
+    if !python.is_file() {
+        return Err(CommandError::new(
+            "PYTHON_RUNTIME_MISSING",
+            "Install the Chatterbox Python runtime in Settings.",
+        ));
+    }
+    let launcher = worker_runtime::bundled_workers(app)?.join("start_local.py");
+    let app_data = worker_runtime::data_dir(app)?;
+    let output = Command::new(&python)
         .arg(launcher)
-        .arg("chatterbox")
+        .arg(name)
+        .env("HOMER_APP_DATA_DIR", app_data)
+        .env("HOMER_CHATTERBOX_PYTHON", &python)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+        .output()
         .map_err(|error| CommandError::io("Cannot start the local Chatterbox worker", error))?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stdout);
+        let detail = message.trim();
+        return Err(CommandError::new(
+            "WORKER_START_FAILED",
+            if detail.is_empty() {
+                "Chatterbox did not start. Check the worker log in Application Support.".into()
+            } else {
+                detail.to_string()
+            },
+        ));
+    }
     Ok(())
-}
-
-fn worker_launcher() -> Option<PathBuf> {
-    let configured = std::env::var_os("HOMER_WORKER_LAUNCHER").map(PathBuf::from);
-    let source_checkout = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .map(|root| root.join("workers/start_local.py"));
-    configured.into_iter().chain(source_checkout).find(|path| path.is_file())
 }
 
 /// Stop only a current local Homer speech worker; never send shutdown to an
 /// unrelated service or an older worker that cannot identify itself.
 pub fn shutdown(url: &str, expected_engine: &str) -> Result<bool, CommandError> {
-    let identity = request_with_timeout(url, "GET", "/v2/health", None, MAX_JSON, Duration::from_secs(1))?;
-    let worker: WorkerHealth = serde_json::from_slice(&identity)
-        .map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned invalid health data."))?;
+    let identity = request_with_timeout(
+        url,
+        "GET",
+        "/v2/health",
+        None,
+        MAX_JSON,
+        Duration::from_secs(1),
+    )?;
+    let worker: WorkerHealth = serde_json::from_slice(&identity).map_err(|_| {
+        CommandError::new("WORKER_PROTOCOL", "Worker returned invalid health data.")
+    })?;
     if worker.protocol_version != 2 || worker.engine != expected_engine {
         return Ok(false);
     }
-    request_with_timeout(url, "POST", "/v2/shutdown", None, MAX_JSON, Duration::from_secs(1))?;
+    request_with_timeout(
+        url,
+        "POST",
+        "/v2/shutdown",
+        None,
+        MAX_JSON,
+        Duration::from_secs(1),
+    )?;
     Ok(true)
 }
 
-pub fn generate(url: &str, request_body: &serde_json::Value, control: &JobControl) -> Result<Vec<u8>, CommandError> {
-    let body = serde_json::to_vec(request_body).map_err(|_| CommandError::internal("Cannot serialize sound request"))?;
-    let created: Created = serde_json::from_slice(&request(url, "POST", "/v2/jobs", Some(&body), MAX_JSON)?)
+pub fn generate(
+    url: &str,
+    request_body: &serde_json::Value,
+    control: &JobControl,
+) -> Result<Vec<u8>, CommandError> {
+    let body = serde_json::to_vec(request_body)
+        .map_err(|_| CommandError::internal("Cannot serialize sound request"))?;
+    let created: Created =
+        serde_json::from_slice(&request(url, "POST", "/v2/jobs", Some(&body), MAX_JSON)?).map_err(
+            |_| CommandError::new("WORKER_PROTOCOL", "Worker returned an invalid job ID."),
+        )?;
+    uuid::Uuid::parse_str(&created.id)
         .map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned an invalid job ID."))?;
-    uuid::Uuid::parse_str(&created.id).map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned an invalid job ID."))?;
     let path = format!("/v2/jobs/{}", created.id);
     let start = Instant::now();
     loop {
         if control.cancelled.load(Ordering::SeqCst) {
             let _ = request(url, "DELETE", &path, None, MAX_JSON);
-            return Err(CommandError::new("JOB_CANCELLED", "The operation was cancelled."));
+            return Err(CommandError::new(
+                "JOB_CANCELLED",
+                "The operation was cancelled.",
+            ));
         }
         if let Err(error) = control.boundary() {
             let _ = request(url, "DELETE", &path, None, MAX_JSON);
@@ -114,65 +173,162 @@ pub fn generate(url: &str, request_body: &serde_json::Value, control: &JobContro
         }
         if start.elapsed() > Duration::from_secs(1800) {
             let _ = request(url, "DELETE", &path, None, MAX_JSON);
-            return Err(CommandError::new("WORKER_TIMEOUT", "Sound generation timed out."));
+            return Err(CommandError::new(
+                "WORKER_TIMEOUT",
+                "Sound generation timed out.",
+            ));
         }
-        let status: RemoteJob = serde_json::from_slice(&request(url, "GET", &path, None, MAX_JSON)?)
-            .map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned an invalid job status."))?;
+        let status: RemoteJob =
+            serde_json::from_slice(&request(url, "GET", &path, None, MAX_JSON)?).map_err(|_| {
+                CommandError::new("WORKER_PROTOCOL", "Worker returned an invalid job status.")
+            })?;
         match status.status.as_str() {
             "completed" if status.format == "wav" => {
                 let wav = request(url, "GET", &format!("{path}/audio"), None, MAX_WAV)?;
-                if !wav.starts_with(b"RIFF") { return Err(CommandError::new("INVALID_WORKER_AUDIO", "Worker did not return WAV audio.")); }
+                if !wav.starts_with(b"RIFF") {
+                    return Err(CommandError::new(
+                        "INVALID_WORKER_AUDIO",
+                        "Worker did not return WAV audio.",
+                    ));
+                }
                 return Ok(wav);
             }
-            "completed" => return Err(CommandError::new("WORKER_PROTOCOL", "Worker returned an unsupported audio format.")),
-            "failed" => return Err(CommandError::new("WORKER_FAILED", status.error.unwrap_or_else(|| "The model failed to generate audio.".into()))),
-            "cancelled" => return Err(CommandError::new("JOB_CANCELLED", "The worker cancelled generation.")),
+            "completed" => {
+                return Err(CommandError::new(
+                    "WORKER_PROTOCOL",
+                    "Worker returned an unsupported audio format.",
+                ));
+            }
+            "failed" => {
+                return Err(CommandError::new(
+                    "WORKER_FAILED",
+                    status
+                        .error
+                        .unwrap_or_else(|| "The model failed to generate audio.".into()),
+                ));
+            }
+            "cancelled" => {
+                return Err(CommandError::new(
+                    "JOB_CANCELLED",
+                    "The worker cancelled generation.",
+                ));
+            }
             "queued" | "running" => std::thread::sleep(Duration::from_millis(300)),
-            _ => return Err(CommandError::new("WORKER_PROTOCOL", "Worker returned an unknown job state.")),
+            _ => {
+                return Err(CommandError::new(
+                    "WORKER_PROTOCOL",
+                    "Worker returned an unknown job state.",
+                ));
+            }
         }
     }
 }
 
 pub fn upload_reference(url: &str, wav: &[u8]) -> Result<String, CommandError> {
-    if wav.len() > MAX_REFERENCE || wav.len() < 44 || !wav.starts_with(b"RIFF") || wav.get(8..12) != Some(b"WAVE") {
-        return Err(CommandError::new("INVALID_VOICE_SAMPLE", "Voice reference must be a WAV file smaller than 2 MB."));
+    if wav.len() > MAX_REFERENCE
+        || wav.len() < 44
+        || !wav.starts_with(b"RIFF")
+        || wav.get(8..12) != Some(b"WAVE")
+    {
+        return Err(CommandError::new(
+            "INVALID_VOICE_SAMPLE",
+            "Voice reference must be a WAV file smaller than 2 MB.",
+        ));
     }
     let response = request(url, "POST", "/v2/references", Some(wav), MAX_JSON)?;
-    let created: Created = serde_json::from_slice(&response).map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned an invalid reference ID."))?;
-    uuid::Uuid::parse_str(&created.id).map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned an invalid reference ID."))?;
+    let created: Created = serde_json::from_slice(&response).map_err(|_| {
+        CommandError::new(
+            "WORKER_PROTOCOL",
+            "Worker returned an invalid reference ID.",
+        )
+    })?;
+    uuid::Uuid::parse_str(&created.id).map_err(|_| {
+        CommandError::new(
+            "WORKER_PROTOCOL",
+            "Worker returned an invalid reference ID.",
+        )
+    })?;
     Ok(created.id)
 }
 
-fn request(url: &str, method: &str, path: &str, body: Option<&[u8]>, max_body: usize) -> Result<Vec<u8>, CommandError> {
+fn request(
+    url: &str,
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+    max_body: usize,
+) -> Result<Vec<u8>, CommandError> {
     request_with_timeout(url, method, path, body, max_body, Duration::from_secs(15))
 }
 
-fn request_with_timeout(url: &str, method: &str, path: &str, body: Option<&[u8]>, max_body: usize, timeout: Duration) -> Result<Vec<u8>, CommandError> {
+fn request_with_timeout(
+    url: &str,
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+    max_body: usize,
+    timeout: Duration,
+) -> Result<Vec<u8>, CommandError> {
     validate_worker_url(url)?;
     let port: u16 = url.rsplit(':').next().unwrap().parse().unwrap();
     let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
     let mut stream = TcpStream::connect_timeout(&address.into(), timeout.min(Duration::from_secs(2)))
-        .map_err(|_| CommandError::new("WORKER_UNAVAILABLE", format!("Cannot reach the local sound worker at {url}. From the repository folder, run python3 workers/start_local.py; then check Settings if it still cannot connect.")))?;
+        .map_err(|_| CommandError::new("WORKER_UNAVAILABLE", format!("Cannot reach the local sound worker at {url}. Check the Chatterbox runtime and checkpoint in Settings.")))?;
     stream.set_read_timeout(Some(timeout)).ok();
     stream.set_write_timeout(Some(timeout)).ok();
     let payload = body.unwrap_or_default();
-    let content_type = if path == "/v2/references" { "audio/wav" } else { "application/json" };
-    let headers = format!("{method} {path} HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", payload.len());
-    stream.write_all(headers.as_bytes()).and_then(|_| stream.write_all(payload))
+    let content_type = if path == "/v2/references" {
+        "audio/wav"
+    } else {
+        "application/json"
+    };
+    let headers = format!(
+        "{method} {path} HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        payload.len()
+    );
+    stream
+        .write_all(headers.as_bytes())
+        .and_then(|_| stream.write_all(payload))
         .map_err(|error| CommandError::io("Cannot send sound worker request", error))?;
     let mut bytes = Vec::new();
-    stream.take((max_body + 8193) as u64).read_to_end(&mut bytes)
+    stream
+        .take((max_body + 8193) as u64)
+        .read_to_end(&mut bytes)
         .map_err(|error| CommandError::io("Cannot read sound worker response", error))?;
-    if bytes.len() > max_body + 8192 { return Err(CommandError::new("WORKER_RESPONSE_TOO_LARGE", "Sound worker response is too large.")); }
-    let split = bytes.windows(4).position(|window| window == b"\r\n\r\n")
-        .ok_or_else(|| CommandError::new("WORKER_PROTOCOL", "Worker returned an invalid HTTP response."))?;
-    if split > 8192 || bytes.len() - split - 4 > max_body { return Err(CommandError::new("WORKER_RESPONSE_TOO_LARGE", "Sound worker response is too large.")); }
-    let header = std::str::from_utf8(&bytes[..split]).map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned invalid headers."))?;
-    let status = header.lines().next().and_then(|line| line.split_whitespace().nth(1)).and_then(|code| code.parse::<u16>().ok())
+    if bytes.len() > max_body + 8192 {
+        return Err(CommandError::new(
+            "WORKER_RESPONSE_TOO_LARGE",
+            "Sound worker response is too large.",
+        ));
+    }
+    let split = bytes
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .ok_or_else(|| {
+            CommandError::new(
+                "WORKER_PROTOCOL",
+                "Worker returned an invalid HTTP response.",
+            )
+        })?;
+    if split > 8192 || bytes.len() - split - 4 > max_body {
+        return Err(CommandError::new(
+            "WORKER_RESPONSE_TOO_LARGE",
+            "Sound worker response is too large.",
+        ));
+    }
+    let header = std::str::from_utf8(&bytes[..split])
+        .map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned invalid headers."))?;
+    let status = header
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|code| code.parse::<u16>().ok())
         .ok_or_else(|| CommandError::new("WORKER_PROTOCOL", "Worker returned no HTTP status."))?;
     let result = bytes[split + 4..].to_vec();
     if !(200..300).contains(&status) {
-        let message = serde_json::from_slice::<RemoteError>(&result).map(|error| error.error).unwrap_or_else(|_| format!("Worker returned HTTP {status}."));
+        let message = serde_json::from_slice::<RemoteError>(&result)
+            .map(|error| error.error)
+            .unwrap_or_else(|_| format!("Worker returned HTTP {status}."));
         return Err(CommandError::new("WORKER_ERROR", message));
     }
     Ok(result)
@@ -187,13 +343,13 @@ mod tests {
         let mut input = [0u8; 1024];
         let length = stream.read(&mut input).unwrap();
         let request = String::from_utf8_lossy(&input[..length]).to_string();
-        write!(stream, "HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+        write!(
+            stream,
+            "HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
         request
-    }
-
-    #[test]
-    fn finds_the_checkout_worker_launcher() {
-        assert!(worker_launcher().is_some());
     }
 
     #[test]
@@ -202,7 +358,10 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            reply(&mut stream, r#"{"protocolVersion":2,"engine":"chatterbox_original","model":"stub","ready":true,"categories":[],"maxDurationSeconds":20,"message":"Ready"}"#)
+            reply(
+                &mut stream,
+                r#"{"protocolVersion":2,"engine":"chatterbox_original","model":"stub","ready":true,"categories":[],"maxDurationSeconds":20,"message":"Ready"}"#,
+            )
         });
         assert!(!shutdown(&format!("http://127.0.0.1:{port}"), "chatterbox_turbo").unwrap());
         assert!(server.join().unwrap().starts_with("GET /v2/health "));
@@ -214,7 +373,10 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let server = std::thread::spawn(move || {
             let (mut health, _) = listener.accept().unwrap();
-            let first = reply(&mut health, r#"{"protocolVersion":2,"engine":"chatterbox_turbo","model":"stub","ready":true,"categories":[],"maxDurationSeconds":20,"message":"Ready"}"#);
+            let first = reply(
+                &mut health,
+                r#"{"protocolVersion":2,"engine":"chatterbox_turbo","model":"stub","ready":true,"categories":[],"maxDurationSeconds":20,"message":"Ready"}"#,
+            );
             drop(health);
             let (mut stop, _) = listener.accept().unwrap();
             let second = reply(&mut stop, r#"{"status":"stopping"}"#);
@@ -227,7 +389,12 @@ mod tests {
     }
     #[test]
     fn worker_url_rejects_non_loopback() {
-        for value in ["http://evil.test:8765", "http://127.0.0.1:8765/other", "http://127.0.0.1:8765@evil.test", "https://127.0.0.1:8765"] {
+        for value in [
+            "http://evil.test:8765",
+            "http://127.0.0.1:8765/other",
+            "http://127.0.0.1:8765@evil.test",
+            "https://127.0.0.1:8765",
+        ] {
             assert!(validate_worker_url(value).is_err());
         }
     }
@@ -242,7 +409,14 @@ mod tests {
             let _ = stream.read(&mut input);
             stream.write_all(b"not an HTTP response").unwrap();
         });
-        let error = request(&format!("http://127.0.0.1:{port}"), "GET", "/v1/health", None, MAX_JSON).unwrap_err();
+        let error = request(
+            &format!("http://127.0.0.1:{port}"),
+            "GET",
+            "/v1/health",
+            None,
+            MAX_JSON,
+        )
+        .unwrap_err();
         assert_eq!(error.code, "WORKER_PROTOCOL");
         server.join().unwrap();
     }

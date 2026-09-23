@@ -21,6 +21,7 @@
 - `src-tauri/src/services/llm.rs`: bounded llama.cpp and loopback Ollama text processing with candidate-only results.
 - `src-tauri/src/services/spoken_text.rs`: Markdown-to-spoken-text normalization.
 - `src-tauri/src/services/model_install.rs`: explicit pinned Turbo/Original downloads, verification, progress, and disk use.
+- `src-tauri/src/services/worker_runtime.rs`: bundled worker resource lookup, app-data Python environment status and installation.
 - `src-tauri/src/services/speech.rs`: Chatterbox narration, audio import, FFmpeg normalization, duration probing, and waveform peaks.
 - `src-tauri/src/services/audio_protocol.rs`: registry-backed project audio delivery with byte-range support.
 - `src-tauri/src/services/exports.rs`: re-probed chapter assembly, copy/re-encode fallback, duration verification, and timestamp generation.
@@ -42,7 +43,7 @@
 - `tests/standalone-audio.test.tsx`: no-project and sound request UI checks.
 - `tests/manuscript-drop.test.ts` and `tests/standalone-audio.test.tsx`: focused renderer behavior tests.
 - `tests/DESKTOP_SMOKE.md`: automated and manual packaged-app smoke procedure.
-- `scripts/verify-release.mjs`: version, architecture, signature, and package verification plus ZIP creation.
+- `scripts/verify-release.mjs`: version, architecture, signature, bundled worker resources, and package verification plus ZIP creation.
 - `scripts/smoke-app.mjs`: isolated packaged-app startup check.
 - `.github/workflows/ci.yml`: push/PR checks and Apple Silicon app build.
 - `.github/workflows/release.yml`: version-tagged DMG/ZIP release publishing.
