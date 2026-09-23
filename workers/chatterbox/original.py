@@ -34,10 +34,15 @@ def generate(request, model_dir):
         device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
         if _vc_model is None:
             _vc_model = ChatterboxVC.from_local(str(model_dir), device=device)
-        wave = _vc_model.generate(audio=request["sourcePath"], target_voice_path=request["referencePath"])
-        result = io.BytesIO()
-        torchaudio.save(result, wave.cpu(), _vc_model.sr, format="wav")
-        return result.getvalue()
+        try:
+            with torch.inference_mode():
+                wave = _vc_model.generate(audio=request["sourcePath"], target_voice_path=request["referencePath"])
+                result = io.BytesIO()
+                torchaudio.save(result, wave.cpu(), _vc_model.sr, format="wav")
+                return result.getvalue()
+        finally:
+            if device == "mps":
+                torch.mps.empty_cache()
     if request["category"] != "speech":
         raise ValueError("Original Chatterbox supports speech, not Turbo vocal tags.")
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
@@ -49,11 +54,16 @@ def generate(request, model_dir):
         raise ValueError("Exaggeration must be between 0.25 and 2.")
     if type(cfg_weight) not in (float, int) or not 0 <= cfg_weight <= 1:
         raise ValueError("Pace must be between 0 and 1.")
-    wave = _model.generate(request["prompt"].strip(), audio_prompt_path=request.get("referencePath"),
-                           exaggeration=exaggeration, cfg_weight=cfg_weight)
-    result = io.BytesIO()
-    torchaudio.save(result, wave.cpu(), _model.sr, format="wav")
-    return result.getvalue()
+    try:
+        with torch.inference_mode():
+            wave = _model.generate(request["prompt"].strip(), audio_prompt_path=request.get("referencePath"),
+                                   exaggeration=exaggeration, cfg_weight=cfg_weight)
+            result = io.BytesIO()
+            torchaudio.save(result, wave.cpu(), _model.sr, format="wav")
+            return result.getvalue()
+    finally:
+        if device == "mps":
+            torch.mps.empty_cache()
 
 
 if __name__ == "__main__":

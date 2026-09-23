@@ -38,10 +38,15 @@ def generate(request, model_dir):
         if _model.conds is None:
             raise ValueError("This checkpoint has no default voice. Add conds.pt to the model folder.")
     reference = request.get("referencePath")
-    wave = _model.generate(prompt, audio_prompt_path=reference) if reference else _model.generate(prompt)
-    result = io.BytesIO()
-    torchaudio.save(result, wave.cpu(), _model.sr, format="wav")
-    return result.getvalue()
+    try:
+        with torch.inference_mode():
+            wave = _model.generate(prompt, audio_prompt_path=reference) if reference else _model.generate(prompt)
+            result = io.BytesIO()
+            torchaudio.save(result, wave.cpu(), _model.sr, format="wav")
+            return result.getvalue()
+    finally:
+        if device == "mps":
+            torch.mps.empty_cache()
 
 
 if __name__ == "__main__":
