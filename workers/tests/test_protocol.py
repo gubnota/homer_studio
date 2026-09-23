@@ -42,6 +42,7 @@ class WorkerTests(unittest.TestCase):
             time.sleep(0.01)
         self.assertEqual(self.worker.status(job_id)["status"], "completed")
         self.assertTrue(self.worker.jobs[job_id]["audio"].startswith(b"RIFF"))
+        self.assertEqual(self.worker.health()["completedJobs"], 1)
 
     def test_invalid_requests(self):
         for bad in ("", "x" * 501):

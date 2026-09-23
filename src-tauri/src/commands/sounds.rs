@@ -77,6 +77,7 @@ pub fn convert_voice_clip(app: AppHandle, state: State<'_, AppState>, voice_id: 
                 let args = vec!["-v".into(), "error".into(), "-y".into(), "-ss".into(), format!("{:.3}", (index * evenly_sized_chunk_ms) as f64 / 1000.0), "-i".into(), source.to_string_lossy().to_string(), "-t".into(), format!("{:.3}", chunk_ms as f64 / 1000.0), "-ac".into(), "1".into(), "-ar".into(), "24000".into(), "-c:a".into(), "pcm_s16le".into(), wav.to_string_lossy().to_string()];
                 let normalized = crate::services::process_runner::run_bounded(&ffmpeg, &args, std::time::Duration::from_secs(60), control.cancelled.clone())?;
                 if !normalized.success { return Err(CommandError::new("RECORDING_CONVERSION_FAILED", normalized.stderr)); }
+                sound_workers::recycle_before_job(&app, worker, "chatterbox_original", &control)?;
                 let source_id = sound_workers::upload_reference(worker, &fs::read(&wav).map_err(|error| CommandError::io("Cannot read recording", error))?)?;
                 let reference_id = sound_workers::upload_reference(worker, &reference)?;
                 let request = serde_json::json!({"prompt":"Convert recorded delivery", "category":"voice_conversion", "durationSeconds":chunk_ms as f64 / 1000.0, "seed":null, "sourceId":source_id, "referenceId":reference_id});

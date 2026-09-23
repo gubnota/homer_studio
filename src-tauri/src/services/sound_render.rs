@@ -61,6 +61,7 @@ pub fn render(app: &AppHandle, settings: &Settings, request: &SoundRequest, cont
         let mut list_entries = String::new();
         for index in 0..count {
             control.boundary()?;
+            sound_workers::recycle_before_job(app, url, engine, control)?;
             let segment_seconds = (request.duration_seconds / count as f32).min(20.0).max(1.0);
             let reference_id = reference.as_ref().map(|bytes| sound_workers::upload_reference(url, bytes)).transpose()?;
             let prompt = if request.category == "speech" { &prompts[index] } else { &request.prompt };

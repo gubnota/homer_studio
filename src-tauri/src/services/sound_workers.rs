@@ -14,6 +14,7 @@ use tauri::AppHandle;
 const MAX_JSON: usize = 64 * 1024;
 const MAX_WAV: usize = 32 * 1024 * 1024;
 const MAX_REFERENCE: usize = 2 * 1024 * 1024;
+const MAX_JOBS_PER_WORKER: u32 = 2;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +26,8 @@ pub struct WorkerHealth {
     pub categories: Vec<String>,
     pub max_duration_seconds: u8,
     pub message: String,
+    #[serde(default)]
+    pub completed_jobs: u32,
 }
 
 #[derive(Deserialize)]
@@ -55,6 +58,7 @@ pub fn health(url: &str, expected_engine: &str) -> WorkerHealth {
         },
         max_duration_seconds: 20,
         message,
+        completed_jobs: 0,
     };
     match request(url, "GET", "/v2/health", None, MAX_JSON).and_then(|body| {
         serde_json::from_slice::<WorkerHealth>(&body).map_err(|_| {
@@ -142,6 +146,44 @@ pub fn shutdown(url: &str, expected_engine: &str) -> Result<bool, CommandError> 
         Duration::from_secs(1),
     )?;
     Ok(true)
+}
+
+/// Recreate a packaged worker between jobs so MPS allocations cannot accumulate
+/// throughout a book. References must be uploaded only after this returns.
+pub fn recycle_before_job(
+    app: &AppHandle,
+    url: &str,
+    expected_engine: &str,
+    control: &JobControl,
+) -> Result<(), CommandError> {
+    let name = match (url.trim_end_matches('/'), expected_engine) {
+        ("http://127.0.0.1:8765", "chatterbox_turbo") => "chatterbox",
+        ("http://127.0.0.1:8767", "chatterbox_original") => "original",
+        _ => return Ok(()),
+    };
+    let status = health(url, expected_engine);
+    if !status.ready || status.completed_jobs < MAX_JOBS_PER_WORKER {
+        return Ok(());
+    }
+    control.boundary()?;
+    if !shutdown(url, expected_engine)? {
+        return Err(CommandError::new("WORKER_RECYCLE_FAILED", "Cannot verify the local worker before restarting it."));
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while health(url, expected_engine).ready {
+        control.boundary()?;
+        if Instant::now() >= deadline {
+            return Err(CommandError::new("WORKER_RECYCLE_FAILED", "The local worker did not stop after its last audio clip. Restart Homer Studio."));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    control.boundary()?;
+    start_local_worker(app, name)?;
+    let restarted = health(url, expected_engine);
+    if !restarted.ready {
+        return Err(CommandError::new("WORKER_RECYCLE_FAILED", restarted.message));
+    }
+    Ok(())
 }
 
 pub fn generate(
@@ -338,6 +380,12 @@ fn request_with_timeout(
 mod tests {
     use super::*;
     use std::net::TcpListener;
+
+    #[test]
+    fn old_worker_health_defaults_to_zero_completed_jobs() {
+        let health: WorkerHealth = serde_json::from_str(r#"{"protocolVersion":2,"engine":"chatterbox_turbo","model":"turbo","ready":true,"categories":["speech"],"maxDurationSeconds":20,"message":"Ready"}"#).unwrap();
+        assert_eq!(health.completed_jobs, 0);
+    }
 
     fn reply(stream: &mut TcpStream, body: &str) -> String {
         let mut input = [0u8; 1024];

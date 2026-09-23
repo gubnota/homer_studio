@@ -156,3 +156,13 @@ Context: An installed 0.2.2 app contained bundled worker scripts, but an existin
 Decision: Before narration, accept a healthy configured worker; otherwise, for the default local worker, report a missing app-owned runtime or checkpoint specifically. If both are installed, start the worker again and verify its health before generating audio. Keep runtime and checkpoint installation explicit in Settings.
 Consequences: A stopped local worker can recover during a narration job, and absent setup yields an actionable queue error. Existing checkout installations still need a one-time migration or a Settings install.
 Related files: `src-tauri/src/services/speech.rs`, `src-tauri/src/services/worker_runtime.rs`, `src-tauri/src/services/model_install.rs`.
+
+# ADR-0017: Recycle local Chatterbox between short batches
+
+Date: 2026-09-23
+Status: Accepted
+
+Context: A chapter batch reached an 18 GB physical footprint and a 30.6 GB peak despite inference mode and clearing the MPS cache. The worker held no growing job history, so model or GPU allocations were surviving completed requests.
+Decision: Count successful generations in worker health. Before a new request uploads its voice reference, restart the packaged default-port worker after two completed jobs and verify the replacement. Shorten narration requests to 180 characters to reduce per-request peak allocation. Leave custom worker URLs under their operator's control.
+Consequences: Long narration jobs reload the model more often, trading speed for bounded cross-request growth. An individual request can still have a high peak; long-run memory behavior requires an installed-app measurement.
+Related files: `workers/worker_protocol.py`, `src-tauri/src/services/sound_workers.rs`, `src-tauri/src/services/speech.rs`, `src-tauri/src/services/sound_render.rs`.

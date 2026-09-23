@@ -26,6 +26,7 @@ class Worker:
         self.lock = threading.Lock()
         self.busy = threading.Lock()
         self.references = {}
+        self.completed_jobs = 0
 
     def health(self):
         checked = self.check_model(self.model_dir) if self.check_model else (self.model_dir.is_dir() and any(self.model_dir.iterdir()))
@@ -38,6 +39,7 @@ class Worker:
             "categories": self.categories,
             "maxDurationSeconds": 20,
             "message": message,
+            "completedJobs": self.completed_jobs,
         }
 
     def start(self, request):
@@ -105,6 +107,7 @@ class Worker:
                 with self.lock:
                     if not job["cancelled"]:
                         job.update(status="completed", audio=audio)
+                        self.completed_jobs += 1
             except Exception as error:
                 with self.lock:
                     if not job["cancelled"]:

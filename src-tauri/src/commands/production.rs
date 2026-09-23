@@ -448,6 +448,7 @@ pub fn convert_segment_recording(app: AppHandle, state: State<'_, AppState>, roo
             let source_wav = std::fs::read(&wav).map_err(|error| CommandError::io("Cannot read recording", error))?;
             progress(20);
             let worker_url = &settings.sounds.original_url;
+            crate::services::sound_workers::recycle_before_job(&app, worker_url, "chatterbox_original", &control)?;
             let source_id = crate::services::sound_workers::upload_reference(worker_url, &source_wav)?;
             let reference_id = crate::services::sound_workers::upload_reference(worker_url, &narrator)?;
             let request = serde_json::json!({"prompt":"Convert recorded delivery", "category":"voice_conversion", "durationSeconds":20, "seed":null, "sourceId":source_id, "referenceId":reference_id});

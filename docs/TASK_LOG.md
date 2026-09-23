@@ -130,3 +130,8 @@
 - The installed worker started from its bundled launcher and completed a real short speech request. Resident memory after model load was about 2 GB.
 - Narration now checks the local runtime and checkpoint when health fails, gives a specific Settings action for missing setup, and restarts an installed local worker before retrying health. Custom worker URLs keep their existing behavior.
 - Version 0.2.3 passed 35 native tests, nine renderer tests, typecheck/build, arm64 app/DMG/ZIP verification, and packaged startup smoke. A full multi-chapter listening run remains manual.
+
+# 2026-09-23 — Bound Chatterbox memory across chapter requests
+- A user process sample confirmed an 18 GB worker footprint and 30.6 GB peak during a batch; cache clearing alone was insufficient.
+- Local Chatterbox workers now report successful generation count and restart after every two completed jobs before receiving the next voice reference. Narration chunks are limited to 180 characters. Existing staged audio and chapter commits survive a restart at the chunk boundary.
+- Native suite and Python protocol tests passed. Packaged arm64 and long-running memory verification are pending.

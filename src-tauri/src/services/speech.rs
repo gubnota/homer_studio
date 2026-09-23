@@ -14,6 +14,8 @@ use super::{
 };
 use tauri::AppHandle;
 
+const MAX_SPEECH_CHARS: usize = 180;
+
 pub fn generate(
     app: &AppHandle,
     text: &str,
@@ -59,7 +61,7 @@ pub fn generate_with_progress(
             .iter()
             .flatten()
             .map(|part| match part {
-                SpeechPart::Speech(value) => chunks(value, 280).len(),
+                SpeechPart::Speech(value) => chunks(value, MAX_SPEECH_CHARS).len(),
                 SpeechPart::Gesture(_) => 1,
                 SpeechPart::Pause(_) => 0,
             })
@@ -87,8 +89,9 @@ pub fn generate_with_progress(
             for part in line_parts {
                 match part {
                     SpeechPart::Speech(value) => {
-                        for chunk in chunks(&value, 280) {
+                        for chunk in chunks(&value, MAX_SPEECH_CHARS) {
                             control.boundary()?;
+                            sound_workers::recycle_before_job(app, worker_url, if original { "chatterbox_original" } else { "chatterbox_turbo" }, control)?;
                             let reference_id = reference
                                 .as_ref()
                                 .map(|bytes| {
@@ -119,6 +122,7 @@ pub fn generate_with_progress(
                             return Err(CommandError::new("GESTURE_REQUIRES_TURBO", "Bracketed vocal gestures require Chatterbox Turbo. Choose Turbo in Settings or remove the markers."));
                         }
                         control.boundary()?;
+                        sound_workers::recycle_before_job(app, worker_url, "chatterbox_turbo", control)?;
                         let reference_id = reference
                             .as_ref()
                             .map(|bytes| {
