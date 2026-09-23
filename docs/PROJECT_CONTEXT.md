@@ -9,9 +9,9 @@
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
-- Version 0.2.1 includes explicit English model installation, per-section narration and takes, batch chapter narration from Review, queue progress/cleanup, and recording-to-narrator conversion; portable worker packaging is the current release checkpoint.
+- Version 0.2.3 includes app-owned Chatterbox setup, narration recovery when a local worker stops, per-section narration and takes, batch chapter narration from Review, queue progress/cleanup, and recording-to-narrator conversion.
 - The Tauri app, durable project storage, drag-and-drop import, optional local text providers, local neural voice library, narration/import, review, export, and packaging are implemented.
-- The current arm64 app bundle is being rebuilt and verified for a patch release. Review, Exports, and clip libraries have bulk save/delete controls; Voice Lab converts standalone recordings; Review has zoomable waveform playback.
+- The arm64 app bundle is verified for patch releases. Review, Exports, and clip libraries have bulk save/delete controls; Voice Lab converts standalone recordings; Review has zoomable waveform playback.
 - The user authorized a new tag and push after the portable worker fix is verified.
 
 ## Technology

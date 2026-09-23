@@ -10,7 +10,7 @@ use super::{
     process_runner,
     project_store::{CommandError, LineCue},
     settings::Settings,
-    sound_workers, voice_store,
+    model_install, sound_workers, voice_store, worker_runtime,
 };
 use tauri::AppHandle;
 
@@ -42,10 +42,7 @@ pub fn generate_with_progress(
     }
     let original = settings.speech.provider == "chatterbox_original";
     let worker_url = if original { &settings.sounds.original_url } else { &settings.sounds.chatterbox_url };
-    let health = sound_workers::health(worker_url, if original { "chatterbox_original" } else { "chatterbox_turbo" });
-    if !health.ready {
-        return Err(CommandError::new("WORKER_UNAVAILABLE", health.message));
-    }
+    ensure_worker_ready(app, worker_url, original, control)?;
     let reference = voice_store::selected_sample(app, voice_id)?;
     let work = output
         .parent()
@@ -239,6 +236,45 @@ pub fn generate_with_progress(
         let _ = fs::remove_file(output);
     }
     result
+}
+
+fn ensure_worker_ready(
+    app: &AppHandle,
+    url: &str,
+    original: bool,
+    control: &JobControl,
+) -> Result<(), CommandError> {
+    let engine = if original { "chatterbox_original" } else { "chatterbox_turbo" };
+    let health = sound_workers::health(url, engine);
+    if health.ready {
+        return Ok(());
+    }
+    control.boundary()?;
+    let local_url = if original { "http://127.0.0.1:8767" } else { "http://127.0.0.1:8765" };
+    if url.trim_end_matches('/') != local_url {
+        return Err(CommandError::new("WORKER_UNAVAILABLE", health.message));
+    }
+    if !worker_runtime::status(app, None)?.installed {
+        return Err(CommandError::new(
+            "PYTHON_RUNTIME_MISSING",
+            "Chatterbox Python runtime is missing. Open Settings and select Install runtime before generating narration.",
+        ));
+    }
+    let model = if original { "original" } else { "turbo" };
+    if !model_install::status(app, model)?.installed {
+        return Err(CommandError::new(
+            "MODEL_MISSING",
+            format!("Chatterbox {model} checkpoint is missing. Open Settings and download the checkpoint before generating narration."),
+        ));
+    }
+    sound_workers::start_local_worker(app, if original { "original" } else { "chatterbox" })?;
+    control.boundary()?;
+    let health = sound_workers::health(url, engine);
+    if health.ready {
+        Ok(())
+    } else {
+        Err(CommandError::new("WORKER_UNAVAILABLE", health.message))
+    }
 }
 
 pub struct SpeechOutput {

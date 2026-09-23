@@ -124,3 +124,9 @@
 - Added an implementation plan for a bundled worker and app-data Python environment. Settings can install pinned packages using a discovered or selected Python 3.10 interpreter; worker startup uses bundled resources and app-data paths.
 - Wrapped complete Turbo and Original generation in PyTorch inference mode and release unused MPS cache after each request. The old running worker was measured at roughly 15.5–16.6 GiB resident; an isolated updated Turbo worker completed ten short requests and remained near 2.7 GiB resident. Long chapter memory behavior still needs interactive review.
 - Extended first-start readiness polling to 30 seconds and made Settings status use the selected Python path. Release verification now requires all bundled worker files. Native tests (35), renderer tests (9), Python protocol tests (10), arm64 app/DMG/ZIP verification, and packaged startup smoke passed.
+
+# 2026-09-23 — Recover narration after portable runtime migration
+- Found the installed 0.2.2 app had bundled worker code but no Python runtime or Turbo checkpoint in Application Support; the old 1.3 GB environment and 2.8 GB checkpoint remained in the checkout. Migrated those files into app data on this Mac and verified imports.
+- The installed worker started from its bundled launcher and completed a real short speech request. Resident memory after model load was about 2 GB.
+- Narration now checks the local runtime and checkpoint when health fails, gives a specific Settings action for missing setup, and restarts an installed local worker before retrying health. Custom worker URLs keep their existing behavior.
+- Version 0.2.3 passed 35 native tests, nine renderer tests, typecheck/build, arm64 app/DMG/ZIP verification, and packaged startup smoke. A full multi-chapter listening run remains manual.

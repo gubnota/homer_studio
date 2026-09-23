@@ -146,3 +146,13 @@ Context: The previous release launched worker code and a virtual environment fro
 Decision: Bundle the minimal Python worker source as Tauri resources. Create and verify the pinned Python 3.10 environment under the app's Application Support directory only after the user starts setup in Settings. Keep checkpoints, cache, and logs there as well. Wrap complete synthesis in inference mode and release unused MPS cache after each request.
 Consequences: A new Mac needs Python 3.10 and an explicit package/checkpoint install, but no repository checkout. Package setup uses disk and network access. Model weights remain resident while a worker is active; quitting the app stops it.
 Related files: `src-tauri/src/services/worker_runtime.rs`, `src-tauri/tauri.conf.json`, `workers/start_local.py`, `workers/chatterbox/server.py`, `workers/chatterbox/original.py`.
+
+# ADR-0016: Diagnose and recover local narration workers at request time
+
+Date: 2026-09-23
+Status: Accepted
+
+Context: An installed 0.2.2 app contained bundled worker scripts, but an existing Mac still had its Python environment and checkpoint in the old checkout. Startup logged a missing runtime without showing it in the narration job, which later failed with a generic connection error.
+Decision: Before narration, accept a healthy configured worker; otherwise, for the default local worker, report a missing app-owned runtime or checkpoint specifically. If both are installed, start the worker again and verify its health before generating audio. Keep runtime and checkpoint installation explicit in Settings.
+Consequences: A stopped local worker can recover during a narration job, and absent setup yields an actionable queue error. Existing checkout installations still need a one-time migration or a Settings install.
+Related files: `src-tauri/src/services/speech.rs`, `src-tauri/src/services/worker_runtime.rs`, `src-tauri/src/services/model_install.rs`.
