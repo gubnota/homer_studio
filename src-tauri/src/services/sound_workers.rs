@@ -48,6 +48,19 @@ pub fn health(url: &str, expected_engine: &str) -> WorkerHealth {
     }
 }
 
+/// Stop only a current local Homer speech worker; never send shutdown to an
+/// unrelated service or an older worker that cannot identify itself.
+pub fn shutdown(url: &str, expected_engine: &str) -> Result<bool, CommandError> {
+    let identity = request_with_timeout(url, "GET", "/v2/health", None, MAX_JSON, Duration::from_secs(1))?;
+    let worker: WorkerHealth = serde_json::from_slice(&identity)
+        .map_err(|_| CommandError::new("WORKER_PROTOCOL", "Worker returned invalid health data."))?;
+    if worker.protocol_version != 2 || worker.engine != expected_engine {
+        return Ok(false);
+    }
+    request_with_timeout(url, "POST", "/v2/shutdown", None, MAX_JSON, Duration::from_secs(1))?;
+    Ok(true)
+}
+
 pub fn generate(url: &str, request_body: &serde_json::Value, control: &JobControl) -> Result<Vec<u8>, CommandError> {
     let body = serde_json::to_vec(request_body).map_err(|_| CommandError::internal("Cannot serialize sound request"))?;
     let created: Created = serde_json::from_slice(&request(url, "POST", "/v2/jobs", Some(&body), MAX_JSON)?)
@@ -96,13 +109,17 @@ pub fn upload_reference(url: &str, wav: &[u8]) -> Result<String, CommandError> {
 }
 
 fn request(url: &str, method: &str, path: &str, body: Option<&[u8]>, max_body: usize) -> Result<Vec<u8>, CommandError> {
+    request_with_timeout(url, method, path, body, max_body, Duration::from_secs(15))
+}
+
+fn request_with_timeout(url: &str, method: &str, path: &str, body: Option<&[u8]>, max_body: usize, timeout: Duration) -> Result<Vec<u8>, CommandError> {
     validate_worker_url(url)?;
     let port: u16 = url.rsplit(':').next().unwrap().parse().unwrap();
     let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
-    let mut stream = TcpStream::connect_timeout(&address.into(), Duration::from_secs(2))
+    let mut stream = TcpStream::connect_timeout(&address.into(), timeout.min(Duration::from_secs(2)))
         .map_err(|_| CommandError::new("WORKER_UNAVAILABLE", format!("Cannot reach the local sound worker at {url}. From the repository folder, run python3 workers/start_local.py; then check Settings if it still cannot connect.")))?;
-    stream.set_read_timeout(Some(Duration::from_secs(15))).ok();
-    stream.set_write_timeout(Some(Duration::from_secs(15))).ok();
+    stream.set_read_timeout(Some(timeout)).ok();
+    stream.set_write_timeout(Some(timeout)).ok();
     let payload = body.unwrap_or_default();
     let content_type = if path == "/v2/references" { "audio/wav" } else { "application/json" };
     let headers = format!("{method} {path} HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", payload.len());
@@ -130,6 +147,44 @@ fn request(url: &str, method: &str, path: &str, body: Option<&[u8]>, max_body: u
 mod tests {
     use super::*;
     use std::net::TcpListener;
+
+    fn reply(stream: &mut TcpStream, body: &str) -> String {
+        let mut input = [0u8; 1024];
+        let length = stream.read(&mut input).unwrap();
+        let request = String::from_utf8_lossy(&input[..length]).to_string();
+        write!(stream, "HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+        request
+    }
+
+    #[test]
+    fn shutdown_only_stops_expected_engine() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            reply(&mut stream, r#"{"protocolVersion":2,"engine":"chatterbox_original","model":"stub","ready":true,"categories":[],"maxDurationSeconds":20,"message":"Ready"}"#)
+        });
+        assert!(!shutdown(&format!("http://127.0.0.1:{port}"), "chatterbox_turbo").unwrap());
+        assert!(server.join().unwrap().starts_with("GET /v2/health "));
+    }
+
+    #[test]
+    fn shutdown_requests_stop_after_health_check() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut health, _) = listener.accept().unwrap();
+            let first = reply(&mut health, r#"{"protocolVersion":2,"engine":"chatterbox_turbo","model":"stub","ready":true,"categories":[],"maxDurationSeconds":20,"message":"Ready"}"#);
+            drop(health);
+            let (mut stop, _) = listener.accept().unwrap();
+            let second = reply(&mut stop, r#"{"status":"stopping"}"#);
+            (first, second)
+        });
+        assert!(shutdown(&format!("http://127.0.0.1:{port}"), "chatterbox_turbo").unwrap());
+        let (first, second) = server.join().unwrap();
+        assert!(first.starts_with("GET /v2/health "));
+        assert!(second.starts_with("POST /v2/shutdown "));
+    }
     #[test]
     fn worker_url_rejects_non_loopback() {
         for value in ["http://evil.test:8765", "http://127.0.0.1:8765/other", "http://127.0.0.1:8765@evil.test", "https://127.0.0.1:8765"] {

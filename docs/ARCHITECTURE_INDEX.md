@@ -24,7 +24,7 @@
 - `src-tauri/src/services/speech.rs`: Chatterbox narration, audio import, FFmpeg normalization, duration probing, and waveform peaks.
 - `src-tauri/src/services/audio_protocol.rs`: registry-backed project audio delivery with byte-range support.
 - `src-tauri/src/services/exports.rs`: re-probed chapter assembly, copy/re-encode fallback, duration verification, and timestamp generation.
-- `src-tauri/src/services/sound_workers.rs`: bounded loopback worker client, health, job polling, cancellation, and WAV transfer.
+- `src-tauri/src/services/sound_workers.rs`: bounded loopback worker client, health, job polling, cancellation, WAV transfer, and verified shutdown on app exit.
 - `src-tauri/src/services/sound_render.rs`: standalone request validation, segmented long effects, media verification, and conversion.
 - `src-tauri/src/services/sound_store.rs`: independent versioned clip library and safe asset paths.
 - `src-tauri/src/commands/sounds.rs`: generate/list/play/export/delete commands and segmented standalone voice conversion.
@@ -38,7 +38,7 @@
 - `src/renderer/src/SoundStudioPage.tsx`: book-independent prompt, worker status, clip library, playback, retry, export, and deletion.
 - `src/renderer/src/VoiceLabPage.tsx`: standalone recording/import, Original Chatterbox conversion, and converted-clip library.
 - `src/renderer/public/`: bundled app icon for the sidebar and built-in Turbo voice preview.
-- `workers/`: local Turbo/Original Chatterbox Python companions, shared versioned protocol, launcher, tests, and setup guide. Retired effects worker code remains for legacy reference and is not started by default.
+- `workers/`: local Turbo/Original Chatterbox Python companions, shared versioned protocol with graceful shutdown, launcher, tests, and setup guide. Retired effects worker code remains for legacy reference and cannot be started by the launcher.
 - `tests/standalone-audio.test.tsx`: no-project and sound request UI checks.
 - `tests/manuscript-drop.test.ts` and `tests/standalone-audio.test.tsx`: focused renderer behavior tests.
 - `tests/DESKTOP_SMOKE.md`: automated and manual packaged-app smoke procedure.

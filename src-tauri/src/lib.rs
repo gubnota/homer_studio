@@ -102,6 +102,19 @@ pub fn run() {
             ,commands::sounds::export_sound
             ,commands::sounds::export_sounds
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Homer Studio");
+        .build(tauri::generate_context!())
+        .expect("failed to build Homer Studio")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                let settings = services::settings::load(app).unwrap_or_default();
+                for (url, engine) in [
+                    (&settings.sounds.chatterbox_url, "chatterbox_turbo"),
+                    (&settings.sounds.original_url, "chatterbox_original"),
+                ] {
+                    if let Err(error) = services::sound_workers::shutdown(url, engine) {
+                        eprintln!("Could not stop {engine} worker: {}", error.message);
+                    }
+                }
+            }
+        });
 }

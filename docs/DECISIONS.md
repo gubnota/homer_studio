@@ -127,3 +127,13 @@ Context: Review could narrate one chapter at a time. Independently queued chapte
 Decision: Queue a single native job for an ordered chapter selection. Snapshot text and voice settings at submission, update the expected revision after every successful chapter, and stop on an external edit, cancellation, or chapter error. Report aggregate progress and named chapter events in Render queue. Keep completed chapters when later chapters stop.
 Consequences: Review can generate pending chapters or regenerate selected chapters, including imported audio after confirmation. Batch work continues across tab navigation; Review reloads project state when reopened or when the tracked job finishes. Chapter failures do not roll back earlier results.
 Related files: `src-tauri/src/commands/production.rs`, `src-tauri/src/services/jobs.rs`, `src/renderer/src/pages.tsx`, `src/renderer/src/native.ts`.
+
+# ADR-0014: Stop local speech workers when the app exits
+
+Date: 2026-09-23
+Status: Accepted
+
+Context: The manual worker launcher detaches Python processes, so Chatterbox models can stay in memory after Homer Studio closes. A retired effects process was also found orphaned.
+Decision: The shared worker protocol exposes graceful `POST /v2/shutdown`. On Tauri exit, the app checks protocol version and exact engine at each configured local Chatterbox URL, then requests shutdown with bounded timeouts. Remove the retired effects option from the launcher. Do not manage Ollama or unrelated services.
+Consequences: Start local Chatterbox workers again for each app session. Older workers require a restart with the updated protocol before automatic shutdown works. This handles normal app exits, not forced termination or system crashes.
+Related files: `src-tauri/src/lib.rs`, `src-tauri/src/services/sound_workers.rs`, `workers/worker_protocol.py`, `workers/start_local.py`.

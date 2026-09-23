@@ -147,6 +147,8 @@ class Worker:
 
 
 def serve(worker, port):
+    server = None
+
     class Handler(BaseHTTPRequestHandler):
         def respond(self, status, payload):
             data = json.dumps(payload).encode("utf-8")
@@ -178,6 +180,10 @@ def serve(worker, port):
 
         def do_POST(self):
             path = urlsplit(self.path).path
+            if path == "/v2/shutdown":
+                self.respond(200, {"status": "stopping"})
+                threading.Thread(target=server.shutdown, daemon=True).start()
+                return
             if path not in ("/v1/jobs", "/v2/jobs", "/v2/references"):
                 return self.respond(404, {"error": "Not found"})
             try:
@@ -206,4 +212,13 @@ def serve(worker, port):
 
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
-    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server.daemon_threads = True
+    try:
+        server.serve_forever(poll_interval=0.1)
+    finally:
+        server.server_close()
+        with worker.lock:
+            for path in worker.references.values():
+                Path(path).unlink(missing_ok=True)
+            worker.references.clear()

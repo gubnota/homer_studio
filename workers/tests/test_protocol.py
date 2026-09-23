@@ -1,11 +1,15 @@
 import io
+import json
+import socket
 import tempfile
+import threading
 import time
 import unittest
 import wave
 from pathlib import Path
+from urllib.request import Request, urlopen
 
-from workers.worker_protocol import Worker
+from workers.worker_protocol import Worker, serve
 from workers.sfx.server import engine_for
 
 
@@ -133,6 +137,31 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(voice.status(job_id)["status"], "completed")
         self.assertTrue(all(not path.exists() for path in paths))
         self.assertNotEqual(paths[0], paths[1])
+
+    def test_shutdown_stops_server_and_removes_unused_references(self):
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            port = listener.getsockname()[1]
+        voice = Worker("chatterbox_turbo", self.folder.name, ["speech"], silence)
+        reference = voice.add_reference(silence(None, None))
+        staged = Path(voice.references[reference])
+        server_thread = threading.Thread(target=serve, args=(voice, port), daemon=True)
+        server_thread.start()
+        for _ in range(50):
+            try:
+                with urlopen(f"http://127.0.0.1:{port}/v2/health", timeout=0.2) as response:
+                    self.assertEqual(json.load(response)["engine"], "chatterbox_turbo")
+                break
+            except OSError:
+                time.sleep(0.01)
+        else:
+            self.fail("worker server did not start")
+        request = Request(f"http://127.0.0.1:{port}/v2/shutdown", data=b"", method="POST")
+        with urlopen(request, timeout=1) as response:
+            self.assertEqual(json.load(response), {"status": "stopping"})
+        server_thread.join(timeout=2)
+        self.assertFalse(server_thread.is_alive())
+        self.assertFalse(staged.exists())
 
 
 if __name__ == "__main__":

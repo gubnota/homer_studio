@@ -25,6 +25,7 @@ Rules:
 - Voice Lab recordings and converted clips belong to the standalone sound store; chapter recordings and replacement takes belong to the project store.
 - Review deletes generated chapter audio only; Exports deletes project-owned export pairs; standalone clip deletion affects app-owned sound assets only.
 - Standalone sounds never require or mutate a book project. The renderer uses narrow Tauri commands; only Rust talks to local workers.
+- The Tauri app owns the session lifecycle for configured local Chatterbox workers. It verifies the engine before shutdown; Ollama and unrelated loopback services remain externally managed.
 - Tool discovery is bounded to inherited PATH and documented system/user installation prefixes; the renderer can only select explicit files.
 - Services report structured results; the renderer displays them without inventing progress.
 - The Rust application serializes writes and rejects stale/concurrent project changes.

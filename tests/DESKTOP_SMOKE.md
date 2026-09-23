@@ -1,6 +1,6 @@
 # Desktop smoke test
 
-The automated smoke check launches the packaged application executable with isolated configuration/data folders, requires it to stay alive for four seconds, and then closes it cleanly.
+The automated smoke check launches the packaged application executable with isolated configuration/data folders, requires it to stay alive for four seconds, and then sends a termination signal. It does not exercise the normal Quit event.
 
 For a release candidate, also check these actions manually:
 
@@ -21,3 +21,4 @@ For a release candidate, also check these actions manually:
 14. In Voice Lab, record or import a longer clip, convert it with Original Chatterbox, play the result, and save/delete it. Cancel a conversion mid-job and check that no incomplete clip appears.
 15. Preview the built-in voice with the bundled recording. For a custom voice, verify the copied selected sample plays when a generated preview is unavailable.
 16. Generate longer speech, verify its final duration, and listen at each joined segment boundary.
+17. Start both local Chatterbox workers, generate one clip to load each model, then Quit Homer Studio normally. Confirm both Python worker processes exit and their memory is released. Start the app again and confirm workers can be relaunched. Ollama, if separately running, should remain available.

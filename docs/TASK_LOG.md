@@ -109,3 +109,8 @@
 - Approved `docs/IMPLEMENTATION_PLAN_REVIEW_BATCH_NARRATION.md` and added one revision-aware queue job to narrate chapters in project order. Each committed chapter remains available after a later failure or cancellation; queue events show the current/completed chapter and errors.
 - Review now selects chapters with or without audio, offers **Generate pending chapters** and **(Re)Generate selected**, confirms replacement of existing audio, and tracks the batch across tab navigation. Existing bulk save/delete filtering remains audio-aware.
 - Frontend typecheck/build and nine tests, all 33 native tests, `git diff --check`, arm64 app/signature verification, and packaged-app startup smoke passed. The packaged app is local; a live multi-chapter Chatterbox listening test remains manual.
+
+# 2026-09-23 — Release local model memory on app exit
+- Added graceful shutdown to the loopback Chatterbox worker protocol and verified engine identity before requesting it on normal Tauri exit. Removed the retired effects worker from the launcher; Ollama remains separately managed.
+- Stopped the previously orphaned `workers/sfx/server.py` process (PID 10451) after confirming its command path; it is no longer running.
+- Python protocol tests (10), native tests (35), renderer build/tests (9), arm64 bundle/signature verification, and packaged startup smoke passed. The smoke check sends SIGTERM, so the normal GUI Quit plus a real loaded model remains a manual lifecycle check.

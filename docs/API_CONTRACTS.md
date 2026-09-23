@@ -44,6 +44,7 @@
 - `POST /v2/jobs` takes the `SoundRequest` JSON and returns HTTP 202 `{id}`. `GET /v2/jobs/<id>` returns `{id,status,error,format}` with `queued | running | completed | failed | cancelled`; `DELETE` cancels. A completed job provides WAV bytes at `GET /v2/jobs/<id>/audio`.
 - `POST /v2/references` accepts a bounded WAV and returns an opaque reference ID. A Chatterbox speech or gesture job may include `referenceId`. Original voice conversion uses category `voice_conversion` plus both `sourceId` and `referenceId`; the worker consumes and deletes both temporary WAVs after the job. No path from a worker request is trusted.
 - Chatterbox engine ID `chatterbox_turbo` supports speech and documented vocal tags. Original engine ID `chatterbox_original` supports English speech and voice conversion. The retired `stable_audio_open` worker source remains in the repository but is not offered by the app. Worker errors use JSON `{error}`. Responses and audio are size bounded; model packages and checkpoints are never downloaded in request handling.
+- `POST /v2/shutdown` returns `{status:"stopping"}`, then ends the local worker server and process. On app exit the native client checks protocol v2 and the exact expected Chatterbox engine before using it, with one-second network timeouts. External Ollama processes and the retired effects worker are outside this lifecycle.
 
 ## Settings v1
 - `llm`: `none`, `llama_cpp`, or `ollama`. Ollama URLs must use loopback HTTP.

@@ -22,6 +22,7 @@
 - JSON project/configuration files; no database.
 - FFmpeg, FFprobe, llama.cpp, and Ollama executables are discovered in bounded system and user Homebrew locations or selected explicitly in Settings.
 - Replaceable local text providers: llama.cpp / GGUF and Ollama.
+- Local Chatterbox Python workers stop when the desktop app exits, releasing loaded model memory. Ollama is an external service and retains its own lifecycle.
 - English speech uses local Chatterbox Turbo or Original with a built-in or selected recorded/imported voice reference; Original also converts recorded delivery to the chosen narrator voice.
 - Sound Studio uses Chatterbox Turbo for standalone English speech and inline vocal gestures through versioned loopback HTTP. Sound-effect generation is retired; previously generated effects remain in the clip library. Turbo and Original checkpoints can be explicitly installed from Settings.
 - GitHub Actions builds and verifies packages on macOS arm64.
