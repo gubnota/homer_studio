@@ -310,7 +310,7 @@ fn concise(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::TcpListener;
+    use std::net::{Shutdown, TcpListener};
     #[test]
     fn rejects_oversized_input() {
         assert_eq!(
@@ -343,10 +343,17 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut input = [0u8; 512];
-            let count = stream.read(&mut input).unwrap();
-            assert!(String::from_utf8_lossy(&input[..count]).contains("GET /api/tags"));
+            let mut request = Vec::new();
+            while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                let mut input = [0u8; 256];
+                let count = stream.read(&mut input).unwrap();
+                assert!(count > 0, "client closed before sending HTTP headers");
+                request.extend_from_slice(&input[..count]);
+            }
+            assert!(String::from_utf8_lossy(&request).contains("GET /api/tags"));
             stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"models\":[]}").unwrap();
+            stream.flush().unwrap();
+            stream.shutdown(Shutdown::Write).unwrap();
         });
         assert!(ollama_models(&format!("http://127.0.0.1:{port}")).unwrap().is_empty());
         server.join().unwrap();

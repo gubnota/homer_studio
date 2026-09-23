@@ -114,3 +114,9 @@
 - Added graceful shutdown to the loopback Chatterbox worker protocol and verified engine identity before requesting it on normal Tauri exit. Removed the retired effects worker from the launcher; Ollama remains separately managed.
 - Stopped the previously orphaned `workers/sfx/server.py` process (PID 10451) after confirming its command path; it is no longer running.
 - Python protocol tests (10), native tests (35), renderer build/tests (9), arm64 bundle/signature verification, and packaged startup smoke passed. The smoke check sends SIGTERM, so the normal GUI Quit plus a real loaded model remains a manual lifecycle check.
+
+# 2026-09-23 — Apple Silicon 0.2.1 release
+- Prepared the patch release because the existing `v0.2.0` tag already identifies an earlier published commit.
+- Release metadata now uses version 0.2.1 across the npm package, Tauri configuration, and native package manifest. The Apple Silicon package is rebuilt before the new annotated tag is published.
+- Fixed the Ollama readiness fixture so it consumes all request headers before closing the loopback socket; the targeted test passed ten consecutive times after the repair, and the complete 36-test native suite passed.
+- Homer Studio now starts the repository-installed Chatterbox Turbo launcher in the background during app startup. The launcher remains idempotent, so a normal restart restores a stopped worker without duplicating a healthy one.

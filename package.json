@@ -1,6 +1,6 @@
 {
   "name": "homer-studio",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Local-first audiobook production studio for Apple Silicon Macs",
   "scripts": {
     "dev": "tauri dev",

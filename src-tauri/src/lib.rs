@@ -37,6 +37,14 @@ pub fn run() {
     let protocol_assets = audio_assets.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .setup(|_app| {
+            std::thread::spawn(|| {
+                if let Err(error) = services::sound_workers::start_turbo_worker() {
+                    eprintln!("Could not start Chatterbox Turbo: {}", error.message);
+                }
+            });
+            Ok(())
+        })
         .register_uri_scheme_protocol("audio", move |_context, request| {
             services::audio_protocol::respond(&protocol_assets, request)
         })

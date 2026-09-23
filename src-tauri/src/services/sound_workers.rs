@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
-use std::{io::{Read, Write}, net::{TcpStream, SocketAddrV4, Ipv4Addr}, sync::atomic::Ordering, time::{Duration, Instant}};
+use std::{
+    io::{Read, Write},
+    net::{TcpStream, SocketAddrV4, Ipv4Addr},
+    path::PathBuf,
+    process::{Command, Stdio},
+    sync::atomic::Ordering,
+    time::{Duration, Instant},
+};
 
 use super::{jobs::JobControl, project_store::CommandError, settings::validate_worker_url};
 
@@ -46,6 +53,34 @@ pub fn health(url: &str, expected_engine: &str) -> WorkerHealth {
         Ok(_) => fallback("Worker version is out of date. Restart the local workers from this repository.".into()),
         Err(error) => fallback(error.message),
     }
+}
+
+/// Start the repository-installed Turbo worker in the background. The launcher
+/// is idempotent, so reopening Homer Studio after a normal quit restores the
+/// worker without duplicating an already healthy process.
+pub fn start_turbo_worker() -> Result<(), CommandError> {
+    let launcher = worker_launcher().ok_or_else(|| CommandError::new(
+        "WORKER_LAUNCHER_NOT_FOUND",
+        "Cannot find the local Chatterbox launcher. Reinstall the worker setup from the Homer Studio repository.",
+    ))?;
+    let python = std::env::var_os("HOMER_WORKER_LAUNCHER_PYTHON").unwrap_or_else(|| "python3".into());
+    Command::new(python)
+        .arg(launcher)
+        .arg("chatterbox")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| CommandError::io("Cannot start the local Chatterbox worker", error))?;
+    Ok(())
+}
+
+fn worker_launcher() -> Option<PathBuf> {
+    let configured = std::env::var_os("HOMER_WORKER_LAUNCHER").map(PathBuf::from);
+    let source_checkout = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|root| root.join("workers/start_local.py"));
+    configured.into_iter().chain(source_checkout).find(|path| path.is_file())
 }
 
 /// Stop only a current local Homer speech worker; never send shutdown to an
@@ -154,6 +189,11 @@ mod tests {
         let request = String::from_utf8_lossy(&input[..length]).to_string();
         write!(stream, "HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
         request
+    }
+
+    #[test]
+    fn finds_the_checkout_worker_launcher() {
+        assert!(worker_launcher().is_some());
     }
 
     #[test]
