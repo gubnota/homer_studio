@@ -134,4 +134,4 @@
 # 2026-09-23 — Bound Chatterbox memory across chapter requests
 - A user process sample confirmed an 18 GB worker footprint and 30.6 GB peak during a batch; cache clearing alone was insufficient.
 - Local Chatterbox workers now report successful generation count and restart after every two completed jobs before receiving the next voice reference. Narration chunks are limited to 180 characters. Existing staged audio and chapter commits survive a restart at the chunk boundary.
-- Native suite and Python protocol tests passed. Packaged arm64 and long-running memory verification are pending.
+- Native suite (36 tests), Python protocol tests (10), renderer build (9 tests), and arm64 app/DMG/ZIP verification passed. The installed-app long-running memory test remains pending; the user's currently running 0.2.3 batch was not interrupted.

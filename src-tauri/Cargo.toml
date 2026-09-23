@@ -1,6 +1,6 @@
 [package]
 name = "homer-studio"
-version = "0.2.3"
+version = "0.2.4"
 description = "Local-first audiobook production studio"
 authors = ["Homer Studio contributors"]
 edition = "2024"
