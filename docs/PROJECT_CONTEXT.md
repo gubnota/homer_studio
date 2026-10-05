@@ -15,7 +15,7 @@
 - Current approved milestone: shared voice production, native lossless recording, reversible editing, Voice Memos and optional isolated audio processors. This task stays local; no push or release tag is authorized.
 
 ## Technology
-- CPAL/CoreAudio input capture and Hound float-WAV persistence; FFmpeg renders immutable audio compositions.
+- CPAL 0.17.0/CoreAudio input capture and Hound float-WAV persistence; FFmpeg renders immutable audio compositions. Device discovery runs off the UI thread and has an optimized-build regression check (0.16.0 crashed in CoreAudio enumeration).
 - Tauri 2 desktop shell with a narrow Rust command boundary.
 - React 18, TypeScript, Vite, and Vitest renderer reconstructed from prototype components.
 - Prototype-derived styling maintained as the visual baseline.

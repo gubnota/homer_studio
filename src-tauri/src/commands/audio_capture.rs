@@ -4,8 +4,10 @@ use crate::services::{
 };
 use tauri::AppHandle;
 #[tauri::command]
-pub fn audio_capture_devices() -> Result<Vec<CaptureDevice>, CommandError> {
-    crate::services::audio_capture::devices()
+pub async fn audio_capture_devices() -> Result<Vec<CaptureDevice>, CommandError> {
+    tauri::async_runtime::spawn_blocking(crate::services::audio_capture::devices)
+        .await
+        .map_err(|e| CommandError::internal(e.to_string()))?
 }
 #[tauri::command]
 pub async fn audio_capture_permission(request: bool) -> Result<String, CommandError> {

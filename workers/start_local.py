@@ -48,6 +48,8 @@ def start(name, port, model, python, script, data_dir):
     logs.mkdir(parents=True, exist_ok=True)
     log = logs / f"{name}.log"
     environment = os.environ.copy()
+    # Bundled scripts are signed resources; imports must not modify the app.
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
     cache = data_dir / "cache" / name
     cache.mkdir(parents=True, exist_ok=True)
     environment["HF_HOME"] = str(cache)

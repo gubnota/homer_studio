@@ -123,13 +123,18 @@ impl CaptureService {
 }
 pub fn devices() -> Result<Vec<CaptureDevice>, CommandError> {
     let host = cpal::default_host();
-    let default = host.default_input_device().and_then(|d| d.name().ok());
+    let default = host.default_input_device().and_then(|d| {
+        d.description()
+            .ok()
+            .map(|description| description.name().to_owned())
+    });
     let mut counts = std::collections::HashMap::new();
     host.input_devices()
         .map_err(|e| CommandError::new("CAPTURE_DEVICES", e.to_string()))?
         .map(|d| {
             let name = d
-                .name()
+                .description()
+                .map(|description| description.name().to_owned())
                 .map_err(|e| CommandError::new("CAPTURE_DEVICE", e.to_string()))?;
             let count = counts.entry(name.clone()).or_insert(0);
             let id = format!("{name}#{count}");
@@ -220,7 +225,10 @@ fn record(
             host.input_devices()
                 .map_err(|e| CommandError::new("CAPTURE_DEVICES", e.to_string()))?
                 .find(|d| {
-                    let name = d.name().unwrap_or_default();
+                    let name = d
+                        .description()
+                        .map(|description| description.name().to_owned())
+                        .unwrap_or_default();
                     let count = counts.entry(name.clone()).or_insert(0);
                     let current = format!("{name}#{count}");
                     *count += 1;
@@ -234,7 +242,7 @@ fn record(
             .default_input_config()
             .map_err(|e| CommandError::new("CAPTURE_FORMAT", e.to_string()))?;
         let config = supported.config();
-        let rate = config.sample_rate.0;
+        let rate = config.sample_rate;
         let staging = audio_assets::root(&app)?.join("recordings");
         fs::create_dir_all(&staging)
             .map_err(|e| CommandError::io("Cannot create recording folder", e))?;
@@ -393,4 +401,21 @@ fn record(
         let _ = reply.send(Ok(state.clone()));
     }
     let _ = app.emit("audio-capture", state);
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    #[test]
+    fn input_device_discovery_survives_repeated_queries() {
+        // Run this in release mode too: CPAL 0.16's immutable CoreAudio size
+        // output caused an invalid device buffer only with optimizations.
+        for _ in 0..3 {
+            let devices = super::devices().expect("CoreAudio input discovery failed");
+            let mut ids = std::collections::HashSet::new();
+            for device in devices {
+                assert!(!device.name.is_empty());
+                assert!(ids.insert(device.id));
+            }
+        }
+    }
 }

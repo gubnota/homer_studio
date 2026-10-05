@@ -148,3 +148,10 @@
 - Validation: renderer typecheck/production build and 12 tests, 49 native tests (including real FFmpeg exports and waveform fixtures), seven processor tests, and ten existing worker tests passed. Local arm64 app packaging, bundled resource/signature verification, packaged startup smoke, and whitespace checks passed.
 - Added `docs/VOICE_PRODUCTION.md` with engine setup, editing workflows, and manual verification steps. Microphone permission/device behavior, listening checks, actual model installation/inference, and CPU/MPS compatibility still require hands-on verification; automated checks do not establish model quality or availability.
 - Saved in local commits only. No remote push or publishing was requested.
+
+# 2026-10-05 — Repair voice workspace navigation crashes
+- macOS crash reports traced Voice Lab, Voice Memos and Sound Studio failures to shared CoreAudio input-device discovery. CPAL 0.16.0 passed an immutable size output to CoreAudio, producing an invalid device buffer in optimized builds.
+- Pinned CPAL 0.17.0 (with the upstream buffer fix), adapted capture device/sample-rate APIs, and moved discovery to a blocking worker instead of the UI thread. Added repeated macOS discovery coverage and a release-mode verification command.
+- Startup verification also found Python bytecode being written into signed bundled resources. The local worker launcher now disables bytecode writes for its child workers.
+- Validation: 50 optimized native tests, renderer typecheck/build and 12 tests, ten worker protocol/lifecycle tests, final arm64 package/signature verification and packaged startup smoke passed. GUI/loopback checks ran outside the restricted sandbox where required.
+- Updated `/Applications/Homer Studio.app`, retaining the previous bundle at `/private/tmp/homer-studio-before-device-fix-ovs3tlzw/Homer Studio.app`. Verified all three screens in the installed app, normal Quit/restart, and Voice Memos after restart. The installed signature remains valid after launch. Saved locally only; no push.

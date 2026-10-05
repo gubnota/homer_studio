@@ -75,6 +75,10 @@ does not carry unrelated sentence cues.
 
 ## Manual verification still required
 
+- After each release build, open Voice Lab, Voice Memos and Sound Studio in the
+  packaged app. Each mounts microphone discovery and must remain responsive.
+  Run `cargo test --release input_device_discovery --manifest-path src-tauri/Cargo.toml`
+  to exercise CoreAudio enumeration with production optimizations.
 - Grant/deny microphone access; record through the intended device, pause/resume,
   stop, and listen for dropouts and clipping. Test device disconnection and normal
   Quit while recording. Capture errors report a recovery file when available.
