@@ -45,7 +45,7 @@ export async function chooseAudio(): Promise<string | null> {
     directory: false,
     multiple: false,
     title: 'Choose chapter audio',
-    filters: [{ name: 'Audio', extensions: ['m4a', 'mp3', 'aac', 'wav', 'aiff', 'aif', 'flac', 'ogg'] }]
+    filters: [{ name: 'Audio', extensions: ['m4a', 'mp3', 'aac', 'wav', 'aiff', 'aif', 'flac', 'ogg', 'webm'] }]
   })
   return typeof selected === 'string' ? selected : null
 }

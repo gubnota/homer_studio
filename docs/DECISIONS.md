@@ -186,3 +186,13 @@ Context: Wave Studio needs reversible long-recording edits and independent SFX w
 Decision: Store immutable stereo sources and revisioned timeline metadata independently. Keep pure editing/history in the renderer provider; serve bounded native waveform windows and ten-second mixed audio chunks. Prepare disk-cached tempo variants so preview windows and exports use identical pitch-preserving samples. Voice assignments remain annotations.
 Consequences: Originals survive edits, navigation preserves history, and renderer audio memory stays bounded. First playback of a changed-speed long clip can require native preparation; disk cache retains variants referenced by active projects.
 Related files: `src/shared/waveStudio*.ts`, `src/renderer/src/WaveStudioProvider.tsx`, `src-tauri/src/services/wave_*.rs`, `docs/WAVE_STUDIO.md`.
+
+# ADR-0020: Explicit Wave production and persisted editing state
+
+Date: 2026-10-05
+Status: Accepted
+
+Context: Voice tags alone could not produce audible/exportable conversion, and empty projects required external recordings.
+Decision: Use native memo capture, queued local speech/Original conversion with immutable result previews, explicit acceptance and an original timeline baseline. Persist optional view/baseline fields in schema 1. Narration insertion ripples later placements; Join renders only selected narration; normalization measures isolated fragment peaks.
+Consequences: Accepted audio uses existing shared preview/export rendering. Large conversion timing mismatches fail rather than moving later audio. Undo history remains session-only.
+Related files: `services/wave_processing.rs`, `WaveStudioProvider.tsx`, `WaveRecordingPanel.tsx`, `WaveProductionPanel.tsx`, `docs/WAVE_STUDIO.md`.

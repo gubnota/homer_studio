@@ -2,7 +2,7 @@ export interface WaveSource { id: string; name: string; durationMs: number; chan
 export interface WaveClip { id: string; sourceId: string | null; name: string; startMs: number; sourceStartMs: number; sourceEndMs: number; speed: number; gainDb: number; fadeInMs: number; fadeOutMs: number }
 export interface VoiceRegion { id: string; voiceId: string; name: string; color: string; startMs: number; endMs: number }
 export interface WaveTimeline { clips: WaveClip[]; sfx: WaveClip[]; voices: VoiceRegion[] }
-export interface WaveProject { schemaVersion: 1; id: string; name: string; revision: number; updatedAtMs: number; sources: WaveSource[]; timeline: WaveTimeline }
+export interface WaveProject { schemaVersion: 1; id: string; name: string; revision: number; updatedAtMs: number; sources: WaveSource[]; timeline: WaveTimeline; view?: WaveView; voiceOriginal?: WaveTimeline | null }
 export interface SfxAsset extends WaveSource { category: string; builtIn: boolean }
 export interface WaveView { offsetMs: number; spanMs: number; playheadMs: number; selection: [number, number] | null; selectedId: string | null; loop: boolean }
 export const sfxCategories = ['Audience', 'Transitions', 'Atmosphere', 'UI', 'Intro', 'Outro', 'Custom'] as const
@@ -19,3 +19,5 @@ export function formatWaveTime(ms: number): string {
 export function sourceClip(source: WaveSource, startMs = 0, sfx = false): WaveClip {
   return { id: newId(), sourceId: source.id, name: source.name, startMs, sourceStartMs: 0, sourceEndMs: source.durationMs, speed: 1, gainDb: sfx ? -10 : 0, fadeInMs: 0, fadeOutMs: 0 }
 }
+
+export interface WaveProcessingResult { kind: string; projectId: string; revision: number; sources: WaveSource[]; replacements: { startMs: number; endMs: number; sourceId: string }[]; warnings: string[] }

@@ -1,15 +1,17 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { createContext, useContext, useEffect, useReducer, useRef, useState, type PropsWithChildren } from 'react'
 import { blankTimeline, sourceClip, timelineDuration, type WaveProject, type WaveSource, type WaveTimeline, type WaveView } from '../../shared/waveStudio'
-import { historyEdit, historyRedo, historyUndo, type TimelineHistory } from '../../shared/waveStudioEdits'
+import { historyEdit, historyRedo, historyUndo, insertMain, type TimelineHistory } from '../../shared/waveStudioEdits'
 import { errorMessage, isDesktop } from './native'
 import { waveApi } from './waveStudioNative'
 interface State { project: WaveProject | null; history: TimelineHistory; change: number }
-type Action = { kind: 'load'; project: WaveProject } | { kind: 'edit'; timeline: WaveTimeline; sources?: WaveSource[] } | { kind: 'undo' | 'redo' } | { kind: 'name'; name: string }
+type Action = { kind: 'load'; project: WaveProject } | { kind: 'edit'; timeline: WaveTimeline; sources?: WaveSource[] } | { kind: 'undo' | 'redo' } | { kind: 'name'; name: string } | { kind: 'saved'; revision: number } | { kind: 'original'; timeline: WaveTimeline | null }
 const initial: State = { project: null, history: { past: [], present: blankTimeline(), future: [] }, change: 0 }
 function reducer(s: State, a: Action): State {
  if (a.kind === 'load') return { project: a.project, history: { past: [], present: a.project.timeline, future: [] }, change: 0 }
  if (!s.project) return s
+ if (a.kind === 'saved') return { ...s, project: { ...s.project, revision: a.revision } }
+ if (a.kind === 'original') return { ...s, project: { ...s.project, voiceOriginal: a.timeline }, change: s.change + 1 }
  if (a.kind === 'name') return { ...s, project: { ...s.project, name: a.name }, change: s.change + 1 }
  const h = a.kind === 'edit' ? historyEdit(s.history, a.timeline) : a.kind === 'undo' ? historyUndo(s.history) : historyRedo(s.history)
  if (h === s.history && !(a.kind === 'edit' && a.sources)) return s
@@ -20,7 +22,7 @@ interface Context {
  project: WaveProject | null; history: TimelineHistory; view: WaveView; setView: React.Dispatch<React.SetStateAction<WaveView>>
  edit: (timeline: WaveTimeline, sources?: WaveSource[]) => void; undo: () => void; redo: () => void; rename: (name: string) => void
  busy: boolean; error: string; setError: (error: string) => void; saveStatus: string; flush: () => Promise<void>
- create: () => Promise<void>; open: (id: string) => Promise<void>; importAudio: (kind: 'file' | 'memo' | 'sound', value: string, mode?: 'append' | 'replace' | 'sfx') => Promise<void>; addSource: (source: WaveSource, at?: number) => void
+ create: () => Promise<void>; open: (id: string) => Promise<void>; importAudio: (kind: 'file' | 'memo' | 'sound', value: string, mode?: 'insert' | 'append' | 'replace' | 'sfx', at?: number) => Promise<void>; addSource: (source: WaveSource, at?: number, lane?: 'main' | 'sfx') => void; rememberOriginal: () => void; restoreOriginal: () => void
 }
 const WaveContext = createContext<Context | null>(null)
 export function useOptionalWaveStudio(): Context | null { return useContext(WaveContext) }
@@ -30,17 +32,20 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
  const [state, dispatch] = useReducer(reducer, initial), [view, setView] = useState<WaveView>(defaultView)
  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [saveStatus, setSaveStatus] = useState('Saved')
  const current = useRef(state); current.current = state
+ const viewRef = useRef(view); viewRef.current = view
+ const savedView = useRef(JSON.stringify(view))
  const revision = useRef(0), savedChange = useRef(0), saving = useRef<Promise<void> | null>(null)
  async function flush(): Promise<void> {
    while (saving.current) await saving.current
    const snapshot = current.current
-   if (!snapshot.project || savedChange.current === snapshot.change || !isDesktop()) return
+   const viewSnapshot = JSON.stringify(viewRef.current)
+   if (!snapshot.project || (savedChange.current === snapshot.change && savedView.current === viewSnapshot) || !isDesktop()) return
    setSaveStatus('Saving…')
-   const work = waveApi.save(snapshot.project, revision.current).then(saved => { revision.current = saved.revision; savedChange.current = snapshot.change; setSaveStatus(savedChange.current === current.current.change ? 'Saved' : 'Saving…') }).catch(cause => { setSaveStatus('Not saved'); setError(errorMessage(cause)); throw cause })
+   const work = waveApi.save({ ...snapshot.project, view: viewRef.current }, revision.current).then(saved => { revision.current = saved.revision; if (current.current.project?.id === saved.id) current.current = { ...current.current, project: { ...current.current.project, revision: saved.revision } }; dispatch({ kind: 'saved', revision: saved.revision }); savedView.current = viewSnapshot; savedChange.current = snapshot.change; setSaveStatus(savedChange.current === current.current.change ? 'Saved' : 'Saving…') }).catch(cause => { setSaveStatus('Not saved'); setError(errorMessage(cause)); throw cause })
    saving.current = work
    try { await work } finally { if (saving.current === work) saving.current = null }
  }
- function load(p: WaveProject): void { revision.current = p.revision; savedChange.current = 0; dispatch({ kind: 'load', project: p }); setView(readView(p.id)); localStorage.setItem('homer.wave.lastProject', p.id); setSaveStatus('Saved') }
+ function load(p: WaveProject): void { const restored = p.view || readView(p.id); current.current = { project: p, history: { past: [], present: p.timeline, future: [] }, change: 0 }; viewRef.current = restored; savedView.current = JSON.stringify(restored); revision.current = p.revision; savedChange.current = 0; dispatch({ kind: 'load', project: p }); setView(restored); localStorage.setItem('homer.wave.lastProject', p.id); setSaveStatus('Saved') }
  useEffect(() => {
    if (!isDesktop()) return
    let alive = true
@@ -48,30 +53,36 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
    if (id) { setBusy(true); void waveApi.get(id).then(p => { if (alive) load(p) }).catch(cause => { if (alive) setError(errorMessage(cause)) }).finally(() => { if (alive) setBusy(false) }) }
    return () => { alive = false }
  }, [])
- useEffect(() => { const timer = window.setTimeout(() => { void flush().catch(() => {}) }, 450); return () => window.clearTimeout(timer) }, [state.change])
+ useEffect(() => { const timer = window.setTimeout(() => { void flush().catch(() => {}) }, 450); return () => window.clearTimeout(timer) }, [state.change, view])
  useEffect(() => { if (!state.project) return; const timer = window.setTimeout(() => localStorage.setItem(`homer.wave.view.${state.project!.id}`, JSON.stringify(view)), 350); return () => window.clearTimeout(timer) }, [view, state.project?.id])
- useEffect(() => { const handler = (e: BeforeUnloadEvent) => { if (current.current.project && savedChange.current !== current.current.change) { e.preventDefault(); e.returnValue = ''; void flush().catch(() => {}) } }; window.addEventListener('beforeunload', handler); return () => window.removeEventListener('beforeunload', handler) }, [])
- useEffect(() => { if (!isDesktop()) return; let alive = true, unlisten: (()=>void) | undefined; const win=getCurrentWindow(); void win.onCloseRequested(async event => { event.preventDefault(); try { while (savedChange.current !== current.current.change) await flush(); if (current.current.project) localStorage.setItem(`homer.wave.view.${current.current.project.id}`,JSON.stringify(viewRef.current)); await win.destroy() } catch { setError('Save failed. Keep the window open and retry after resolving the error.') } }).then(fn=>{if(alive) unlisten=fn;else fn()}); return ()=>{alive=false;unlisten?.()} }, [])
- const viewRef=useRef(view);viewRef.current=view
+ useEffect(() => { const handler = (e: BeforeUnloadEvent) => { if (current.current.project && (savedChange.current !== current.current.change || savedView.current !== JSON.stringify(viewRef.current))) { e.preventDefault(); e.returnValue = ''; void flush().catch(() => {}) } }; window.addEventListener('beforeunload', handler); return () => window.removeEventListener('beforeunload', handler) }, [])
+ useEffect(() => { if (!isDesktop()) return; let alive = true, unlisten: (()=>void) | undefined; const win=getCurrentWindow(); void win.onCloseRequested(async event => { event.preventDefault(); try { await drain(); if (current.current.project) localStorage.setItem(`homer.wave.view.${current.current.project.id}`,JSON.stringify(viewRef.current)); await win.destroy() } catch { setError('Save failed. Keep the window open and retry after resolving the error.') } }).then(fn=>{if(alive) unlisten=fn;else fn()}); return ()=>{alive=false;unlisten?.()} }, [])
  async function task(fn: () => Promise<void>): Promise<void> { setBusy(true); setError(''); try { await fn() } catch (cause) { setError(errorMessage(cause)) } finally { setBusy(false) } }
- async function create(): Promise<void> { await task(async () => { await flush(); load(await waveApi.create('Untitled narration')) }) }
- async function open(id: string): Promise<void> { await task(async () => { await flush(); load(await waveApi.get(id)); window.location.hash = 'wave-studio' }) }
+ async function drain(): Promise<void> { do { await flush() } while (current.current.project && (savedChange.current !== current.current.change || savedView.current !== JSON.stringify(viewRef.current))) }
+ async function create(): Promise<void> { await task(async () => { await drain(); load(await waveApi.create('Untitled narration')) }) }
+ async function open(id: string): Promise<void> { await task(async () => { await drain(); load(await waveApi.get(id)); window.location.hash = 'wave-studio' }) }
  function edit(timeline: WaveTimeline, sources?: WaveSource[]): void { dispatch({ kind: 'edit', timeline, sources }) }
- function addSource(source: WaveSource, at?: number): void {
+ function addSource(source: WaveSource, at?: number, lane: 'main' | 'sfx' = 'sfx'): void {
    const p = current.current.project; if (!p) return
-   const start = at ?? view.selection?.[1] ?? view.playheadMs
-   edit({ ...p.timeline, sfx: [...p.timeline.sfx, sourceClip(source, start, true)] }, p.sources.some(s => s.id === source.id) ? p.sources : [...p.sources, source])
+   const start = Math.max(0, at ?? viewRef.current.selection?.[0] ?? viewRef.current.playheadMs)
+   const clip = sourceClip(source, start, lane === 'sfx')
+   edit(lane === 'sfx' ? { ...p.timeline, sfx: [...p.timeline.sfx, clip] } : insertMain(p.timeline, clip, start), p.sources.some(s => s.id === source.id) ? p.sources : [...p.sources, source])
  }
- async function importAudio(kind: 'file' | 'memo' | 'sound', value: string, mode: 'append' | 'replace' | 'sfx' = 'append'): Promise<void> {
+ async function importAudio(kind: 'file' | 'memo' | 'sound', value: string, mode: 'insert' | 'append' | 'replace' | 'sfx' = 'insert', at?: number): Promise<void> {
    await task(async () => {
+     const origin = current.current.project?.id
      const source = await waveApi.import(kind, kind === 'file' ? value : null, kind === 'file' ? null : value)
      let p = current.current.project
-     if (!p) { p = await waveApi.create(source.name.replace(/\.[^.]+$/, '')); revision.current = p.revision; savedChange.current = 0; dispatch({ kind: 'load', project: p }); localStorage.setItem('homer.wave.lastProject', p.id) }
+     if (p?.id !== origin) throw new Error('Project changed during import. Add the audio again to this project.')
+     if (!p) { p = await waveApi.create(source.name.replace(/\.[^.]+$/, '')); load(p) }
      const timeline = mode === 'replace' ? { ...p.timeline, clips: [], voices: [] } : p.timeline
-     const next = mode === 'sfx' ? { ...timeline, sfx: [...timeline.sfx, sourceClip(source, view.playheadMs, true)] } : { ...timeline, clips: [...timeline.clips, sourceClip(source, Math.max(0, ...timeline.clips.map(c => c.startMs + (c.sourceEndMs - c.sourceStartMs) / c.speed)))] }
-     edit(next, [...p.sources, source]); setView(v => ({ ...v, ...(mode !== 'sfx' ? { offsetMs: 0, spanMs: Math.max(1000, timelineDuration(next) * 1.04), playheadMs: mode === 'replace' ? 0 : v.playheadMs, selection: null, selectedId: null } : {}) })); window.location.hash = 'wave-studio'
+     const position = mode === 'append' ? Math.max(0, ...timeline.clips.map(c => c.startMs + (c.sourceEndMs - c.sourceStartMs) / c.speed)) : mode === 'replace' ? 0 : Math.max(0, at ?? viewRef.current.selection?.[0] ?? viewRef.current.playheadMs)
+     const next = mode === 'sfx' ? { ...timeline, sfx: [...timeline.sfx, sourceClip(source, position, true)] } : insertMain(timeline, sourceClip(source, position), position)
+     edit(next, [...p.sources, source]); setView(v => ({ ...v, ...(timelineDuration(p!.timeline) === 0 || mode === 'replace' ? { offsetMs: 0, spanMs: Math.max(1000, timelineDuration(next) * 1.04) } : {}), playheadMs: position, selection: null, selectedId: null })); window.location.hash = 'wave-studio'
    })
  }
- const value: Context = { project: state.project, history: state.history, view, setView, edit, undo: () => dispatch({ kind: 'undo' }), redo: () => dispatch({ kind: 'redo' }), rename: name => dispatch({ kind: 'name', name }), busy, error, setError, saveStatus, flush, create, open, importAudio, addSource }
+ function rememberOriginal(): void { if (current.current.project && !current.current.project.voiceOriginal) dispatch({ kind: 'original', timeline: current.current.project.timeline }) }
+ function restoreOriginal(): void { const p = current.current.project; if (p?.voiceOriginal) { edit(p.voiceOriginal); dispatch({ kind: 'original', timeline: null }) } }
+ const value: Context = { project: state.project, history: state.history, view, setView, edit, undo: () => dispatch({ kind: 'undo' }), redo: () => dispatch({ kind: 'redo' }), rename: name => dispatch({ kind: 'name', name }), busy, error, setError, saveStatus, flush, create, open, importAudio, addSource, rememberOriginal, restoreOriginal }
  return <WaveContext.Provider value={value}>{children}</WaveContext.Provider>
 }

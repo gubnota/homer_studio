@@ -51,3 +51,5 @@ Rules:
 - Native stores validate revisions and owned source identities; native render owns FFmpeg processing, cancellation, tempo variants and verified exports.
 - Voice library owns canonical names, colors, notes and provider metadata. Timeline annotations refer to voice IDs and never trigger conversion or model installation.
 - SFX library owns reusable assets; projects own gain/fade/trim placements. Removing a placement never alters the original. Legacy project and memo schemas remain independent.
+
+- Wave processing owns isolated peak measurement, lossless Join, owned generated sources and Original conversion with duration fitting. Renderer owns explicit acceptance, original timeline restoration and project/view save draining. Capture retains memo assets before Wave import.

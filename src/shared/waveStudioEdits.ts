@@ -83,3 +83,28 @@ export interface TimelineHistory { past: WaveTimeline[]; present: WaveTimeline; 
 export function historyEdit(h: TimelineHistory, next: WaveTimeline): TimelineHistory { return JSON.stringify(next) === JSON.stringify(h.present) ? h : { past: [...h.past, h.present].slice(-100), present: next, future: [] } }
 export function historyUndo(h: TimelineHistory): TimelineHistory { const last = h.past.at(-1); return last ? { past: h.past.slice(0, -1), present: last, future: [h.present, ...h.future].slice(0, 100) } : h }
 export function historyRedo(h: TimelineHistory): TimelineHistory { const first = h.future[0]; return first ? { past: [...h.past, h.present].slice(-100), present: first, future: h.future.slice(1) } : h }
+
+/** Insert without overwriting; annotations and effects follow later narration. */
+export function insertMain(t: WaveTimeline, clip: WaveClip, at: number): WaveTimeline {
+ const shifted = insertSilence(t, Math.max(0, at), clipDuration(clip))
+ const placeholder = shifted.clips.find(c => c.sourceId === null && c.startMs === Math.max(0, at) && c.sourceEndMs === clipDuration(clip))
+ return { ...shifted, clips: [...shifted.clips.filter(c => c !== placeholder), { ...clip, startMs: Math.max(0, at) }].sort((a,b)=>a.startMs-b.startMs) }
+}
+export function transferClip(t: WaveTimeline, id: string, lane: 'main' | 'sfx', at: number): WaveTimeline {
+ const source = t.clips.find(c=>c.id===id) || t.sfx.find(c=>c.id===id)
+ if (!source) return t
+ const wasMain=t.clips.some(c=>c.id===id)
+ const base = { ...t, clips: wasMain&&lane==='sfx' ? t.clips.map(c=>c.id===id?{...c,id:newId(),sourceId:null,name:'Silence',sourceStartMs:0,sourceEndMs:clipDuration(c),speed:1,gainDb:0,fadeInMs:0,fadeOutMs:0}:c) : t.clips.filter(c=>c.id!==id), sfx: t.sfx.filter(c=>c.id!==id) }
+ return lane === 'main' ? insertMain(base, source, at) : { ...base, sfx: [...base.sfx,{...source,startMs:Math.max(0,at)}] }
+}
+export function replaceRange(t: WaveTimeline, a: number, b: number, clip: WaveClip): WaveTimeline {
+ const next = isolate(t,a,b)
+ return { ...next, clips: [...next.clips.filter(c=>c.startMs<a || c.startMs>=b), {...clip,startMs:a}].sort((x,y)=>x.startMs-y.startMs) }
+}
+export function joinCandidateIds(t: WaveTimeline, selection: [number,number] | null, playhead: number, selectedId: string | null): string[] {
+ const clips = [...t.clips].sort((a,b)=>a.startMs-b.startMs)
+ if (selection) return clips.filter(c=>c.startMs>=selection[0]-.01 && clipEnd(c)<=selection[1]+.01).map(c=>c.id)
+ const selected = clips.findIndex(c=>c.id===selectedId)
+ const i = selected>=0 ? selected : clips.findIndex(c=>c.startMs<=playhead && clipEnd(c)>playhead)
+ return i<0 ? [] : clips.slice(i,i+2).map(c=>c.id)
+}

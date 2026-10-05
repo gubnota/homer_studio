@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { blankTimeline, clipDuration, clipEnd, formatWaveTime, sourceClip, timelineDuration } from '../src/shared/waveStudio'
-import { assignVoice, changeSpeed, historyEdit, historyRedo, historyUndo, insertSilence, moveClip, removeRange, splitAt } from '../src/shared/waveStudioEdits'
+import { insertMain, transferClip, replaceRange, joinCandidateIds, assignVoice, changeSpeed, historyEdit, historyRedo, historyUndo, insertSilence, moveClip, removeRange, splitAt } from '../src/shared/waveStudioEdits'
 const source = { id: crypto.randomUUID(), name: 'Narration', durationMs: 10000, channels: 2 }
 const original = () => ({ ...blankTimeline(), clips: [sourceClip(source)] })
 describe('Wave Studio reversible editing', () => {
@@ -14,4 +14,11 @@ describe('Wave Studio reversible editing', () => {
  it('clamps inherited fades after splitting a short fragment', () => { const t=original(); t.clips[0]!.fadeInMs=5000; expect(splitAt(t,1000).clips[0]?.fadeInMs).toBe(1000) })
  it.each([300000,1800000,3600000,7200000])('edits a %i ms timeline without expanding into samples', length => { const t={...blankTimeline(),clips:[sourceClip({...source,durationMs:length})]}; const next=splitAt(t,length/2); expect(next.clips).toHaveLength(2); expect(timelineDuration(next)).toBe(length) })
  it('formats timestamps to milliseconds',()=>expect(formatWaveTime(3600123)).toBe('01:00:00.123'))
+})
+
+describe('Wave production editing',()=>{
+ it('inserts audio within a fragment and ripples voice tags and effects',()=>{let t=assignVoice(original(),3000,5000,{id:'v',name:'V'});t.sfx=[sourceClip({...source,durationMs:500},4000,true)];const inserted=sourceClip({...source,durationMs:1000});const n=insertMain(t,inserted,2000);expect(n.clips.map(c=>[c.startMs,clipDuration(c)])).toEqual([[0,2000],[2000,1000],[3000,8000]]);expect(n.voices[0]?.startMs).toBe(4000);expect(n.sfx[0]?.startMs).toBe(5000);expect(timelineDuration(n)).toBe(11000)})
+ it('transfers an effect to narration without duplication or overwriting',()=>{const t=original(),effect=sourceClip({...source,durationMs:500},2000,true);t.sfx=[effect];const n=transferClip(t,effect.id,'main',1000);expect(n.sfx).toEqual([]);expect(n.clips.filter(c=>c.id===effect.id)).toHaveLength(1);expect(timelineDuration(n)).toBe(10500);expect(t.clips).toHaveLength(1)})
+ it('replaces a converted passage while preserving later timing, tags, and effects',()=>{let t=assignVoice(original(),2000,4000,{id:'v',name:'V'});t.sfx=[sourceClip({...source,durationMs:500},7000,true)];const n=replaceRange(t,2000,4000,sourceClip({...source,id:'converted',durationMs:2000}));expect(n.clips.map(c=>[c.startMs,clipEnd(c)])).toEqual([[0,2000],[2000,4000],[4000,10000]]);expect(n.voices).toEqual(t.voices);expect(n.sfx).toEqual(t.sfx);expect(n.clips[2]?.sourceStartMs).toBe(4000)})
+ it('chooses fully selected clips for Join and honours a selected clip before the playhead',()=>{const t=splitAt(splitAt(original(),2000),4000);expect(joinCandidateIds(t,[0,4000],0,null)).toEqual(t.clips.slice(0,2).map(c=>c.id));expect(joinCandidateIds(t,null,0,t.clips[1]!.id)).toEqual(t.clips.slice(1).map(c=>c.id))})
 })

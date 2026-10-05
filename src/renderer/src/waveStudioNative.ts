@@ -1,7 +1,12 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { PeakWindow } from '../../shared/audio'
-import type { SfxAsset, WaveProject, WaveSource } from '../../shared/waveStudio'
+import type { SfxAsset, WaveProject, WaveSource, WaveProcessingResult } from '../../shared/waveStudio'
 export const waveApi = {
+ normalize: (project: WaveProject, clipId: string) => invoke<number>('wave_normalize', { project, clipId }),
+ join: (project: WaveProject, clipIds: string[]) => invoke<WaveSource>('wave_join', { project, clipIds }),
+ generateSpeech: (text: string, voiceId: string, projectId: string, revision: number) => invoke<string>('wave_generate_speech', { text, voiceId, projectId, revision }),
+ convertRegions: (project: WaveProject) => invoke<string>('wave_convert_regions', { project }),
+ processingResult: (jobId: string) => invoke<WaveProcessingResult>('wave_processing_result', { jobId }),
  list: () => invoke<WaveProject[]>('wave_list'),
  get: (id: string) => invoke<WaveProject>('wave_get', { id }),
  create: (name: string) => invoke<WaveProject>('wave_create', { name }),

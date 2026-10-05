@@ -130,3 +130,7 @@
 - Renderer requests viewport peaks and bounded ten-second mixed previews. Native FFmpeg renders playback and exports using the same sample-accurate processing.
 - Changed-speed clips use disk-cached native tempo variants; first playback/export may wait for preparation. No full audiobook is decoded in the renderer.
 - See `docs/WAVE_STUDIO.md` for controls, storage and limits.
+
+## Wave production milestone
+- Wave Studio supports empty projects, native recording, queued local TTS, explicit tagged-voice conversion preview/acceptance, Join, ripple insertion, cross-lane moves and peak normalization.
+- Project/view and preconversion timeline persist in backward-compatible schema 1. Ten additional user-supplied SFX are bundled. Models still require explicit installation.
