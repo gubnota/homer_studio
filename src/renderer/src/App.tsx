@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { isRouteId, routes, type RouteId } from '../../shared/navigation'
 import type { ProjectSnapshot } from '../../shared/contracts'
-import { AudioPlayer } from './components/AudioPlayer'
 import { StudioLayout } from './components/StudioLayout'
 import { EditorPage, ExportsPage, ImportPage, ProjectsPage, QueuePage, ReviewPage, SettingsPage, StudioPage, VoicesPage } from './pages'
 import { chooseFolder, errorMessage, isDesktop, projectApi } from './native'
 import { SoundStudioPage } from './SoundStudioPage'
 import { VoiceLabPage } from './VoiceLabPage'
+import { VoiceMemosPage } from './VoiceMemosPage'
 
 function initialRoute(): RouteId {
   const value = window.location.hash.slice(1)
@@ -46,6 +46,7 @@ export function App(): JSX.Element {
       case 'review': return <ReviewPage project={project} onProjectChange={remember} onOpenQueue={() => navigate('queue')} />
       case 'voices': return <VoicesPage />
       case 'sounds': return <SoundStudioPage />
+      case 'voice-memos': return <VoiceMemosPage />
       case 'voice-lab': return <VoiceLabPage />
       case 'queue': return <QueuePage />
       case 'exports': return <ExportsPage project={project} onProjectChange={remember} />
@@ -63,7 +64,6 @@ export function App(): JSX.Element {
     <StudioLayout route={route} routes={routes} onNavigate={navigate}>
       {error && <div className="error-banner" role="alert">{error}<button onClick={() => setError(null)}>Dismiss</button></div>}
       {page}
-      <AudioPlayer projectTitle={project?.title} />
     </StudioLayout>
   )
 }

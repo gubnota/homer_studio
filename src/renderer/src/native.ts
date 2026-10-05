@@ -3,7 +3,7 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 import type { JobRecord, ModelStatus, ProjectSnapshot, Settings, SoundAsset, SoundRequest, TextCandidate, ToolDiagnostic, Voice, WorkerHealth, WorkerRuntimeStatus } from '../../shared/contracts'
 
 export function isDesktop(): boolean {
-  return '__TAURI_INTERNALS__' in window
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
 
 export async function chooseFolder(title: string): Promise<string | null> {

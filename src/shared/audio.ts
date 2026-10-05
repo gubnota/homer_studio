@@ -1,0 +1,16 @@
+export type AudioEngine = 'passthrough' | 'seed_vc' | 'rvc' | 'deepfilternet' | 'resemble_enhance'
+export interface AudioClip { assetId: string | null; startMs: number; endMs: number; gain: number; fadeInMs: number; fadeOutMs: number; crossfadeMs: number }
+export interface AudioComposition { clips: AudioClip[] }
+export interface ProcessingHistory { engine: string; version: string; preset: string; params: Record<string, unknown>; profileId: string | null; sourceStartMs: number; sourceEndMs: number; createdAtMs: number; backend: string }
+export interface AudioVariant { id: string; parentId: string | null; name: string; path: string; durationMs: number; sampleRate: number; originalSampleRate: number | null; channels: number; createdAtMs: number; favorite?: boolean; notes?: string; state: 'source' | 'preview' | 'accepted' | 'rejected'; composition: AudioComposition; processing: ProcessingHistory | null; cues?: { order: number; text: string; startMs: number; endMs: number }[] }
+export interface RecordingSession { contextType?: string | null; chapterId?: string | null; segmentId?: string | null; speakerId?: string | null; text?: string | null; schemaVersion: 1; id: string; name: string; notes: string; favorite: boolean; deleted: boolean; revision: number; createdAtMs: number; updatedAtMs: number; takes: AudioVariant[]; selectedTakeId: string | null; undo: string[]; redo: string[] }
+export type AudioEdit = { kind: 'trim' | 'delete' | 'silence' | 'split' | 'fade' | 'gain' | 'insert_silence' | 'shorten_silence'; startMs: number; endMs: number; value: number }
+export interface PeakWindow { startMs: number; endMs: number; durationMs: number; peaks: [number, number][] }
+export interface CaptureDevice { id: string; name: string; isDefault: boolean }
+export interface CaptureState { sessionId: string; memoId: string; state: 'idle' | 'recording' | 'paused' | 'stopped' | 'failed'; elapsedMs: number; peak: number; rms: number; clipping: boolean; peaks: number[]; message: string | null }
+export interface VoiceProfile { id: string; notes: string; createdAtMs: number; updatedAtMs: number; referenceMemoIds: string[]; selectedReferenceMemoId: string | null; modelPath: string | null; indexPath: string | null; engineOptions: Record<string, Record<string, unknown>> }
+export interface EngineConfig { engine: AudioEngine; pythonPath: string | null; modelDir: string | null; backend: 'auto' | 'cpu' | 'mps'; options: Record<string, unknown> }
+export interface EngineStatus { engine: AudioEngine; installed: boolean; ready: boolean; backend: string; message: string; missingFiles: string[]; capabilities: string[] }
+export interface ProcessingRequest { memoId: string; expectedRevision: number; engine: AudioEngine; operation: 'convert' | 'enhance' | 'denoise'; preset: string; profileId: string | null; startMs: number; endMs: number; crossfadeMs: number; params: Record<string, unknown>; preprocess: boolean }
+export function selectedTake(memo: RecordingSession): AudioVariant | undefined { return memo.takes.find(take => take.id === memo.selectedTakeId) }
+export function compositionDuration(composition: AudioComposition): number { return composition.clips.reduce((total, clip, i) => total + clip.endMs - clip.startMs - (i ? clip.crossfadeMs : 0), 0) }

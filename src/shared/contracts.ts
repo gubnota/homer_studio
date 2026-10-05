@@ -101,6 +101,6 @@ export interface ToolDiagnostic {
   detectedPath: string | null
 }
 export interface JobEvent { atMs: number; status: string; progress: number; message: string }
-export interface JobRecord { id: string; kind: string; label: string; status: 'queued' | 'running' | 'completed' | 'cancelled' | 'failed'; progress: number; message: string | null; createdAtMs: number; events: JobEvent[] }
+export interface JobRecord { indeterminate?: boolean; id: string; kind: string; label: string; status: 'queued' | 'running' | 'completed' | 'cancelled' | 'failed'; progress: number; message: string | null; createdAtMs: number; events: JobEvent[] }
 export interface ModelStatus { model: 'turbo' | 'original'; path: string; installed: boolean; bytesOnDisk: number; downloadedBytes: number; totalBytes: number | null; missingFiles: string[] }
 export interface WorkerRuntimeStatus { path: string; installed: boolean; pythonPath: string | null; message: string }

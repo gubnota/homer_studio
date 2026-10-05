@@ -5,6 +5,7 @@ export const routes = [
   { id: 'review', label: 'Review', group: 'Production' },
   { id: 'voices', label: 'Voices', group: 'Production' },
   { id: 'sounds', label: 'Sound Studio', group: 'Production' },
+  { id: 'voice-memos', label: 'Voice Memos', group: 'Production' },
   { id: 'voice-lab', label: 'Voice Lab', group: 'Production' },
   { id: 'queue', label: 'Render queue', group: 'Production' },
   { id: 'exports', label: 'Exports', group: 'Output' },

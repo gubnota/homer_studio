@@ -1,3 +1,8 @@
+import { AudioTransport } from './components/AudioTransport'
+import { Checkbox, Select } from './components/StudioControls'
+import { useNativeRecording } from './useNativeRecording'
+import type { RecordingSession } from '../../shared/audio'
+import { VoiceMemosPage } from './VoiceMemosPage'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
@@ -245,10 +250,10 @@ export function ReviewPage({ project, onProjectChange, onOpenQueue }: { project:
     setBusyId(segmentId); setError('')
     try { await waitForJob(await productionApi.generateSegment(activeProject, chapterId, segmentId)) } catch (cause) { setError(errorMessage(cause)) } finally { setBusyId('') }
   }
-  async function convertRecording(chapterId: string, segmentId: string, bytes: number[]): Promise<void> {
+  async function convertRecording(chapterId: string, segmentId: string, memo: RecordingSession): Promise<void> {
     setBusyId(segmentId); setError('')
     try {
-      await waitForJob(await productionApi.convertSegmentRecording(activeProject, chapterId, segmentId, bytes, recordingRange))
+      await waitForJob(await invoke<string>('convert_memo_segment', {memoId:memo.id,memoRevision:memo.revision,rootPath:activeProject.rootPath,expectedRevision:activeProject.revision,chapterId,segmentId,rangeStartMs:recordingRange?.startMs??null,rangeEndMs:recordingRange?.endMs??null}))
       setRecordingSegmentId('')
       setRecordingRange(undefined)
     } catch (cause) { setError(errorMessage(cause)) } finally { setBusyId('') }
@@ -305,6 +310,7 @@ export function ReviewPage({ project, onProjectChange, onOpenQueue }: { project:
   }
   return <div className="page"><Header eyebrow={project.title} title="Narrate and review" copy="Generate with a local Chatterbox voice or import existing chapter audio." />
     {error && <div className="inline-error">{error}</div>}
+    <details className="panel"><summary>Record, edit & process book audio</summary><VoiceMemosPage title="Book audio workspace" project={project} onProjectChange={onProjectChange}/></details>
     <section className="panel review-voice"><div><strong>Narration voice</strong><span>{selectedVoice?.name ?? 'Loading voices…'}</span></div><button onClick={() => setPickerOpen(true)} disabled={!settings}>Choose voice</button></section>
     {batchMessage && <div className="status-banner">{batchMessage} <button onClick={onOpenQueue}>View render queue</button></div>}
     <section className="panel"><div className="actions">
@@ -314,7 +320,7 @@ export function ReviewPage({ project, onProjectChange, onOpenQueue }: { project:
       <button className="primary" disabled={busy || !selectedRenderIds.length} onClick={() => void startBatch(selectedRenderIds, true)}>(Re)Generate selected · {selectedRenderIds.length}</button>
       <button disabled={!selectedChapters.some((id) => project.chapters.some((chapter) => chapter.id === id && chapter.audioPath))} onClick={() => void saveSelectedChapters()}>Save selected</button>
       <button disabled={!selectedChapters.some((id) => project.chapters.some((chapter) => chapter.id === id && chapter.audioOrigin === 'generated'))} onClick={() => void deleteSelectedChapters()}>Delete selected generations</button>
-    </div></section><section className="review-list">{project.chapters.map((chapter) => <article className="panel review-card" key={chapter.id}><div className="review-copy"><label className="sound-select"><input type="checkbox" aria-label={`Select ${chapter.title}`} checked={selectedChapters.includes(chapter.id)} onChange={(event) => setSelectedChapters((ids) => event.target.checked ? [...ids, chapter.id] : ids.filter((id) => id !== chapter.id))} /> Select</label><small>Chapter {chapter.order + 1}</small><h2>{chapter.title}</h2><span>{chapter.audioPath ? `${formatDuration(chapter.audioDurationMs)} · ${chapter.audioOrigin}${chapter.audioStale ? ' · stale' : ''}` : `${chapter.segments.length} text segments`}</span></div><div className="review-controls">{chapter.audioPath && !chapter.audioStale && <ChapterAudio project={project} chapter={chapter} onEditCue={(order, range) => { setRecordingSegmentId(chapter.segments[order]?.id ?? ''); setRecordingRange(range) }} />}<div className="actions"><button disabled={busy} onClick={() => void importAudio(chapter.id)}>Import audio</button><button className="primary" disabled={busy} onClick={() => void generate(chapter.id)}>{busyId === chapter.id ? 'Processing…' : chapter.audioPath ? 'Regenerate' : 'Generate audio'}</button>{chapter.audioPath && <button onClick={() => void exportAudio(chapter)}>Save chapter audio</button>}{chapter.audioOrigin === 'generated' && <button disabled={busy} onClick={() => void deleteAudio(chapter)}>Delete generation</button>}</div><details className="segment-editor" open={chapter.segments.some((item) => item.id === recordingSegmentId) ? true : undefined}><summary>Manual sections · {chapter.segments.filter((item) => item.selectedTake).length}/{chapter.segments.length} narrated</summary><div className="actions"><button disabled={busy || chapter.segments.every((item) => item.selectedTake)} onClick={() => void generateRemaining(chapter)}>Generate remaining</button><button disabled={busy || !chapter.segments.length || chapter.segments.some((item) => !item.selectedTake)} onClick={() => void assemble(chapter.id)}>Assemble chapter</button></div>{chapter.segments.map((segment) => <div className="segment-row" key={segment.id}><p>{segment.text}</p><span>{segment.selectedTake ? `Narrated · ${segment.takes.length} take${segment.takes.length === 1 ? '' : 's'}` : 'Needs narration'}</span><button disabled={busy} onClick={() => void generateSegment(chapter.id, segment.id)}>{busyId === segment.id ? 'Working…' : 'Narrate section'}</button><button disabled={busy} onClick={() => { setRecordingSegmentId(recordingSegmentId === segment.id ? '' : segment.id); setRecordingRange(undefined) }}>{recordingSegmentId === segment.id ? 'Close recorder' : 'Record delivery'}</button>{recordingSegmentId === segment.id && <SectionRecorder disabled={busy} range={recordingRange} onConvert={(bytes) => void convertRecording(chapter.id, segment.id, bytes)} />}{segment.takes.length > 0 && <div className="segment-takes">{segment.takes.map((take, index) => <SegmentTakePlayer key={take.id} project={project} chapterId={chapter.id} segmentId={segment.id} takeId={take.id} label={`Take ${index + 1}${segment.selectedTake === take.id ? ' · selected' : ''}`} selected={segment.selectedTake === take.id} onSelect={() => void selectTake(chapter.id, segment.id, take.id)} />)}</div>}</div>)}</details>{chapter.audioPath && !chapter.audioStale && <div className="review-actions"><button className={chapter.reviewStatus === 'changes_requested' ? 'selected' : ''} onClick={() => void review(chapter.id, 'changes_requested')}>Needs changes</button><button className={chapter.reviewStatus === 'approved' ? 'selected approved' : ''} onClick={() => void review(chapter.id, 'approved')}>Approve</button></div>}</div></article>)}</section>
+    </div></section><section className="review-list">{project.chapters.map((chapter) => <article className="panel review-card" key={chapter.id}><div className="review-copy"><label className="sound-select"><Checkbox aria-label={`Select ${chapter.title}`} checked={selectedChapters.includes(chapter.id)} onChange={(event) => setSelectedChapters((ids) => event.target.checked ? [...ids, chapter.id] : ids.filter((id) => id !== chapter.id))} /> Select</label><small>Chapter {chapter.order + 1}</small><h2>{chapter.title}</h2><span>{chapter.audioPath ? `${formatDuration(chapter.audioDurationMs)} · ${chapter.audioOrigin}${chapter.audioStale ? ' · stale' : ''}` : `${chapter.segments.length} text segments`}</span></div><div className="review-controls">{chapter.audioPath && !chapter.audioStale && <ChapterAudio project={project} chapter={chapter} onEditCue={(order, range) => { setRecordingSegmentId(chapter.segments[order]?.id ?? ''); setRecordingRange(range) }} />}<div className="actions"><button disabled={busy} onClick={() => void importAudio(chapter.id)}>Import audio</button><button className="primary" disabled={busy} onClick={() => void generate(chapter.id)}>{busyId === chapter.id ? 'Processing…' : chapter.audioPath ? 'Regenerate' : 'Generate audio'}</button>{chapter.audioPath && <button onClick={() => void exportAudio(chapter)}>Save chapter audio</button>}{chapter.audioOrigin === 'generated' && <button disabled={busy} onClick={() => void deleteAudio(chapter)}>Delete generation</button>}</div><details className="segment-editor" open={chapter.segments.some((item) => item.id === recordingSegmentId) ? true : undefined}><summary>Manual sections · {chapter.segments.filter((item) => item.selectedTake).length}/{chapter.segments.length} narrated</summary><div className="actions"><button disabled={busy || chapter.segments.every((item) => item.selectedTake)} onClick={() => void generateRemaining(chapter)}>Generate remaining</button><button disabled={busy || !chapter.segments.length || chapter.segments.some((item) => !item.selectedTake)} onClick={() => void assemble(chapter.id)}>Assemble chapter</button></div>{chapter.segments.map((segment) => <div className="segment-row" key={segment.id}><p>{segment.text}</p><span>{segment.selectedTake ? `Narrated · ${segment.takes.length} take${segment.takes.length === 1 ? '' : 's'}` : 'Needs narration'}</span><button disabled={busy} onClick={() => void generateSegment(chapter.id, segment.id)}>{busyId === segment.id ? 'Working…' : 'Narrate section'}</button><button disabled={busy} onClick={() => { setRecordingSegmentId(recordingSegmentId === segment.id ? '' : segment.id); setRecordingRange(undefined) }}>{recordingSegmentId === segment.id ? 'Close recorder' : 'Record delivery'}</button>{recordingSegmentId === segment.id && <SectionRecorder context={{contextType:'book_section',chapterId:chapter.id,segmentId:segment.id,text:segment.text}} disabled={busy} range={recordingRange} onConvert={(bytes) => void convertRecording(chapter.id, segment.id, bytes)} />}{segment.takes.length > 0 && <div className="segment-takes">{segment.takes.map((take, index) => <SegmentTakePlayer key={take.id} project={project} chapterId={chapter.id} segmentId={segment.id} takeId={take.id} label={`Take ${index + 1}${segment.selectedTake === take.id ? ' · selected' : ''}`} selected={segment.selectedTake === take.id} onSelect={() => void selectTake(chapter.id, segment.id, take.id)} />)}</div>}</div>)}</details>{chapter.audioPath && !chapter.audioStale && <div className="review-actions"><button className={chapter.reviewStatus === 'changes_requested' ? 'selected' : ''} onClick={() => void review(chapter.id, 'changes_requested')}>Needs changes</button><button className={chapter.reviewStatus === 'approved' ? 'selected approved' : ''} onClick={() => void review(chapter.id, 'approved')}>Approve</button></div>}</div></article>)}</section>
     <VoicePicker open={pickerOpen} voices={voices} selectedId={selectedVoice?.id ?? ''} onSelect={(voice) => void selectVoice(voice)} onClose={() => setPickerOpen(false)} />
   </div>
 }
@@ -322,60 +328,12 @@ export function ReviewPage({ project, onProjectChange, onOpenQueue }: { project:
 function SegmentTakePlayer({ project, chapterId, segmentId, takeId, label, selected, onSelect }: { project: ProjectSnapshot; chapterId: string; segmentId: string; takeId: string; label: string; selected: boolean; onSelect: () => void }): JSX.Element {
   const [url, setUrl] = useState('')
   useEffect(() => { void productionApi.takeUrl(project, chapterId, segmentId, takeId).then(setUrl).catch(() => setUrl('')) }, [project.rootPath, chapterId, segmentId, takeId])
-  return <div className="segment-take"><span>{label}</span>{url && <audio controls preload="none" src={url} />}<button disabled={selected} onClick={onSelect}>{selected ? 'Using' : 'Use take'}</button></div>
+  return <div className="segment-take"><span>{label}</span>{url && <AudioTransport url={url} />}<button disabled={selected} onClick={onSelect}>{selected ? 'Using' : 'Use take'}</button></div>
 }
 
-function SectionRecorder({ disabled, range, onConvert }: { disabled: boolean; range?: { startMs: number; endMs: number }; onConvert: (bytes: number[]) => void }): JSX.Element {
-  const recorder = useRef<MediaRecorder | null>(null)
-  const stream = useRef<MediaStream | null>(null)
-  const timer = useRef<number | null>(null)
-  const chunks = useRef<Blob[]>([])
-  const [recording, setRecording] = useState(false)
-  const [clip, setClip] = useState<Blob | null>(null)
-  const [previewUrl, setPreviewUrl] = useState('')
-  const [error, setError] = useState('')
-  useEffect(() => {
-    if (!clip) { setPreviewUrl(''); return }
-    const url = URL.createObjectURL(clip)
-    setPreviewUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [clip])
-  useEffect(() => () => {
-    if (timer.current !== null) window.clearTimeout(timer.current)
-    if (recorder.current?.state === 'recording') recorder.current.stop()
-    stream.current?.getTracks().forEach((track) => track.stop())
-  }, [])
-  async function start(): Promise<void> {
-    setError(''); setClip(null)
-    try {
-      const mic = await navigator.mediaDevices.getUserMedia({ audio: true })
-      stream.current = mic
-      const mimeType = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((type) => MediaRecorder.isTypeSupported(type))
-      const capture = new MediaRecorder(mic, mimeType ? { mimeType } : undefined)
-      chunks.current = []
-      capture.ondataavailable = (event) => { if (event.data.size) chunks.current.push(event.data) }
-      capture.onstop = () => {
-        setRecording(false)
-        stream.current?.getTracks().forEach((track) => track.stop())
-        stream.current = null
-        setClip(new Blob(chunks.current, { type: capture.mimeType }))
-      }
-      capture.start()
-      recorder.current = capture
-      setRecording(true)
-      timer.current = window.setTimeout(stop, 20000)
-    } catch (cause) { setError(errorMessage(cause)); stream.current?.getTracks().forEach((track) => track.stop()) }
-  }
-  function stop(): void {
-    if (timer.current !== null) window.clearTimeout(timer.current)
-    timer.current = null
-    if (recorder.current?.state === 'recording') recorder.current.stop()
-  }
-  async function convert(): Promise<void> {
-    if (!clip?.size) { setError('Record a passage first.'); return }
-    onConvert(Array.from(new Uint8Array(await clip.arrayBuffer())))
-  }
-  return <div className="section-recorder"><p>{range ? `Read the selected ${formatDuration(range.endMs - range.startMs)} passage with your preferred delivery. It will replace only that part of the selected section take.` : 'Read this section with your preferred timing and emphasis.'} Original Chatterbox will convert your delivery to the chosen narrator voice. Listen to the new take before choosing it.</p><div className="actions"><button disabled={disabled} onClick={() => recording ? stop() : void start()}>{recording ? 'Stop recording' : 'Start recording'}</button>{clip && <button className="primary" disabled={disabled} onClick={() => void convert()}>Convert to narrator voice</button>}</div>{recording && <span>Recording · stops after 20 seconds</span>}{previewUrl && <audio controls src={previewUrl} />}{error && <div className="inline-error">{error}</div>}</div>
+function SectionRecorder({disabled,range,onConvert,context}:{context:Partial<Pick<RecordingSession,'contextType'|'chapterId'|'segmentId'|'speakerId'|'text'>>;disabled:boolean;range?:{startMs:number;endMs:number};onConvert:(memo:RecordingSession)=>void}):JSX.Element {
+ const capture=useNativeRecording('Book section delivery',20_000,context)
+ return <div className="section-recorder"><p>{range?`Read the selected ${formatDuration(range.endMs-range.startMs)} passage.`:'Read this section with your preferred timing and emphasis.'} Original Chatterbox will convert your delivery to the chosen narrator voice. Listen to the new take before choosing it.</p><div className="actions"><button disabled={disabled} onClick={()=>capture.recording?void capture.stop():void capture.start()}>{capture.recording?'Stop recording':'Start recording'}</button>{capture.path&&capture.memo&&<button disabled={disabled||capture.recording} onClick={()=>onConvert(capture.memo!)}>Convert to narrator voice</button>}</div>{capture.recording&&<span>Recording · stops after 20 seconds</span>}{capture.url&&<AudioTransport url={capture.url} />} {capture.error&&<div role="alert">{capture.error}</div>}</div>
 }
 
 function ChapterAudio({ project, chapter, onEditCue }: { project: ProjectSnapshot; chapter: Chapter; onEditCue: (order: number, range?: { startMs: number; endMs: number }) => void }): JSX.Element {
@@ -454,18 +412,10 @@ export function VoicesPage(): JSX.Element {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [previewUrl, setPreviewUrl] = useState('')
   const [sampleUrl, setSampleUrl] = useState('')
-  const [recording, setRecording] = useState(false)
-  const [recordingVoiceId, setRecordingVoiceId] = useState('')
-  const [level, setLevel] = useState(0)
-  const [recorded, setRecorded] = useState<Blob | null>(null)
-  const [recordedUrl, setRecordedUrl] = useState('')
-  const recorder = useRef<MediaRecorder | null>(null)
-  const recordingStream = useRef<MediaStream | null>(null)
-  const meter = useRef<number | null>(null)
-  const recordingContext = useRef<AudioContext | null>(null)
-  useEffect(() => { void Promise.all([productionApi.voices(), systemApi.settings()]).then(([found, current]) => { setVoices(found); setSettings(current); setMessage('') }).catch((cause) => setMessage(errorMessage(cause))) }, [])
-  useEffect(() => () => { recorder.current?.stop(); recordingStream.current?.getTracks().forEach((track) => track.stop()); if (meter.current !== null) window.clearInterval(meter.current); void recordingContext.current?.close() }, [])
-  useEffect(() => { if (!recorded) { setRecordedUrl(''); return }; const url = URL.createObjectURL(recorded); setRecordedUrl(url); return () => URL.revokeObjectURL(url) }, [recorded])
+  const capture=useNativeRecording('Narrator reference',20_000)
+  const recording=capture.recording, level=capture.level, recorded=capture.path, recordedUrl=capture.url
+  const [recordingVoiceId,setRecordingVoiceId]=useState('')
+  useEffect(() => { void Promise.all([productionApi.voices(), systemApi.settings()]).then(([found,current])=>{setVoices(found);setSettings(current);setMessage('')}).catch(cause=>setMessage(errorMessage(cause))) }, [])
   const selected = voices.find((voice) => voice.id === settings?.speech.voiceId) ?? voices[0]
   async function refresh(): Promise<void> { setVoices(await productionApi.voices()) }
   async function select(voice: Voice): Promise<void> {
@@ -498,45 +448,17 @@ export function VoicesPage(): JSX.Element {
   async function listenSample(voice: Voice, sampleId: string): Promise<void> {
     try { setSampleUrl(await productionApi.voiceSampleUrl(voice.id, sampleId)) } catch (cause) { setMessage(errorMessage(cause)) }
   }
-  async function startRecording(voiceId: string): Promise<void> {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      recordingStream.current = stream
-      const context = new AudioContext()
-      recordingContext.current = context
-      const analyser = context.createAnalyser()
-      context.createMediaStreamSource(stream).connect(analyser)
-      const levels = new Uint8Array(analyser.frequencyBinCount)
-      meter.current = window.setInterval(() => { analyser.getByteTimeDomainData(levels); setLevel(Math.min(100, Math.round(Math.sqrt(levels.reduce((sum, value) => sum + (value - 128) ** 2, 0) / levels.length) * 3))) }, 100)
-      const chunks: Blob[] = []
-      const mimeType = ['audio/webm', 'audio/mp4'].find((type) => MediaRecorder.isTypeSupported(type))
-      const media = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
-      recorder.current = media
-      media.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data) }
-      media.onstop = () => {
-        setRecorded(new Blob(chunks, { type: media.mimeType }))
-        stream.getTracks().forEach((track) => track.stop())
-        if (meter.current !== null) window.clearInterval(meter.current)
-        void context.close(); setRecording(false); setLevel(0)
-      }
-      media.start(); setRecorded(null); setRecordingVoiceId(voiceId); setRecording(true); setMessage('Recording. Speak naturally for 6–20 seconds.')
-      window.setTimeout(() => { if (media.state === 'recording') media.stop() }, 20_000)
-    } catch (cause) { setMessage(`Microphone unavailable: ${errorMessage(cause)}`) }
-  }
-  async function saveRecording(voice: Voice): Promise<void> {
-    if (!recorded || recordingVoiceId !== voice.id) return
-    try { await productionApi.addRecordedVoiceSample(voice.id, sampleName || 'Recorded sample', Array.from(new Uint8Array(await recorded.arrayBuffer()))); setRecorded(null); setRecordingVoiceId(''); await refresh(); setMessage('Recording saved in Homer Studio. Preparing a voice preview in the background.') }
-    catch (cause) { setMessage(errorMessage(cause)) }
-  }
+  async function startRecording(voiceId:string):Promise<void>{setRecordingVoiceId(voiceId);await capture.start();setMessage('Recording. Speak naturally for 6–20 seconds.')}
+  async function saveRecording(voice:Voice):Promise<void>{if(!recorded||recordingVoiceId!==voice.id)return;try{await productionApi.addVoiceSample(voice.id,sampleName||'Recorded sample',recorded);setRecordingVoiceId('');await refresh();setMessage('Recording saved. The original is retained in Voice Memos.')}catch(cause){setMessage(errorMessage(cause))}}
   async function remove(voice: Voice): Promise<void> {
     try { await productionApi.deleteVoice(voice.id); await refresh(); setMessage(`${voice.name} deleted`) }
     catch (cause) { setMessage(errorMessage(cause)) }
   }
   return <div className="page"><Header eyebrow="Production" title="Voice library" copy="Use Chatterbox's natural voice or create a voice from your own speech. Samples stay on this computer." action={<button onClick={() => setPickerOpen(true)}>Choose voice</button>} />
     {message && <div className="status-banner" role="status">{message}</div>}
-    {previewUrl && <section className="voice-preview"><audio controls autoPlay src={previewUrl} /><button onClick={() => setPreviewUrl('')}>Close</button></section>}
+    {previewUrl && <section className="voice-preview"><AudioTransport url={previewUrl} /><button onClick={() => setPreviewUrl('')}>Close</button></section>}
     <section className="panel preset-editor"><h2>Create a voice</h2><p className="field-note">Record or import clear 6–20 second samples of the same speaker. Choose one sample for generation; distinct speakers are not blended.</p><label>Voice name<input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="My narrator" /></label><button className="primary" disabled={!name.trim()} onClick={() => void create()}>Create voice</button></section>
-    <section className="voice-section"><h2>Your voices</h2><div className="voice-grid">{voices.map((voice) => <article className={selected?.id === voice.id ? 'voice-card selected' : 'voice-card'} key={voice.id}><div className="voice-heading"><strong>{voice.name}</strong><small>{voice.builtIn ? 'Model voice' : `${voice.samples.length} sample${voice.samples.length === 1 ? '' : 's'}`}</small></div><div className="voice-actions"><button onClick={() => void select(voice)} disabled={!voice.builtIn && !voice.selectedSampleId}>Select</button><button onClick={() => void preview(voice)} disabled={!voice.builtIn && !voice.selectedSampleId}>Preview</button>{!voice.builtIn && <button onClick={() => void remove(voice)} disabled={selected?.id === voice.id}>Delete</button>}</div>{!voice.builtIn && <><label>Sample name<input value={sampleName} onChange={(event) => setSampleName(event.target.value)} /></label><div className="voice-actions"><button onClick={() => void addFile(voice)}>Import sample</button><button disabled={recording && recordingVoiceId !== voice.id} onClick={() => recording ? recorder.current?.stop() : void startRecording(voice.id)}>{recording && recordingVoiceId === voice.id ? 'Stop recording' : 'Record sample'}</button></div>{recording && recordingVoiceId === voice.id && <div className="recording-meter" role="meter" aria-label="Microphone level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={level}><span style={{ width: `${level}%` }} /></div>}{recorded && recordingVoiceId === voice.id && <div className="recording-preview"><audio controls src={recordedUrl} /><button onClick={() => void saveRecording(voice)}>Save recording</button><button onClick={() => { setRecorded(null); setRecordingVoiceId('') }}>Retry</button></div>}{voice.samples.map((sample) => <div className="sample-row" key={sample.id}><span>{sample.name} · {(sample.durationMs / 1000).toFixed(1)}s</span><button onClick={() => void listenSample(voice, sample.id)}>Listen</button><button onClick={() => void productionApi.selectVoiceSample(voice.id, sample.id).then(refresh).catch((cause) => setMessage(errorMessage(cause)))} disabled={voice.selectedSampleId === sample.id}>{voice.selectedSampleId === sample.id ? 'Selected' : 'Use sample'}</button></div>)}{sampleUrl && <audio controls src={sampleUrl} />}</>}</article>)}</div></section>
+    <section className="voice-section"><h2>Your voices</h2><div className="voice-grid">{voices.map((voice) => <article className={selected?.id === voice.id ? 'voice-card selected' : 'voice-card'} key={voice.id}><div className="voice-heading"><strong>{voice.name}</strong><small>{voice.builtIn ? 'Model voice' : `${voice.samples.length} sample${voice.samples.length === 1 ? '' : 's'}`}</small></div><div className="voice-actions"><button onClick={() => void select(voice)} disabled={!voice.builtIn && !voice.selectedSampleId}>Select</button><button onClick={() => void preview(voice)} disabled={!voice.builtIn && !voice.selectedSampleId}>Preview</button>{!voice.builtIn && <button onClick={() => void remove(voice)} disabled={selected?.id === voice.id}>Delete</button>}</div>{!voice.builtIn && <><label>Sample name<input value={sampleName} onChange={(event) => setSampleName(event.target.value)} /></label><div className="voice-actions"><button onClick={() => void addFile(voice)}>Import sample</button><button disabled={recording && recordingVoiceId !== voice.id} onClick={() => recording ? void capture.stop() : void startRecording(voice.id)}>{recording && recordingVoiceId === voice.id ? 'Stop recording' : 'Record sample'}</button></div>{recording && recordingVoiceId === voice.id && <div className="recording-meter" role="meter" aria-label="Microphone level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={level}><span style={{ width: `${level}%` }} /></div>}{recorded && recordingVoiceId === voice.id && <div className="recording-preview"><AudioTransport url={recordedUrl} /><button onClick={() => void saveRecording(voice)}>Save recording</button><button onClick={() => { setRecordingVoiceId('') }}>Retry</button></div>}{voice.samples.map((sample) => <div className="sample-row" key={sample.id}><span>{sample.name} · {(sample.durationMs / 1000).toFixed(1)}s</span><button onClick={() => void listenSample(voice, sample.id)}>Listen</button><button onClick={() => void productionApi.selectVoiceSample(voice.id, sample.id).then(refresh).catch((cause) => setMessage(errorMessage(cause)))} disabled={voice.selectedSampleId === sample.id}>{voice.selectedSampleId === sample.id ? 'Selected' : 'Use sample'}</button></div>)}{sampleUrl && <AudioTransport url={sampleUrl} />}</>}</article>)}</div></section>
     <p className="field-note">Shape delivery with punctuation, line breaks, and cues: [pause:800], [sigh], [gasp], [cough], [laugh], [chuckle], or [groan]. Example: “Tomorrow, and tomorrow, and tomorrow… [pause:800] creeps in this petty pace…” Put emphasis on a word with punctuation and sentence structure; exact word-level controls are not available yet. Cues are removed from the displayed spoken-line text.</p>
     <VoicePicker open={pickerOpen} voices={voices} selectedId={selected?.id ?? ''} onSelect={(voice) => void select(voice)} onClose={() => setPickerOpen(false)} onPreview={(voice) => { setPickerOpen(false); void preview(voice) }} />
   </div>
@@ -560,7 +482,7 @@ export function QueuePage(): JSX.Element {
   async function clean(): Promise<void> {
     try { await systemApi.dismissJobs(selected); setSelected([]); setJobs(await systemApi.jobs()) } catch (cause) { setError(errorMessage(cause)) }
   }
-  return <div className="page"><Header eyebrow="Production" title="Render queue" copy="Heavy local work runs one job at a time." />{error && <div className="inline-error" role="alert">{error}</div>}<section className="panel"><div className="queue-toolbar"><span>{selected.length} finished jobs selected</span><div className="actions"><button onClick={() => setSelected(terminal.map((job) => job.id))} disabled={!terminal.length}>Select all</button><button onClick={() => setSelected([])} disabled={!selected.length}>Deselect all</button><button onClick={() => void clean()} disabled={!selected.length}>Clean selected</button></div></div>{jobs.length === 0 ? <div className="table-empty">No jobs yet.</div> : <div className="job-list">{jobs.map((job) => <article className="queue-job" key={job.id}><div className="queue-job-top"><label className="queue-select"><input type="checkbox" aria-label={`Select ${job.label}`} disabled={!['completed', 'failed', 'cancelled'].includes(job.status)} checked={selected.includes(job.id)} onChange={(event) => setSelected((ids) => event.target.checked ? [...ids, job.id] : ids.filter((id) => id !== job.id))} /></label><div className="queue-job-detail"><strong>{job.label}</strong><small>{job.kind} · {job.status} · {job.progress}%</small>{job.message && <p className={job.status === 'failed' ? 'queue-error' : ''}>{job.message}</p>}</div><div className="queue-job-actions">{['queued', 'running'].includes(job.status) && <><button onClick={() => void control(job, 'pause')}>Pause</button><button onClick={() => void control(job, 'resume')}>Resume</button><button onClick={() => void control(job, 'cancel')}>Cancel</button></>}</div></div><progress value={job.progress} max="100" /><details><summary>Activity log</summary><ol className="queue-log">{(job.events ?? []).map((event, index) => <li key={index}><time>{new Date(event.atMs).toLocaleTimeString()}</time><span>{event.status} · {event.progress}% · {event.message}</span></li>)}</ol></details></article>)}</div>}</section></div>
+  return <div className="page"><Header eyebrow="Production" title="Render queue" copy="Heavy local work runs one job at a time." />{error && <div className="inline-error" role="alert">{error}</div>}<section className="panel"><div className="queue-toolbar"><span>{selected.length} finished jobs selected</span><div className="actions"><button onClick={() => setSelected(terminal.map((job) => job.id))} disabled={!terminal.length}>Select all</button><button onClick={() => setSelected([])} disabled={!selected.length}>Deselect all</button><button onClick={() => void clean()} disabled={!selected.length}>Clean selected</button></div></div>{jobs.length === 0 ? <div className="table-empty">No jobs yet.</div> : <div className="job-list">{jobs.map((job) => <article className="queue-job" key={job.id}><div className="queue-job-top"><label className="queue-select"><Checkbox aria-label={`Select ${job.label}`} disabled={!['completed', 'failed', 'cancelled'].includes(job.status)} checked={selected.includes(job.id)} onChange={(event) => setSelected((ids) => event.target.checked ? [...ids, job.id] : ids.filter((id) => id !== job.id))} /></label><div className="queue-job-detail"><strong>{job.label}</strong><small>{job.kind} · {job.status}{job.indeterminate && job.status === 'running' ? ' · Processing' : ` · ${job.progress}%`}</small>{job.message && <p className={job.status === 'failed' ? 'queue-error' : ''}>{job.message}</p>}</div><div className="queue-job-actions">{['queued', 'running'].includes(job.status) && <><button onClick={() => void control(job, 'pause')}>Pause</button><button onClick={() => void control(job, 'resume')}>Resume</button><button onClick={() => void control(job, 'cancel')}>Cancel</button></>}</div></div><progress value={job.indeterminate && job.status === 'running' ? undefined : job.progress} max="100" /><details><summary>Activity log</summary><ol className="queue-log">{(job.events ?? []).map((event, index) => <li key={index}><time>{new Date(event.atMs).toLocaleTimeString()}</time><span>{event.status} · {event.progress}% · {event.message}</span></li>)}</ol></details></article>)}</div>}</section></div>
 }
 
 export function ExportsPage({ project, onProjectChange }: { project: ProjectSnapshot | null; onProjectChange: (project: ProjectSnapshot) => void }): JSX.Element {
@@ -642,7 +564,7 @@ function ExportItem({ project, item, stale, selected, onSelect, onDelete }: { pr
   const [copied, setCopied] = useState(false)
   useEffect(() => { void Promise.all([productionApi.exportAudioUrl(project, item.id), productionApi.exportTimestamps(project, item.id)]).then(([audio, text]) => { setUrl(audio); setTimestamps(text) }).catch(() => {}) }, [project.rootPath, item.id])
   async function copy(): Promise<void> { await navigator.clipboard.writeText(timestamps); setCopied(true); window.setTimeout(() => setCopied(false), 1500) }
-  return <article className="export-row"><label className="sound-select"><input type="checkbox" checked={selected} onChange={(event) => onSelect(event.target.checked)} aria-label={`Select export ${new Date(item.createdAtMs).toLocaleString()}`} /> Select</label><div><strong>{new Date(item.createdAtMs).toLocaleString()}</strong><small>{formatDuration(item.durationMs)} · {stale ? 'Project changed since export' : 'Current project content'}</small></div>{url && <audio controls preload="metadata" src={url} />}<textarea readOnly value={timestamps} aria-label="YouTube chapter timestamps" /><div className="actions"><button onClick={() => void productionApi.saveExportFile(project, item.id, 'audio')}>Save audio</button><button onClick={() => void productionApi.saveExportFile(project, item.id, 'timestamps')}>Save timestamps</button><button disabled={!timestamps} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy timestamps'}</button><button onClick={onDelete}>Delete</button></div></article>
+  return <article className="export-row"><label className="sound-select"><Checkbox checked={selected} onChange={(event) => onSelect(event.target.checked)} aria-label={`Select export ${new Date(item.createdAtMs).toLocaleString()}`} /> Select</label><div><strong>{new Date(item.createdAtMs).toLocaleString()}</strong><small>{formatDuration(item.durationMs)} · {stale ? 'Project changed since export' : 'Current project content'}</small></div>{url && <AudioTransport url={url} />}<textarea readOnly value={timestamps} aria-label="YouTube chapter timestamps" /><div className="actions"><button onClick={() => void productionApi.saveExportFile(project, item.id, 'audio')}>Save audio</button><button onClick={() => void productionApi.saveExportFile(project, item.id, 'timestamps')}>Save timestamps</button><button disabled={!timestamps} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy timestamps'}</button><button onClick={onDelete}>Delete</button></div></article>
 }
 
 export function SettingsPage(): JSX.Element {
@@ -720,7 +642,7 @@ function SettingsForm({ settings, tools, onChange }: { settings: Settings; tools
   }
   return <section className="panel settings-form">
     <h2>Speech</h2>
-    <label>Narration model<select value={settings.speech.provider} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, provider: event.target.value as Settings['speech']['provider'] } })}><option value="chatterbox_turbo">Chatterbox Turbo · speech and vocal gestures</option><option value="chatterbox_original">Original Chatterbox · expression controls</option></select></label>
+    <label>Narration model<Select value={settings.speech.provider} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, provider: event.target.value as Settings['speech']['provider'] } })}><option value="chatterbox_turbo">Chatterbox Turbo · speech and vocal gestures</option><option value="chatterbox_original">Original Chatterbox · expression controls</option></Select></label>
     {settings.speech.provider === 'chatterbox_original' && <div className="expression-controls"><label>Expression · {settings.speech.exaggeration.toFixed(2)}<input type="range" min="0.25" max="2" step="0.05" value={settings.speech.exaggeration} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, exaggeration: Number(event.target.value) } })} /></label><label>CFG / pace · {settings.speech.cfgWeight.toFixed(2)}<input type="range" min="0" max="1" step="0.05" value={settings.speech.cfgWeight} onChange={(event) => onChange({ ...settings, speech: { ...settings.speech, cfgWeight: Number(event.target.value) } })} /></label></div>}
     <div className="voice-field"><span>Narration voice</span><button onClick={() => setPickerOpen(true)}>{voices.find((voice) => voice.id === settings.speech.voiceId)?.name ?? 'Choose a voice'}</button></div>
     <VoicePicker open={pickerOpen} voices={voices} selectedId={settings.speech.voiceId} onSelect={(voice) => onChange({ ...settings, speech: { ...settings.speech, voiceId: voice.id } })} onClose={() => setPickerOpen(false)} />
@@ -733,7 +655,7 @@ function SettingsForm({ settings, tools, onChange }: { settings: Settings; tools
     <label>Chatterbox URL<input value={settings.sounds.chatterboxUrl} onChange={(event) => onChange({ ...settings, sounds: { ...settings.sounds, chatterboxUrl: event.target.value } })} /></label>
     <label>Original Chatterbox URL<input value={settings.sounds.originalUrl} onChange={(event) => onChange({ ...settings, sounds: { ...settings.sounds, originalUrl: event.target.value } })} /></label>
     <h2>Text processing</h2>
-    <label>Provider<select value={settings.llm.provider} onChange={(event) => onChange({ ...settings, llm: event.target.value === 'ollama' ? { provider: 'ollama', base_url: 'http://127.0.0.1:11434', model: '', context_size: 8192, max_tokens: 2048 } : event.target.value === 'llama_cpp' ? { provider: 'llama_cpp', executable_path: '', model_path: '', context_size: 8192, max_tokens: 2048, gpu_layers: 99 } : { provider: 'none' } })}><option value="none">Disabled</option><option value="llama_cpp">llama.cpp / GGUF</option><option value="ollama">Ollama</option></select></label>
+    <label>Provider<Select value={settings.llm.provider} onChange={(event) => onChange({ ...settings, llm: event.target.value === 'ollama' ? { provider: 'ollama', base_url: 'http://127.0.0.1:11434', model: '', context_size: 8192, max_tokens: 2048 } : event.target.value === 'llama_cpp' ? { provider: 'llama_cpp', executable_path: '', model_path: '', context_size: 8192, max_tokens: 2048, gpu_layers: 99 } : { provider: 'none' } })}><option value="none">Disabled</option><option value="llama_cpp">llama.cpp / GGUF</option><option value="ollama">Ollama</option></Select></label>
     {ollama && <div><label>Loopback URL<input value={ollama.base_url} onChange={(event) => onChange({ ...settings, llm: { ...ollama, base_url: event.target.value } })} /></label><label>Model<input value={ollama.model} onChange={(event) => onChange({ ...settings, llm: { ...ollama, model: event.target.value } })} /></label>{pathField('Ollama CLI path', settings.ollamaPath ?? '', (path) => onChange({ ...settings, ollamaPath: path || null }), 'ollama')}</div>}
     {llama && <div>{pathField('llama-cli path', llama.executable_path, (path) => onChange({ ...settings, llm: { ...llama, executable_path: path } }), 'llama')}{pathField('GGUF model path', llama.model_path, (path) => onChange({ ...settings, llm: { ...llama, model_path: path } }), undefined, ['gguf'])}</div>}
   </section>
