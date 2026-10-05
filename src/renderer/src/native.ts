@@ -45,7 +45,7 @@ export async function chooseAudio(): Promise<string | null> {
     directory: false,
     multiple: false,
     title: 'Choose chapter audio',
-    filters: [{ name: 'Audio', extensions: ['m4a', 'mp3', 'wav', 'aiff', 'aif', 'flac', 'ogg'] }]
+    filters: [{ name: 'Audio', extensions: ['m4a', 'mp3', 'aac', 'wav', 'aiff', 'aif', 'flac', 'ogg'] }]
   })
   return typeof selected === 'string' ? selected : null
 }
@@ -92,6 +92,7 @@ export const productionApi = {
       text
     }),
   voices: () => invoke<Voice[]>('list_voices'),
+  updateVoice: (voice: Voice) => invoke<Voice>('update_voice', { voiceId: voice.id, name: voice.name, color: voice.color || '#718392', notes: voice.notes || '', provider: voice.provider || 'chatterbox_turbo' }),
   createVoice: (name: string) => invoke<Voice>('create_voice', { name }),
   addVoiceSample: (voiceId: string, name: string, sourcePath: string) => invoke<Voice>('add_voice_sample', { voiceId, name, sourcePath }),
   addRecordedVoiceSample: (voiceId: string, name: string, bytes: number[]) => invoke<Voice>('add_recorded_voice_sample', { voiceId, name, bytes }),

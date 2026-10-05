@@ -6,14 +6,17 @@ import { EditorPage, ExportsPage, ImportPage, ProjectsPage, QueuePage, ReviewPag
 import { chooseFolder, errorMessage, isDesktop, projectApi } from './native'
 import { SoundStudioPage } from './SoundStudioPage'
 import { VoiceLabPage } from './VoiceLabPage'
+import { WaveStudioPage } from './WaveStudioPage'
+import { SfxPage } from './SfxPage'
+import { WaveStudioProvider } from './WaveStudioProvider'
 import { VoiceMemosPage } from './VoiceMemosPage'
 
 function initialRoute(): RouteId {
   const value = window.location.hash.slice(1)
-  return isRouteId(value) ? value : 'projects'
+  return isRouteId(value) ? value : 'wave-studio'
 }
 
-export function App(): JSX.Element {
+function StudioApp(): JSX.Element {
   const [route, setRoute] = useState<RouteId>(initialRoute)
   const [project, setProject] = useState<ProjectSnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -24,6 +27,8 @@ export function App(): JSX.Element {
     if (!recent || !isDesktop()) return
     void projectApi.open(recent).then(setProject).catch(() => localStorage.removeItem('homer.recentProject'))
   }, [])
+
+  useEffect(() => { const update = () => setRoute(initialRoute()); window.addEventListener('hashchange', update); return () => window.removeEventListener('hashchange', update) }, [])
 
   function remember(next: ProjectSnapshot): void {
     setProject(next)
@@ -40,6 +45,8 @@ export function App(): JSX.Element {
 
   const page = useMemo(() => {
     switch (route) {
+      case 'wave-studio': return <WaveStudioPage onNavigate={navigate} />
+      case 'sfx': return <SfxPage onBack={() => navigate('wave-studio')} />
       case 'projects': return <ProjectsPage project={project} busy={busy} onImport={() => navigate('import')} onOpen={openExisting} onEdit={() => navigate('editor')} onProjectChange={remember} />
       case 'import': return <ImportPage onCreated={(created) => { remember(created); navigate('projects') }} />
       case 'editor': return <EditorPage project={project} onProjectChange={remember} />
@@ -67,3 +74,5 @@ export function App(): JSX.Element {
     </StudioLayout>
   )
 }
+
+export function App(): JSX.Element { return <WaveStudioProvider><StudioApp /></WaveStudioProvider> }
