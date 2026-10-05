@@ -54,7 +54,8 @@
     "longDescription": "Create, edit, review, and export audiobook projects with local tools on Apple Silicon Macs.",
     "macOS": {
       "minimumSystemVersion": "13.0",
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "entitlements": "Entitlements.plist"
     }
   }
 }

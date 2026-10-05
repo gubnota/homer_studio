@@ -46,7 +46,7 @@ export function App(): JSX.Element {
       case 'review': return <ReviewPage project={project} onProjectChange={remember} onOpenQueue={() => navigate('queue')} />
       case 'voices': return <VoicesPage />
       case 'sounds': return <SoundStudioPage />
-      case 'voice-memos': return <VoiceMemosPage />
+      case 'voice-memos': return <div className="page"><VoiceMemosPage /></div>
       case 'voice-lab': return <VoiceLabPage />
       case 'queue': return <QueuePage />
       case 'exports': return <ExportsPage project={project} onProjectChange={remember} />

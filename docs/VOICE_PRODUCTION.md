@@ -6,6 +6,11 @@ and recorded-delivery conversion remain available.
 
 ## Record and edit
 
+The packaged macOS app includes a microphone usage description and a signed
+audio-input entitlement. Click **Record** to trigger the first permission request
+and choose **Allow**. macOS lists the app under System Settings → Privacy &
+Security → Microphone after this request; enable it there if previously denied.
+
 1. Create a memo, choose a microphone, and grant macOS microphone permission.
 2. Record, pause/resume, then **Stop & save**. Watch the level and clipping meter.
    Capture is mono 32-bit float WAV at the device sample rate, with a one-hour limit.

@@ -155,3 +155,9 @@
 - Startup verification also found Python bytecode being written into signed bundled resources. The local worker launcher now disables bytecode writes for its child workers.
 - Validation: 50 optimized native tests, renderer typecheck/build and 12 tests, ten worker protocol/lifecycle tests, final arm64 package/signature verification and packaged startup smoke passed. GUI/loopback checks ran outside the restricted sandbox where required.
 - Updated `/Applications/Homer Studio.app`, retaining the previous bundle at `/private/tmp/homer-studio-before-device-fix-ovs3tlzw/Homer Studio.app`. Verified all three screens in the installed app, normal Quit/restart, and Voice Memos after restart. The installed signature remains valid after launch. Saved locally only; no push.
+
+# 2026-10-05 — Voice Memos padding and microphone permission
+- Wrapped the standalone Voice Memos route in the existing page layout for consistent outer padding; embedded editors retain their existing spacing.
+- The microphone purpose string already existed. Added the missing hardened-runtime `com.apple.security.device.audio-input` entitlement and wired it into Tauri signing. Release verification now checks both the bundled purpose string and signed entitlement, and rejected the previous bundle as expected.
+- Renderer typecheck/build and 12 tests, entitlement plist validation, arm64 signed app verification and whitespace checks passed. Updated `/Applications/Homer Studio.app`, preserving the prior bundle at `/private/tmp/homer-studio-before-mic-fix-3olxu01k/Homer Studio.app`.
+- Visually verified page padding, successful native capture with a live level meter, and discarded the brief test recording. System Settings → Privacy & Security → Microphone lists Homer Studio with access enabled. Local changes only; no publishing.

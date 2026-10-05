@@ -44,6 +44,17 @@ if (argumentsSet.has("--version-only")) {
 requireFile(executablePath, "Application executable");
 const iconName = run("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIconFile", join(appPath, "Contents", "Info.plist")]);
 if (!iconName) throw new Error("The app bundle has no icon declaration.");
+const microphoneDescription = run("/usr/libexec/PlistBuddy", ["-c", "Print :NSMicrophoneUsageDescription", join(appPath, "Contents", "Info.plist")]);
+if (!microphoneDescription) throw new Error("The app bundle has no microphone usage description.");
+const signedEntitlements = run("/usr/bin/codesign", ["-d", "--entitlements", "-", "--xml", appPath]);
+if (!signedEntitlements) throw new Error("The signed app has no microphone entitlement.");
+const entitlements = JSON.parse(execFileSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", "--", "-"], {
+  input: signedEntitlements,
+  encoding: "utf8",
+}));
+if (entitlements["com.apple.security.device.audio-input"] !== true) {
+  throw new Error("The signed app is missing the audio-input entitlement required for microphone access.");
+}
 requireFile(join(appPath, "Contents", "Resources", iconName.endsWith(".icns") ? iconName : `${iconName}.icns`), "Application icon");
 for (const resource of [
   "workers/start_local.py",

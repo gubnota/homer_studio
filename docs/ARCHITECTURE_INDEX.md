@@ -43,7 +43,7 @@
 - `tests/standalone-audio.test.tsx`: no-project and sound request UI checks.
 - `tests/manuscript-drop.test.ts` and `tests/standalone-audio.test.tsx`: focused renderer behavior tests.
 - `tests/DESKTOP_SMOKE.md`: automated and manual packaged-app smoke procedure.
-- `scripts/verify-release.mjs`: version, architecture, signature, bundled worker resources, and package verification plus ZIP creation.
+- `scripts/verify-release.mjs`: version, architecture, signature, microphone usage/entitlement, bundled worker resources, and package verification plus ZIP creation.
 - `scripts/smoke-app.mjs`: isolated packaged-app startup check.
 - `.github/workflows/ci.yml`: push/PR checks and Apple Silicon app build.
 - `.github/workflows/release.yml`: version-tagged DMG/ZIP release publishing.
@@ -56,6 +56,7 @@
 - `src/renderer/main.tsx`: renderer entry.
 - `src-tauri/src/main.rs` and `src-tauri/src/lib.rs`: native entry and command registration.
 - `src-tauri/tauri.conf.json`: application identity, windows, CSP, bundle, and icons.
+- `src-tauri/Info.plist` and `src-tauri/Entitlements.plist`: microphone purpose text and hardened-runtime audio-input access; bundle signing includes the entitlement.
 - `src-tauri/capabilities/default.json`: renderer permission allowlist.
 - `npm run dev`: Tauri development app.
 - `npm run build`: typecheck, renderer tests, and renderer production bundle.
