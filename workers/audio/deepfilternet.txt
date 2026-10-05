@@ -1,0 +1,4 @@
+deepfilternet==0.5.6
+torch==2.2.2
+torchaudio==2.2.2
+numpy==1.26.4

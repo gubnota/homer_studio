@@ -28,14 +28,26 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
-    "icon": ["icons/icon.png", "icons/icon.icns"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.icns"
+    ],
     "resources": {
       "../workers/start_local.py": "workers/start_local.py",
       "../workers/worker_protocol.py": "workers/worker_protocol.py",
       "../workers/chatterbox/server.py": "workers/chatterbox/server.py",
       "../workers/chatterbox/original.py": "workers/chatterbox/original.py",
-      "../workers/chatterbox/requirements.txt": "workers/chatterbox/requirements.txt"
+      "../workers/chatterbox/requirements.txt": "workers/chatterbox/requirements.txt",
+      "../workers/audio/processor.py": "workers/audio/processor.py",
+      "../workers/audio/inference_driver.py": "workers/audio/inference_driver.py",
+      "../workers/audio/seed_vc.txt": "workers/audio/seed_vc.txt",
+      "../workers/audio/rvc.txt": "workers/audio/rvc.txt",
+      "../workers/audio/deepfilternet.txt": "workers/audio/deepfilternet.txt",
+      "../workers/audio/resemble_enhance.txt": "workers/audio/resemble_enhance.txt"
     },
     "category": "Productivity",
     "shortDescription": "Local-first audiobook production studio",

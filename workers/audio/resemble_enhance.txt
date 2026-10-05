@@ -1,0 +1,4 @@
+resemble-enhance==0.0.1
+torch==2.1.1
+torchaudio==2.1.1
+numpy==1.26.4

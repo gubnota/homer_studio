@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Record a short voice sample for local narration in Homer Studio.</string>
+  <string>Record voice memos, narration takes, and voice references locally in Homer Studio.</string>
 </dict>
 </plist>

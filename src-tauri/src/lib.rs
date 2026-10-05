@@ -7,6 +7,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
 };
+use tauri::Manager;
 
 pub struct AppState {
     pub project_write_lock: Arc<Mutex<()>>,
@@ -63,8 +64,37 @@ pub fn run() {
             jobs: services::jobs::JobStore::new(),
             audio_assets,
         })
+        .manage(services::audio_capture::CaptureService::default())
         .invoke_handler(tauri::generate_handler![
             desktop_info,
+            commands::audio_processing::audio_engine_configs,
+            commands::audio_processing::save_audio_engine,
+            commands::audio_processing::audio_engine_status,
+            commands::audio_processing::setup_audio_engine,
+            commands::audio_processing::list_voice_profiles,
+            commands::audio_processing::save_voice_profile,
+            commands::audio_processing::process_memo_audio,
+            commands::audio_processing::publish_memo_audio,
+            commands::audio_processing::import_library_audio,
+            commands::audio::memo_source_path,
+            commands::audio::convert_memo_segment,
+            commands::audio::list_memos,
+            commands::audio::create_memo,
+            commands::audio::get_memo,
+            commands::audio::update_memo,
+            commands::audio::choose_memo_take,
+            commands::audio::import_memo_audio,
+            commands::audio::edit_memo_audio,
+            commands::audio::extract_memo_selection,
+            commands::audio::update_memo_take,
+            commands::audio::replace_memo_range,
+            commands::audio::memo_audio_url,
+            commands::audio::memo_waveform,
+            commands::audio::export_memo,
+            commands::audio_capture::audio_capture_devices,
+            commands::audio_capture::audio_capture_permission,
+            commands::audio_capture::audio_capture_start,
+            commands::audio_capture::audio_capture_control,
             commands::project::create_project,
             commands::project::default_project_parent,
             commands::project::open_project,
@@ -126,6 +156,8 @@ pub fn run() {
         .expect("failed to build Homer Studio")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                app.state::<services::audio_capture::CaptureService>()
+                    .shutdown();
                 let settings = services::settings::load(app).unwrap_or_default();
                 for (url, engine) in [
                     (&settings.sounds.chatterbox_url, "chatterbox_turbo"),

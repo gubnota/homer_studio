@@ -21,7 +21,7 @@ const executablePath = join(
 if (!existsSync(executablePath)) {
   throw new Error(`Build the app before running the smoke test: ${executablePath}`);
 }
-for (const resource of ["start_local.py", "worker_protocol.py", "chatterbox/server.py", "chatterbox/original.py", "chatterbox/requirements.txt"]) {
+for (const resource of ["start_local.py", "worker_protocol.py", "chatterbox/server.py", "chatterbox/original.py", "chatterbox/requirements.txt", "audio/processor.py", "audio/inference_driver.py", "audio/seed_vc.txt", "audio/rvc.txt", "audio/deepfilternet.txt", "audio/resemble_enhance.txt"]) {
   const path = join(dirname(dirname(executablePath)), "Resources", "workers", resource);
   if (!existsSync(path)) throw new Error(`Packaged worker file missing: ${path}`);
 }

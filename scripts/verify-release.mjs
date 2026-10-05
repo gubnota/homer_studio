@@ -51,6 +51,12 @@ for (const resource of [
   "workers/chatterbox/server.py",
   "workers/chatterbox/original.py",
   "workers/chatterbox/requirements.txt",
+  "workers/audio/processor.py",
+  "workers/audio/inference_driver.py",
+  "workers/audio/seed_vc.txt",
+  "workers/audio/rvc.txt",
+  "workers/audio/deepfilternet.txt",
+  "workers/audio/resemble_enhance.txt",
 ]) {
   requireFile(join(appPath, "Contents", "Resources", resource), `Bundled worker ${resource}`);
 }

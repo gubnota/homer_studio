@@ -1,0 +1,19 @@
+# Inference dependencies for the local Seed-VC v1 inference.py adapter.
+torch==2.4.1
+torchaudio==2.4.1
+torchvision==0.19.1
+numpy==1.26.4
+scipy==1.13.1
+librosa==0.10.2
+huggingface-hub>=0.28.1,<1
+munch==4.0.0
+einops==0.8.0
+descript-audio-codec==1.0.0
+resemblyzer==0.1.4
+transformers==4.46.3
+soundfile==0.12.1
+modelscope==1.18.1
+funasr==1.1.5
+hydra-core==1.3.2
+PyYAML>=6,<7
+python-dotenv>=1,<2

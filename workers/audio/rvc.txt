@@ -1,0 +1,22 @@
+# Current infer/cli.py inference dependencies; use a compatible local checkout.
+torch==2.4.1
+torchaudio==2.4.1
+torchvision==0.19.1
+numpy==1.26.4
+av>=15.1,<16
+einops>=0.8,<1
+faiss-cpu>=1.13,<2
+ffmpeg-python>=0.2,<1
+librosa>=0.10.2,<0.11
+local-attention>=1.11,<2
+hyper-connections>=0.1.8,<0.4.3
+onnxruntime>=1.24.4,<2
+praat-parselmouth>=0.4.5,<1
+pyworld>=0.3.4,<0.4
+python-dotenv>=1,<2
+PyYAML>=6,<7
+scipy>=1.13.1,<2
+soundfile>=0.13,<1
+torchfcpe>=0.0.4,<0.1
+tqdm>=4.67,<5
+transformers>=4.49,<4.50
