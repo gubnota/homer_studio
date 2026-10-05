@@ -139,6 +139,26 @@ class WorkerTests(unittest.TestCase):
         self.assertTrue(all(not path.exists() for path in paths))
         self.assertNotEqual(paths[0], paths[1])
 
+    def test_voice_conversion_accepts_builtin_voice_and_rejects_expired_source(self):
+        paths = []
+        def convert(request, _model_dir):
+            self.assertNotIn("referencePath", request)
+            paths.append(Path(request["sourcePath"]))
+            self.assertTrue(paths[-1].is_file())
+            return silence(request, _model_dir)
+        worker = Worker("chatterbox_original", self.folder.name, ["voice_conversion"], convert)
+        source_id = worker.add_reference(silence(None, None))
+        request = {"prompt": "Convert", "category": "voice_conversion", "durationSeconds": 2, "sourceId": source_id}
+        job_id = worker.start(request)
+        for _ in range(50):
+            if worker.status(job_id)["status"] == "completed":
+                break
+            time.sleep(0.01)
+        self.assertEqual(worker.status(job_id)["status"], "completed")
+        self.assertFalse(paths[0].exists())
+        with self.assertRaises(ValueError):
+            worker.start({"prompt": "Convert", "category": "voice_conversion", "durationSeconds": 2, "sourceId": source_id})
+
     def test_shutdown_stops_server_and_removes_unused_references(self):
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))

@@ -34,4 +34,10 @@ Changed-speed clips first prepare a native disk tempo variant; preparation can t
 - Generate a short speech take, preview and accept; tag real speech, convert and accept, then export and compare playback.
 - Change project/view/Loop, immediately switch or quit/restart, and verify restoration. Original model inference quality requires listening with real speech; synthetic or silent fixtures do not establish it.
 
-Export saves the complete edited mix. To save M4A, use Export and give the file a `.m4a` extension; native rendering encodes stereo AAC at 48 kHz. WAV, AAC, MP3 and FLAC are also supported.
+Export opens a format selector: M4A (AAC) or WAV. The selected format controls the file extension and encoder; M4A encodes stereo AAC at 48 kHz. Native queue exports additionally support AAC, MP3 and FLAC.
+
+## Version 0.2.5 workflows
+- Select a voice tag and choose Generate for that passage, then preview and accept. Listen plays its current timeline selection. Apply tagged voices processes pending passages; check Regenerate completed only when desired. Voice tints distinguish speakers and tags show Assigned, Generated or Converted. Generated text fragments carry the chosen voice.
+- Gain, fade in/out, speed and preview position use styled sliders; number fields retain precise entry. Join is beside Split and also on the main toolbar.
+- Projects opens a vertical list with search, explicit Save current, portable Save copy/Open copy and recoverable Delete/Restore. Copies include immutable audio and video, so they can reopen independently.
+- Import/drop a video to add a separate reference lane and current-frame preview. Drag it or change Timeline start to align it with narration. References are muted, their audio is removed during import, and audio export contains only narration/SFX.

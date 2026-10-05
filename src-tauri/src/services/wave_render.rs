@@ -22,7 +22,12 @@ pub fn arguments(
         || !end.is_finite()
         || start < 0.
         || end <= start
-        || end > p.timeline.duration() + 1.
+        || end
+            > p.videos
+                .iter()
+                .map(|v| v.start_ms + v.duration_ms)
+                .fold(p.timeline.duration(), f64::max)
+                + 1.
     {
         return Err(CommandError::new(
             "INVALID_RENDER_RANGE",
@@ -311,6 +316,7 @@ mod tests {
             updated_at_ms: 0,
             view: None,
             voice_original: None,
+            videos: vec![],
             sources: vec![source],
             timeline: Timeline {
                 clips: vec![clip],

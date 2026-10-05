@@ -1,4 +1,4 @@
-import { Checkbox, Select } from './StudioControls'
+import { Checkbox, Select, StudioSlider } from './StudioControls'
 import { useEffect, useRef, useState } from 'react'
 export function audioTime(ms: number): string { const s = Math.max(0, ms) / 1000; return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}` }
 export function AudioTransport({ url, durationMs, selection, seekTo, onPosition }: { url: string | null; durationMs?: number; selection?: [number, number]; seekTo?: number; onPosition?: (ms: number) => void }): JSX.Element {

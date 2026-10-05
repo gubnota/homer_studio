@@ -55,6 +55,7 @@ pub fn create(app: &AppHandle, name: &str) -> Result<Project, CommandError> {
         timeline: Timeline::default(),
         view: None,
         voice_original: None,
+        videos: vec![],
     };
     super::wave_studio::validate(&p)?;
     audio_assets::atomic_json(&project_path(app, &p.id)?, &p)?;
@@ -174,6 +175,9 @@ pub fn import(
 
 pub fn validate_sources(app: &AppHandle, p: &Project) -> Result<(), CommandError> {
     super::wave_studio::validate(p)?;
+    for video in &p.videos {
+        super::wave_video::validate(app, video)?;
+    }
     for source in &p.sources {
         let owned = load_source(app, &source.id)?;
         if source.duration_ms != owned.duration_ms
@@ -187,4 +191,177 @@ pub fn validate_sources(app: &AppHandle, p: &Project) -> Result<(), CommandError
         }
     }
     Ok(())
+}
+
+pub fn deleted(app: &AppHandle) -> Result<Vec<Project>, CommandError> {
+    let dir = root(app)?.join("trash");
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
+    let mut out = vec![];
+    for e in fs::read_dir(dir)
+        .map_err(|e| CommandError::io("Cannot read deleted projects", e))?
+        .flatten()
+        .take(500)
+    {
+        if let Ok(bytes) = fs::read(e.path()) {
+            if bytes.len() <= 16 * 1024 * 1024 {
+                if let Ok(p) = serde_json::from_slice::<Project>(&bytes) {
+                    if super::wave_studio::validate(&p).is_ok() {
+                        out.push(p)
+                    }
+                }
+            }
+        }
+    }
+    out.sort_by_key(|p| std::cmp::Reverse(p.updated_at_ms));
+    Ok(out)
+}
+pub fn trash(app: &AppHandle, id: &str, restore: bool) -> Result<(), CommandError> {
+    audio_assets::id(id)?;
+    let active = project_path(app, id)?;
+    let trash = root(app)?.join("trash").join(format!("{id}.json"));
+    let (from, to) = if restore {
+        (trash, active)
+    } else {
+        (active, trash)
+    };
+    if to.exists() {
+        return Err(CommandError::new(
+            "PROJECT_EXISTS",
+            "This project already exists.",
+        ));
+    }
+    fs::create_dir_all(to.parent().unwrap())
+        .map_err(|e| CommandError::io("Cannot prepare projects", e))?;
+    fs::rename(from, to).map_err(|e| CommandError::io("Cannot move project", e))
+}
+pub fn save_copy(app: &AppHandle, p: &Project, destination: &Path) -> Result<(), CommandError> {
+    validate_sources(app, p)?;
+    if destination.exists() {
+        return Err(CommandError::new(
+            "DESTINATION_EXISTS",
+            "Choose a new folder name for this project copy.",
+        ));
+    }
+    let parent = destination
+        .parent()
+        .ok_or_else(|| CommandError::new("INVALID_DESTINATION", "Choose a project folder."))?;
+    let work = parent.join(format!(".homer-copy-{}", uuid::Uuid::new_v4()));
+    fs::create_dir(&work).map_err(|e| CommandError::io("Cannot create project copy", e))?;
+    let result = (|| {
+        fs::create_dir(work.join("media"))
+            .map_err(|e| CommandError::io("Cannot create media folder", e))?;
+        for source in &p.sources {
+            fs::copy(
+                source_path(app, &source.id)?,
+                work.join("media").join(format!("{}.wav", source.id)),
+            )
+            .map_err(|e| CommandError::io("Cannot copy project audio", e))?;
+        }
+        for video in &p.videos {
+            fs::copy(
+                super::wave_video::path(app, &video.id)?,
+                work.join("media").join(format!("{}.mp4", video.id)),
+            )
+            .map_err(|e| CommandError::io("Cannot copy project video", e))?;
+        }
+        audio_assets::atomic_json(&work.join("project.json"), p)?;
+        fs::rename(&work, destination)
+            .map_err(|e| CommandError::io("Cannot publish project copy", e))
+    })();
+    if result.is_err() {
+        let _ = fs::remove_dir_all(work);
+    }
+    result
+}
+pub fn open_copy(
+    app: &AppHandle,
+    folder: &Path,
+    settings: &Settings,
+) -> Result<Project, CommandError> {
+    let folder = folder
+        .canonicalize()
+        .map_err(|e| CommandError::io("Cannot resolve project folder", e))?;
+    let file = folder.join("project.json");
+    if fs::metadata(&file)
+        .map_err(|e| CommandError::io("Cannot read project", e))?
+        .len()
+        > 16 * 1024 * 1024
+    {
+        return Err(CommandError::new(
+            "INVALID_WAVE_PROJECT",
+            "Project is too large.",
+        ));
+    }
+    let mut p: Project = serde_json::from_slice(
+        &fs::read(&file).map_err(|e| CommandError::io("Cannot read project", e))?,
+    )
+    .map_err(|e| CommandError::new("INVALID_WAVE_PROJECT", e.to_string()))?;
+    super::wave_studio::validate(&p)?;
+    let owned = |id: &str, ext: &str| -> Result<PathBuf, CommandError> {
+        let path = folder
+            .join("media")
+            .join(format!("{id}.{ext}"))
+            .canonicalize()
+            .map_err(|e| CommandError::io("Cannot open project media", e))?;
+        if !path.starts_with(&folder) {
+            return Err(CommandError::new(
+                "UNSAFE_MEDIA",
+                "Media leaves the project folder.",
+            ));
+        }
+        Ok(path)
+    };
+    let mut mapping = std::collections::HashMap::new();
+    for s in &mut p.sources {
+        let old = s.id.clone();
+        let imported = import(app, &owned(&old, "wav")?, &s.name, settings)?;
+        if (imported.duration_ms - s.duration_ms).abs() > 2. {
+            return Err(CommandError::new(
+                "INVALID_MEDIA",
+                "Project audio duration changed.",
+            ));
+        }
+        mapping.insert(old, imported.id.clone());
+        *s = imported;
+    }
+    for t in std::iter::once(&mut p.timeline).chain(p.voice_original.iter_mut()) {
+        for c in t.clips.iter_mut().chain(&mut t.sfx) {
+            if let Some(id) = &mut c.source_id {
+                if let Some(new) = mapping.get(id) {
+                    *id = new.clone();
+                }
+            }
+        }
+        for r in &mut t.voices {
+            if let Some(production) = &mut r.production {
+                for (old, new) in &mapping {
+                    production.audio_key = production.audio_key.replace(old, new)
+                }
+            }
+        }
+    }
+    for v in &mut p.videos {
+        let imported = super::wave_video::import(app, &owned(&v.id, "mp4")?, settings)?;
+        if (imported.duration_ms - v.duration_ms).abs() > 100. {
+            return Err(CommandError::new(
+                "INVALID_MEDIA",
+                "Project video duration changed.",
+            ));
+        }
+        if let Some(view) = &mut p.view {
+            if view.selected_id.as_ref() == Some(&v.id) {
+                view.selected_id = Some(imported.id.clone());
+            }
+        }
+        v.id = imported.id;
+        v.duration_ms = imported.duration_ms;
+    }
+    p.id = uuid::Uuid::new_v4().to_string();
+    p.revision = 0;
+    p.updated_at_ms = now();
+    validate_sources(app, &p)?;
+    audio_assets::atomic_json(&project_path(app, &p.id)?, &p)?;
+    Ok(p)
 }

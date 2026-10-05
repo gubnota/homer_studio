@@ -1,11 +1,18 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { PeakWindow } from '../../shared/audio'
-import type { SfxAsset, WaveProject, WaveSource, WaveProcessingResult } from '../../shared/waveStudio'
+import type { SfxAsset, WaveProject, WaveSource, WaveProcessingResult, WaveVideo } from '../../shared/waveStudio'
 export const waveApi = {
+ hasVideo: (path:string)=>invoke<boolean>('wave_has_video',{path}),
+ importVideo: (path:string)=>invoke<WaveVideo>('wave_import_video',{path}),
+ videoUrl:(id:string)=>invoke<string>('wave_video_url',{id}),
+ deleted:()=>invoke<WaveProject[]>('wave_deleted'),
+ delete:(id:string,restore=false)=>invoke<void>('wave_delete',{id,restore}),
+ saveCopy:(project:WaveProject,path:string)=>invoke<void>('wave_save_copy',{project,path}),
+ openCopy:(path:string)=>invoke<WaveProject>('wave_open_copy',{path}),
  normalize: (project: WaveProject, clipId: string) => invoke<number>('wave_normalize', { project, clipId }),
  join: (project: WaveProject, clipIds: string[]) => invoke<WaveSource>('wave_join', { project, clipIds }),
  generateSpeech: (text: string, voiceId: string, projectId: string, revision: number) => invoke<string>('wave_generate_speech', { text, voiceId, projectId, revision }),
- convertRegions: (project: WaveProject) => invoke<string>('wave_convert_regions', { project }),
+ convertRegions: (project: WaveProject, regionIds: string[], regenerate = false) => invoke<string>('wave_convert_regions', { project, regionIds, regenerate }),
  processingResult: (jobId: string) => invoke<WaveProcessingResult>('wave_processing_result', { jobId }),
  list: () => invoke<WaveProject[]>('wave_list'),
  get: (id: string) => invoke<WaveProject>('wave_get', { id }),

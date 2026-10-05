@@ -1,15 +1,17 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { createContext, useContext, useEffect, useReducer, useRef, useState, type PropsWithChildren } from 'react'
-import { blankTimeline, sourceClip, timelineDuration, type WaveProject, type WaveSource, type WaveTimeline, type WaveView } from '../../shared/waveStudio'
+import { blankTimeline, reconcileVoiceProduction, sourceClip, timelineDuration, type WaveProject, type WaveSource, type WaveTimeline, type WaveView, type WaveVideo } from '../../shared/waveStudio'
 import { historyEdit, historyRedo, historyUndo, insertMain, type TimelineHistory } from '../../shared/waveStudioEdits'
 import { errorMessage, isDesktop } from './native'
 import { waveApi } from './waveStudioNative'
 interface State { project: WaveProject | null; history: TimelineHistory; change: number }
-type Action = { kind: 'load'; project: WaveProject } | { kind: 'edit'; timeline: WaveTimeline; sources?: WaveSource[] } | { kind: 'undo' | 'redo' } | { kind: 'name'; name: string } | { kind: 'saved'; revision: number } | { kind: 'original'; timeline: WaveTimeline | null }
+type Action = {kind:'clear'} | {kind:'videos';videos:WaveVideo[]} | { kind: 'load'; project: WaveProject } | { kind: 'edit'; timeline: WaveTimeline; sources?: WaveSource[] } | { kind: 'undo' | 'redo' } | { kind: 'name'; name: string } | { kind: 'saved'; revision: number } | { kind: 'original'; timeline: WaveTimeline | null }
 const initial: State = { project: null, history: { past: [], present: blankTimeline(), future: [] }, change: 0 }
 function reducer(s: State, a: Action): State {
+ if (a.kind === 'clear') return initial
  if (a.kind === 'load') return { project: a.project, history: { past: [], present: a.project.timeline, future: [] }, change: 0 }
  if (!s.project) return s
+ if (a.kind === 'videos') return {...s,project:{...s.project,videos:a.videos},change:s.change+1}
  if (a.kind === 'saved') return { ...s, project: { ...s.project, revision: a.revision } }
  if (a.kind === 'original') return { ...s, project: { ...s.project, voiceOriginal: a.timeline }, change: s.change + 1 }
  if (a.kind === 'name') return { ...s, project: { ...s.project, name: a.name }, change: s.change + 1 }
@@ -22,7 +24,7 @@ interface Context {
  project: WaveProject | null; history: TimelineHistory; view: WaveView; setView: React.Dispatch<React.SetStateAction<WaveView>>
  edit: (timeline: WaveTimeline, sources?: WaveSource[]) => void; undo: () => void; redo: () => void; rename: (name: string) => void
  busy: boolean; error: string; setError: (error: string) => void; saveStatus: string; flush: () => Promise<void>
- create: () => Promise<void>; open: (id: string) => Promise<void>; importAudio: (kind: 'file' | 'memo' | 'sound', value: string, mode?: 'insert' | 'append' | 'replace' | 'sfx', at?: number) => Promise<void>; addSource: (source: WaveSource, at?: number, lane?: 'main' | 'sfx') => void; rememberOriginal: () => void; restoreOriginal: () => void
+ deleteProject:(id:string)=>Promise<void>; setVideos:(videos:WaveVideo[])=>void; importVideo:(path:string,at:number)=>Promise<void>; create: () => Promise<void>; open: (id: string) => Promise<void>; importAudio: (kind: 'file' | 'memo' | 'sound', value: string, mode?: 'insert' | 'append' | 'replace' | 'sfx', at?: number) => Promise<void>; addSource: (source: WaveSource, at?: number, lane?: 'main' | 'sfx') => void; rememberOriginal: () => void; restoreOriginal: () => void
 }
 const WaveContext = createContext<Context | null>(null)
 export function useOptionalWaveStudio(): Context | null { return useContext(WaveContext) }
@@ -45,7 +47,7 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
    saving.current = work
    try { await work } finally { if (saving.current === work) saving.current = null }
  }
- function load(p: WaveProject): void { const restored = p.view || readView(p.id); current.current = { project: p, history: { past: [], present: p.timeline, future: [] }, change: 0 }; viewRef.current = restored; savedView.current = JSON.stringify(restored); revision.current = p.revision; savedChange.current = 0; dispatch({ kind: 'load', project: p }); setView(restored); localStorage.setItem('homer.wave.lastProject', p.id); setSaveStatus('Saved') }
+ function load(p: WaveProject): void { p = { ...p, timeline: reconcileVoiceProduction(p.timeline) }; const restored = p.view || readView(p.id); current.current = { project: p, history: { past: [], present: p.timeline, future: [] }, change: 0 }; viewRef.current = restored; savedView.current = JSON.stringify(restored); revision.current = p.revision; savedChange.current = 0; dispatch({ kind: 'load', project: p }); setView(restored); localStorage.setItem('homer.wave.lastProject', p.id); setSaveStatus('Saved') }
  useEffect(() => {
    if (!isDesktop()) return
    let alive = true
@@ -61,7 +63,10 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
  async function drain(): Promise<void> { do { await flush() } while (current.current.project && (savedChange.current !== current.current.change || savedView.current !== JSON.stringify(viewRef.current))) }
  async function create(): Promise<void> { await task(async () => { await drain(); load(await waveApi.create('Untitled narration')) }) }
  async function open(id: string): Promise<void> { await task(async () => { await drain(); load(await waveApi.get(id)); window.location.hash = 'wave-studio' }) }
- function edit(timeline: WaveTimeline, sources?: WaveSource[]): void { dispatch({ kind: 'edit', timeline, sources }) }
+ async function deleteProject(id:string):Promise<void>{await drain();await waveApi.delete(id);if(current.current.project?.id===id){current.current=initial;dispatch({kind:'clear'});setView(defaultView);localStorage.removeItem('homer.wave.lastProject')}}
+ function setVideos(videos:WaveVideo[]):void{dispatch({kind:'videos',videos})}
+ async function importVideo(path:string,at:number):Promise<void>{await task(async()=>{const origin=current.current.project?.id,video=await waveApi.importVideo(path);let p=current.current.project;if(p?.id!==origin)throw new Error('Project changed during video import. Try again.');if(!p){p=await waveApi.create(video.name);load(p)}setVideos([...(p.videos||[]),{...video,startMs:at}]);setView(v=>({...v,selectedId:video.id,...(timelineDuration(p!.timeline)===0&&!p!.videos?.length?{offsetMs:0,spanMs:Math.max(1000,(at+video.durationMs)*1.04)}:{spanMs:Math.max(v.spanMs,at+video.durationMs)})}))})}
+ function edit(timeline: WaveTimeline, sources?: WaveSource[]): void { dispatch({ kind: 'edit', timeline: reconcileVoiceProduction(timeline), sources }) }
  function addSource(source: WaveSource, at?: number, lane: 'main' | 'sfx' = 'sfx'): void {
    const p = current.current.project; if (!p) return
    const start = Math.max(0, at ?? viewRef.current.selection?.[0] ?? viewRef.current.playheadMs)
@@ -83,6 +88,6 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
  }
  function rememberOriginal(): void { if (current.current.project && !current.current.project.voiceOriginal) dispatch({ kind: 'original', timeline: current.current.project.timeline }) }
  function restoreOriginal(): void { const p = current.current.project; if (p?.voiceOriginal) { edit(p.voiceOriginal); dispatch({ kind: 'original', timeline: null }) } }
- const value: Context = { project: state.project, history: state.history, view, setView, edit, undo: () => dispatch({ kind: 'undo' }), redo: () => dispatch({ kind: 'redo' }), rename: name => dispatch({ kind: 'name', name }), busy, error, setError, saveStatus, flush, create, open, importAudio, addSource, rememberOriginal, restoreOriginal }
+ const value: Context = { project: state.project, history: state.history, view, setView, edit, undo: () => dispatch({ kind: 'undo' }), redo: () => dispatch({ kind: 'redo' }), rename: name => dispatch({ kind: 'name', name }), busy, error, setError, saveStatus, flush, deleteProject, setVideos, importVideo, create, open, importAudio, addSource, rememberOriginal, restoreOriginal }
  return <WaveContext.Provider value={value}>{children}</WaveContext.Provider>
 }

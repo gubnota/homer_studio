@@ -29,3 +29,5 @@ pub mod wave_store;
 pub mod wave_studio;
 
 pub mod wave_processing;
+
+pub mod wave_video;

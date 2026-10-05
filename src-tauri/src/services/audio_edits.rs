@@ -310,25 +310,32 @@ pub fn render(
         }
         filters.push(format!("{filter}[c{i}]"));
     }
-    let mut current = "c0".to_string();
-    for (i, c) in composition.clips.iter().enumerate().skip(1) {
-        let target = format!("j{i}");
-        let operation = if c.crossfade_ms > 0 {
-            format!(
-                "acrossfade=d={:.6}:c1=tri:c2=tri",
-                c.crossfade_ms as f64 / 1000.
-            )
-        } else {
-            "concat=n=2:v=0:a=1".into()
-        };
-        filters.push(format!("[{current}][c{i}]{operation}[{target}]"));
-        current = target;
+    // Mix sample-aligned overlapping clips. Chained acrossfade filters can stop
+    // early when their inputs reach EOF in different orders on recent FFmpeg.
+    let mut offset_ms = 0_u64;
+    let mut inputs = String::new();
+    for (i, clip) in composition.clips.iter().enumerate() {
+        offset_ms = offset_ms.saturating_sub(clip.crossfade_ms);
+        let seconds = (clip.end_ms - clip.start_ms) as f64 / 1000.;
+        let mut filter = format!("[c{i}]");
+        if clip.crossfade_ms > 0 {
+            filter.push_str(&format!("afade=t=in:d={:.6},", clip.crossfade_ms as f64 / 1000.));
+        }
+        if let Some(next) = composition.clips.get(i + 1).filter(|c| c.crossfade_ms > 0) {
+            let fade = next.crossfade_ms as f64 / 1000.;
+            filter.push_str(&format!("afade=t=out:st={:.6}:d={fade:.6},", seconds - fade));
+        }
+        filter.push_str(&format!("adelay={}S:all=1[m{i}]", offset_ms * 48));
+        filters.push(filter);
+        inputs.push_str(&format!("[m{i}]"));
+        offset_ms += clip.end_ms - clip.start_ms;
     }
+    filters.push(format!("{inputs}amix=inputs={}:duration=longest:normalize=0,atrim=end_sample={}[out]", composition.clips.len(), duration(composition) * 48));
     args.extend([
         "-filter_complex".into(),
         filters.join(";"),
         "-map".into(),
-        format!("[{current}]"),
+        "[out]".into(),
         "-c:a".into(),
         "pcm_f32le".into(),
         output.to_string_lossy().into(),
@@ -486,16 +493,18 @@ mod tests {
         }
         let original = std::fs::read(audio_assets::path(&base, &source.id).unwrap()).unwrap();
         let composition = replacement(&source, &recorded, 200, 600, 20).unwrap();
+        for _ in 0..8 {
         let measured = render(
             &base,
             &composition,
-            &[source.clone(), recorded],
+            &[source.clone(), recorded.clone()],
             &base.join("retake.wav"),
             &settings,
             Default::default(),
         )
         .unwrap();
         assert!(measured.abs_diff(duration(&composition)) <= 2);
+        }
         let silence = edit(
             &source,
             &AudioEdit {

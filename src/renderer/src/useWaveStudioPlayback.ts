@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { timelineDuration, type WaveProject } from '../../shared/waveStudio'
+import { projectDuration, type WaveProject } from '../../shared/waveStudio'
 import { errorMessage } from './native'
 import { waveApi } from './waveStudioNative'
 interface Run { token: number; nodes: AudioBufferSourceNode[]; origin: number; start: number; end: number }
@@ -8,7 +8,7 @@ export function useWaveStudioPlayback(project: WaveProject | null, onTime: (ms: 
  const context = useRef<AudioContext | null>(null), run = useRef<Run | null>(null), token = useRef(0), cache = useRef(new Map<string, AudioBuffer>())
  const callbacks = useRef({ onTime, onError }); callbacks.current = { onTime, onError }
  function stop(update = true): void { token.current++; void waveApi.cancelPreview().catch(() => {}); const r = run.current; if (r) { if (update && context.current) callbacks.current.onTime(Math.max(r.start, Math.min(r.end, r.start + (context.current.currentTime - r.origin) * 1000))); for (const n of r.nodes) { try { n.stop() } catch {} } }; run.current = null; setPlaying(false); setLoading(false) }
- async function play(startMs: number, endMs = project ? timelineDuration(project.timeline) : 0, loop = false): Promise<void> {
+ async function play(startMs: number, endMs = project ? projectDuration(project) : 0, loop = false): Promise<void> {
    stop(false); if (!project || endMs <= startMs) return
    // AudioContext must be created/resumed within the user gesture.
    const audio = context.current ??= new AudioContext({ sampleRate: 48000 }); await audio.resume()
@@ -48,6 +48,6 @@ export function useWaveStudioPlayback(project: WaveProject | null, onTime: (ms: 
    } catch (cause) { if (mine === token.current) { stop(false); callbacks.current.onError(errorMessage(cause)) } }
  }
  useEffect(() => { stop(); cache.current.clear() }, [project?.id, project?.timeline])
- useEffect(() => { const preview = () => stop(); document.addEventListener('play', preview, true); return () => { document.removeEventListener('play', preview, true); stop(); void context.current?.close() } }, [])
+ useEffect(() => { const preview = (event: Event) => { if (event.target instanceof HTMLAudioElement) stop() }; document.addEventListener('play', preview, true); return () => { document.removeEventListener('play', preview, true); stop(); void context.current?.close() } }, [])
  return { playing, loading, play, stop }
 }

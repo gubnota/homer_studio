@@ -21,6 +21,8 @@ pub fn respond(
     };
     let mime = if path.extension().and_then(|s| s.to_str()) == Some("wav") {
         "audio/wav"
+    } else if path.extension().and_then(|s| s.to_str()) == Some("mp4") {
+        "video/mp4"
     } else {
         "audio/mp4"
     };

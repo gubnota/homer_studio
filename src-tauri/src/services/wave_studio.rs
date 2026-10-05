@@ -32,6 +32,13 @@ impl Clip {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct VoiceProduction {
+    pub status: String,
+    pub voice_id: String,
+    pub audio_key: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VoiceRegion {
     pub id: String,
     pub voice_id: String,
@@ -39,6 +46,8 @@ pub struct VoiceRegion {
     pub color: String,
     pub start_ms: f64,
     pub end_ms: f64,
+    #[serde(default)]
+    pub production: Option<VoiceProduction>,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Timeline {
@@ -68,6 +77,14 @@ pub struct View {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Video {
+    pub id: String,
+    pub name: String,
+    pub duration_ms: f64,
+    pub start_ms: f64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Project {
     pub schema_version: u32,
     pub id: String,
@@ -80,6 +97,8 @@ pub struct Project {
     pub view: Option<View>,
     #[serde(default)]
     pub voice_original: Option<Timeline>,
+    #[serde(default)]
+    pub videos: Vec<Video>,
 }
 pub fn validate(p: &Project) -> Result<(), CommandError> {
     let bad = || {
@@ -96,6 +115,23 @@ pub fn validate(p: &Project) -> Result<(), CommandError> {
         || p.timeline.clips.len() + p.timeline.sfx.len() + p.timeline.voices.len() > 16384
     {
         return Err(bad());
+    }
+    if p.videos.len() > 128 {
+        return Err(bad());
+    }
+    let mut video_ids = std::collections::HashSet::new();
+    for v in &p.videos {
+        super::audio_assets::id(&v.id)?;
+        if !video_ids.insert(&v.id)
+            || v.name.len() > 512
+            || !v.duration_ms.is_finite()
+            || v.duration_ms <= 0.
+            || !v.start_ms.is_finite()
+            || v.start_ms < 0.
+            || v.start_ms + v.duration_ms > 86_400_000.
+        {
+            return Err(bad());
+        }
     }
     let mut ids = std::collections::HashSet::new();
     for s in &p.sources {
@@ -163,6 +199,11 @@ pub fn validate(p: &Project) -> Result<(), CommandError> {
             || v.end_ms > p.timeline.duration() + 1.
             || v.name.len() > 320
             || v.color.len() > 16
+            || v.production.as_ref().is_some_and(|s| {
+                !matches!(s.status.as_str(), "generated" | "converted")
+                    || s.voice_id != v.voice_id
+                    || s.audio_key.len() > 1024 * 1024
+            })
         {
             return Err(bad());
         }
@@ -203,6 +244,7 @@ mod tests {
             updated_at_ms: 0,
             view: None,
             voice_original: None,
+            videos: vec![],
             sources: vec![],
             timeline: Timeline {
                 clips: vec![Clip {
@@ -241,6 +283,7 @@ mod tests {
             color: "#718392".into(),
             start_ms: 0.,
             end_ms: 600.,
+            production: None,
         });
         assert!(validate(&p).is_err());
     }
@@ -259,8 +302,9 @@ mod tests {
         let mut legacy = serde_json::to_value(&p).unwrap();
         legacy.as_object_mut().unwrap().remove("view");
         legacy.as_object_mut().unwrap().remove("voiceOriginal");
+        legacy.as_object_mut().unwrap().remove("videos");
         let old: Project = serde_json::from_value(legacy).unwrap();
-        assert!(old.view.is_none() && old.voice_original.is_none());
+        assert!(old.view.is_none() && old.voice_original.is_none() && old.videos.is_empty());
         p.view = Some(View {
             offset_ms: 125.,
             span_ms: 1000.,
@@ -275,6 +319,44 @@ mod tests {
         assert!(restored.view.unwrap().loop_);
         assert_eq!(restored.voice_original.unwrap().clips.len(), 1);
         p.view.as_mut().unwrap().span_ms = 0.;
+        assert!(validate(&p).is_err());
+    }
+    #[test]
+    fn validates_video_bounds_and_production_roundtrip() {
+        let mut p = project();
+        p.videos.push(Video {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "Reference".into(),
+            start_ms: 0.,
+            duration_ms: 1000.,
+        });
+        p.timeline.voices.push(VoiceRegion {
+            id: uuid::Uuid::new_v4().to_string(),
+            voice_id: "narrator".into(),
+            name: "Narrator".into(),
+            color: "#8d79b8".into(),
+            start_ms: 0.,
+            end_ms: 500.,
+            production: Some(VoiceProduction {
+                status: "converted".into(),
+                voice_id: "narrator".into(),
+                audio_key: "[]".into(),
+            }),
+        });
+        let restored: Project = serde_json::from_slice(&serde_json::to_vec(&p).unwrap()).unwrap();
+        assert!(validate(&restored).is_ok());
+        assert_eq!(
+            restored.timeline.voices[0]
+                .production
+                .as_ref()
+                .unwrap()
+                .status,
+            "converted"
+        );
+        p.videos[0].start_ms = 86_400_000.;
+        assert!(validate(&p).is_err());
+        p.videos[0].start_ms = 0.;
+        p.timeline.voices[0].production.as_mut().unwrap().voice_id = "different".into();
         assert!(validate(&p).is_err());
     }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { blankTimeline, clipDuration, clipEnd, formatWaveTime, sourceClip, timelineDuration } from '../src/shared/waveStudio'
+import { voiceAudioKey, voiceComplete, reconcileVoiceProduction, projectDuration, blankTimeline, clipDuration, clipEnd, formatWaveTime, sourceClip, timelineDuration } from '../src/shared/waveStudio'
 import { insertMain, transferClip, replaceRange, joinCandidateIds, assignVoice, changeSpeed, historyEdit, historyRedo, historyUndo, insertSilence, moveClip, removeRange, splitAt } from '../src/shared/waveStudioEdits'
 const source = { id: crypto.randomUUID(), name: 'Narration', durationMs: 10000, channels: 2 }
 const original = () => ({ ...blankTimeline(), clips: [sourceClip(source)] })
@@ -21,4 +21,13 @@ describe('Wave production editing',()=>{
  it('transfers an effect to narration without duplication or overwriting',()=>{const t=original(),effect=sourceClip({...source,durationMs:500},2000,true);t.sfx=[effect];const n=transferClip(t,effect.id,'main',1000);expect(n.sfx).toEqual([]);expect(n.clips.filter(c=>c.id===effect.id)).toHaveLength(1);expect(timelineDuration(n)).toBe(10500);expect(t.clips).toHaveLength(1)})
  it('replaces a converted passage while preserving later timing, tags, and effects',()=>{let t=assignVoice(original(),2000,4000,{id:'v',name:'V'});t.sfx=[sourceClip({...source,durationMs:500},7000,true)];const n=replaceRange(t,2000,4000,sourceClip({...source,id:'converted',durationMs:2000}));expect(n.clips.map(c=>[c.startMs,clipEnd(c)])).toEqual([[0,2000],[2000,4000],[4000,10000]]);expect(n.voices).toEqual(t.voices);expect(n.sfx).toEqual(t.sfx);expect(n.clips[2]?.sourceStartMs).toBe(4000)})
  it('chooses fully selected clips for Join and honours a selected clip before the playhead',()=>{const t=splitAt(splitAt(original(),2000),4000);expect(joinCandidateIds(t,[0,4000],0,null)).toEqual(t.clips.slice(0,2).map(c=>c.id));expect(joinCandidateIds(t,null,0,t.clips[1]!.id)).toEqual(t.clips.slice(1).map(c=>c.id))})
+})
+
+
+describe('Voice production completion', () => {
+ const completed = () => { const t=assignVoice(original(),0,10000,{id:'narrator',name:'Narrator'}); const v=t.voices[0]!;v.production={status:'converted',voiceId:v.voiceId,audioKey:voiceAudioKey(t,v)}; return t }
+ it('keeps completion after splitting, changing gain or adding fades and effects', () => { const t=splitAt(completed(),5000); t.clips[0]!.gainDb=-12;t.clips[0]!.fadeInMs=250;t.sfx.push(sourceClip({...source,id:'effect'},0,true));expect(voiceComplete(t,t.voices[0]!)).toBe(true) })
+ it('invalidates completion when source audio changes or a different voice is assigned', () => { const t=completed();t.clips[0]!.sourceId='new-recording';expect(reconcileVoiceProduction(t).voices[0]!.production).toBeUndefined();const next=completed();next.voices[0]!.voiceId='another-voice';expect(voiceComplete(next,next.voices[0]!)).toBe(false) })
+ it('keeps completed regions after moving a whole passage without changing its content', () => { const t=completed();t.clips[0]!.startMs=1000;t.voices[0]!.startMs=1000;t.voices[0]!.endMs=11000;expect(voiceComplete(t,t.voices[0]!)).toBe(true) })
+ it('includes reference video placement in playback duration', () => {expect(projectDuration({schemaVersion:1,id:'p',name:'P',revision:0,updatedAtMs:0,sources:[],timeline:blankTimeline(),videos:[{id:'v',name:'Video',startMs:1000,durationMs:2000}]})).toBe(3000)})
 })

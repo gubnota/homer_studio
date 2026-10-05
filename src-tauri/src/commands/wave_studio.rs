@@ -413,9 +413,21 @@ pub fn wave_generate_speech(
 pub fn wave_convert_regions(
     app: AppHandle,
     state: State<'_, AppState>,
-    project: Project,
+    mut project: Project,
+    region_ids: Vec<String>,
+    regenerate: bool,
 ) -> Result<String, CommandError> {
     wave_store::validate_sources(&app, &project)?;
+    project
+        .timeline
+        .voices
+        .retain(|r| region_ids.contains(&r.id) && (regenerate || r.production.is_none()));
+    if project.timeline.voices.is_empty() {
+        return Err(CommandError::new(
+            "NO_PENDING_VOICES",
+            "All selected passages are already generated or converted. Select Regenerate to replace one deliberately.",
+        ));
+    }
     let settings = settings::load(&app)?;
     Ok(enqueue_processing(
         app,
@@ -432,4 +444,86 @@ pub fn wave_processing_result(
     job_id: String,
 ) -> Result<crate::services::wave_processing::ProcessingResult, CommandError> {
     crate::services::wave_processing::read(&app, &job_id)
+}
+
+#[tauri::command]
+pub async fn wave_has_video(app: AppHandle, path: String) -> Result<bool, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::services::wave_video::has_video(std::path::Path::new(&path), &settings::load(&app)?)
+    })
+    .await
+    .map_err(|e| CommandError::internal(e.to_string()))?
+}
+#[tauri::command]
+pub async fn wave_import_video(
+    app: AppHandle,
+    path: String,
+) -> Result<crate::services::wave_studio::Video, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::services::wave_video::import(
+            &app,
+            std::path::Path::new(&path),
+            &settings::load(&app)?,
+        )
+    })
+    .await
+    .map_err(|e| CommandError::internal(e.to_string()))?
+}
+#[tauri::command]
+pub fn wave_video_url(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<String, CommandError> {
+    let path = crate::services::wave_video::path(&app, &id)?;
+    if !path.is_file() {
+        return Err(CommandError::new(
+            "VIDEO_NOT_FOUND",
+            "Video reference is missing.",
+        ));
+    }
+    let key = format!("wave-video-{id}");
+    state
+        .audio_assets
+        .write()
+        .map_err(|_| CommandError::internal("Media registry unavailable"))?
+        .insert(key.clone(), path);
+    Ok(format!("audio://localhost/{key}"))
+}
+#[tauri::command]
+pub fn wave_deleted(app: AppHandle) -> Result<Vec<Project>, CommandError> {
+    wave_store::deleted(&app)
+}
+#[tauri::command]
+pub fn wave_delete(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    restore: bool,
+) -> Result<(), CommandError> {
+    let _guard = state
+        .project_write_lock
+        .lock()
+        .map_err(|_| CommandError::internal("Project lock unavailable"))?;
+    wave_store::trash(&app, &id, restore)
+}
+#[tauri::command]
+pub async fn wave_save_copy(
+    app: AppHandle,
+    project: Project,
+    path: String,
+) -> Result<(), CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        wave_store::save_copy(&app, &project, std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| CommandError::internal(e.to_string()))?
+}
+#[tauri::command]
+pub async fn wave_open_copy(app: AppHandle, path: String) -> Result<Project, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        wave_store::open_copy(&app, std::path::Path::new(&path), &settings::load(&app)?)
+    })
+    .await
+    .map_err(|e| CommandError::internal(e.to_string()))?
 }

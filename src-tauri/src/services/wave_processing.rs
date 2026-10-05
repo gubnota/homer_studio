@@ -15,6 +15,8 @@ pub struct Replacement {
     pub start_ms: f64,
     pub end_ms: f64,
     pub source_id: String,
+    #[serde(default)]
+    pub region_id: Option<String>,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -193,7 +195,7 @@ pub fn generate(
 fn convert_chunk(
     app: &AppHandle,
     worker: &str,
-    reference: &[u8],
+    reference: &Option<Vec<u8>>,
     source: &Path,
     out: &Path,
     duration: f64,
@@ -204,7 +206,10 @@ fn convert_chunk(
         worker,
         &fs::read(source).map_err(|e| CommandError::io("Cannot read narration", e))?,
     )?;
-    let reference_id = sound_workers::upload_reference(worker, reference)?;
+    let reference_id = reference
+        .as_ref()
+        .map(|bytes| sound_workers::upload_reference(worker, bytes))
+        .transpose()?;
     let bytes = sound_workers::generate(
         worker,
         &serde_json::json!({"prompt":"Convert recorded delivery","category":"voice_conversion","durationSeconds":duration/1000.,"seed":null,"sourceId":source_id,"referenceId":reference_id}),
@@ -276,14 +281,7 @@ pub fn convert(
     }
     let references = regions
         .iter()
-        .map(|r| {
-            voice_store::selected_sample(app, &r.voice_id)?.ok_or_else(|| {
-                CommandError::new(
-                    "VOICE_HAS_NO_SAMPLE",
-                    format!("{} needs a voice reference in Voice Lab.", r.name),
-                )
-            })
-        })
+        .map(|r| voice_store::selected_sample(app, &r.voice_id))
         .collect::<Result<Vec<_>, _>>()?;
     speech::ensure_worker_ready(app, &settings.sounds.original_url, true, control)?;
     stage(app, |work| {
@@ -370,6 +368,7 @@ pub fn convert(
                     start_ms: start,
                     end_ms: end,
                     source_id: source.id.clone(),
+                    region_id: Some(region.id.clone()),
                 });
                 result.sources.push(source);
                 done += 1;

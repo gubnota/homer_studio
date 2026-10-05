@@ -1,4 +1,4 @@
-import { clipDuration, clipEnd, newId, type WaveClip, type WaveTimeline } from './waveStudio'
+import { clipDuration, clipEnd, newId, voiceColor, type WaveClip, type WaveTimeline } from './waveStudio'
 const copy = (t: WaveTimeline): WaveTimeline => structuredClone(t)
 export function splitClip(c: WaveClip, at: number): WaveClip[] {
   if (at <= c.startMs || at >= clipEnd(c)) return [c]
@@ -38,7 +38,7 @@ export function changeSpeed(t: WaveTimeline, a: number, b: number, speed: number
 }
 export function assignVoice(t: WaveTimeline, a: number, b: number, voice: { id: string; name: string; color?: string }): WaveTimeline {
   const remaining = t.voices.flatMap(v => v.endMs <= a || v.startMs >= b ? [v] : [ ...(v.startMs < a ? [{ ...v, endMs: a }] : []), ...(v.endMs > b ? [{ ...v, id: newId(), startMs: b }] : []) ])
-  return { ...t, voices: [...remaining, { id: newId(), voiceId: voice.id, name: voice.name, color: voice.color || '#6c7f91', startMs: a, endMs: b }] }
+  return { ...t, voices: [...remaining, { id: newId(), voiceId: voice.id, name: voice.name, color: voiceColor(voice), startMs: a, endMs: b }] }
 }
 export function moveClip(t: WaveTimeline, id: string, startMs: number, swapId?: string): WaveTimeline {
   const next = copy(t), moving = next.clips.find(c => c.id === id)

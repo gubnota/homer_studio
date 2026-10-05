@@ -12,7 +12,7 @@
 - Version 0.2.4 includes app-owned Chatterbox setup, narration recovery when a local worker stops, a two-job restart boundary for local Chatterbox memory, per-section narration and takes, batch chapter narration from Review, queue progress/cleanup, and recording-to-narrator conversion.
 - The Tauri app, durable project storage, drag-and-drop import, optional local text providers, local neural voice library, narration/import, review, export, and packaging are implemented.
 - The arm64 app bundle is verified for patch releases. Review, Exports, and clip libraries have bulk save/delete controls; Voice Lab converts standalone recordings; Review has zoomable waveform playback.
-- Current approved milestone: shared voice production, native lossless recording, reversible editing, Voice Memos and optional isolated audio processors. This task stays local; no push or release tag is authorized.
+- Version 0.2.5: Wave voice completion tracking, styled editing controls, portable searchable projects, muted video references and explicit M4A export. User authorized pushing and publishing v0.2.5 after successful verification.
 
 ## Technology
 - CPAL 0.17.0/CoreAudio input capture and Hound float-WAV persistence; FFmpeg renders immutable audio compositions. Device discovery runs off the UI thread and has an optimized-build regression check (0.16.0 crashed in CoreAudio enumeration).

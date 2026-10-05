@@ -11,6 +11,7 @@ from worker_protocol import Worker, serve
 
 _model = None
 _vc_model = None
+_vc_builtin = None
 
 
 def check_model(path):
@@ -24,7 +25,7 @@ def check_model(path):
 
 
 def generate(request, model_dir):
-    global _model, _vc_model
+    global _model, _vc_model, _vc_builtin
     import torch
     import torchaudio
     from chatterbox.tts import ChatterboxTTS
@@ -34,9 +35,12 @@ def generate(request, model_dir):
         device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
         if _vc_model is None:
             _vc_model = ChatterboxVC.from_local(str(model_dir), device=device)
+            _vc_builtin = _vc_model.ref_dict
+        if not request.get("referencePath"):
+            _vc_model.ref_dict = _vc_builtin
         try:
             with torch.inference_mode():
-                wave = _vc_model.generate(audio=request["sourcePath"], target_voice_path=request["referencePath"])
+                wave = _vc_model.generate(audio=request["sourcePath"], target_voice_path=request.get("referencePath"))
                 result = io.BytesIO()
                 torchaudio.save(result, wave.cpu(), _vc_model.sr, format="wav")
                 return result.getvalue()

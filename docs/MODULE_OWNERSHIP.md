@@ -53,3 +53,5 @@ Rules:
 - SFX library owns reusable assets; projects own gain/fade/trim placements. Removing a placement never alters the original. Legacy project and memo schemas remain independent.
 
 - Wave processing owns isolated peak measurement, lossless Join, owned generated sources and Original conversion with duration fitting. Renderer owns explicit acceptance, original timeline restoration and project/view save draining. Capture retains memo assets before Wave import.
+
+- Wave native storage owns portable media validation and recoverable manifest deletion. Video service owns silent reference transcoding; renderer synchronizes frames to the audio clock. Shared timeline helpers own voice completion identity; acceptance records completion after replacement.

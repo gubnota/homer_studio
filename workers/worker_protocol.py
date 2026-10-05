@@ -62,8 +62,8 @@ class Worker:
             raise ValueError("Unwanted sounds must be text under 300 characters for effects only.")
         reference_id = request.get("referenceId")
         source_id = request.get("sourceId")
-        if category == "voice_conversion" and (not isinstance(source_id, str) or not isinstance(reference_id, str)):
-            raise ValueError("Voice conversion needs a recording and a narrator sample.")
+        if category == "voice_conversion" and not isinstance(source_id, str):
+            raise ValueError("Voice conversion needs a recording.")
         if source_id is not None and (self.engine != "chatterbox_original" or category != "voice_conversion" or source_id == reference_id):
             raise ValueError("Recorded source is only supported by Original Chatterbox voice conversion.")
         if reference_id is not None:
@@ -73,6 +73,10 @@ class Worker:
                 if reference_id not in self.references:
                     raise ValueError("Reference audio expired. Try again.")
                 if source_id is not None and source_id not in self.references:
+                    raise ValueError("Recorded source expired. Try again.")
+        if source_id is not None:
+            with self.lock:
+                if source_id not in self.references:
                     raise ValueError("Recorded source expired. Try again.")
         with self.lock:
             if any(job["status"] in ("queued", "running") for job in self.jobs.values()):

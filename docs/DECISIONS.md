@@ -196,3 +196,13 @@ Context: Voice tags alone could not produce audible/exportable conversion, and e
 Decision: Use native memo capture, queued local speech/Original conversion with immutable result previews, explicit acceptance and an original timeline baseline. Persist optional view/baseline fields in schema 1. Narration insertion ripples later placements; Join renders only selected narration; normalization measures isolated fragment peaks.
 Consequences: Accepted audio uses existing shared preview/export rendering. Large conversion timing mismatches fail rather than moving later audio. Undo history remains session-only.
 Related files: `services/wave_processing.rs`, `WaveStudioProvider.tsx`, `WaveRecordingPanel.tsx`, `WaveProductionPanel.tsx`, `docs/WAVE_STUDIO.md`.
+
+# ADR-0021: Persistent voice completion and silent video references
+
+Date: 2026-10-05
+Status: Accepted
+
+Context: Reapplying voice conversion processed completed audio repeatedly; project switching and synchronization needed clearer controls.
+Decision: Record completed voice production against the selected voice and audible source intervals, preserving it across splits and level changes. Skip complete passages unless regeneration is explicit. Store video as owned silent MP4 references outside audio export. Portable project copies include media and import with new owned IDs; deletion is recoverable.
+Consequences: Existing schema-1 projects remain readable through optional fields. Video import may take time; references cannot accidentally contribute audio. History remains session-local while production and view state persist.
+Related files: `src/shared/waveStudio.ts`, `WaveProductionPanel.tsx`, `WaveProjectsPanel.tsx`, `WaveVideoReference.tsx`, `services/wave_store.rs`, `services/wave_video.rs`.
