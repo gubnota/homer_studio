@@ -12,9 +12,10 @@
 - Version 0.2.4 includes app-owned Chatterbox setup, narration recovery when a local worker stops, a two-job restart boundary for local Chatterbox memory, per-section narration and takes, batch chapter narration from Review, queue progress/cleanup, and recording-to-narrator conversion.
 - The Tauri app, durable project storage, drag-and-drop import, optional local text providers, local neural voice library, narration/import, review, export, and packaging are implemented.
 - The arm64 app bundle is verified for patch releases. Review, Exports, and clip libraries have bulk save/delete controls; Voice Lab converts standalone recordings; Review has zoomable waveform playback.
-- The user authorized a new tag and push after the portable worker fix is verified.
+- Current approved milestone: shared voice production, native lossless recording, reversible editing, Voice Memos and optional isolated audio processors. This task stays local; no push or release tag is authorized.
 
 ## Technology
+- CPAL/CoreAudio input capture and Hound float-WAV persistence; FFmpeg renders immutable audio compositions.
 - Tauri 2 desktop shell with a narrow Rust command boundary.
 - React 18, TypeScript, Vite, and Vitest renderer reconstructed from prototype components.
 - Prototype-derived styling maintained as the visual baseline.
@@ -63,7 +64,7 @@
 - Exports screen.
 - Settings screen.
 - Project-independent Sound Studio and clip library.
-- Persistent project playback bar.
+- Shared custom audio transport in clip, voice and export views; chapter Review retains its waveform transport.
 - Neutral backgrounds, white panels, compact typography, and narrow borders.
 
 ## Data principles
@@ -104,6 +105,15 @@
 - Record completed work and validation in `docs/TASK_LOG.md`.
 - Do not scan or paste the whole repository by default.
 - Commit each verified implementation stage; do not push until the user asks.
+
+## Voice production
+- Voice Memos is project independent; the same editor is embedded in Review, Sound Studio and Voice Lab.
+- Sources remain immutable; selected takes and up to 100 undo steps persist in schema-v1 memo metadata.
+- Native microphone capture is mono float WAV at the device rate; rendered variants are mono 48 kHz float WAV.
+- Optional Seed-VC, RVC, DeepFilterNet and Resemble Enhance use explicit per-engine environments and local models.
+- Processor installation/readiness is implemented; real model inference and microphone listening still require manual verification.
+- Sentence cues follow edits using measured durations; replacement timing is approximate, with no forced alignment.
+- See `docs/VOICE_PRODUCTION.md` for operation, local setup and limitations.
 
 ## Navigation
 - `docs/ARCHITECTURE_INDEX.md`: repository map.

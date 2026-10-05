@@ -101,3 +101,20 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 - `worker_runtime_status(pythonPath?) -> { path, installed, pythonPath, message }` reports the app-data venv and a discovered or selected Python 3.10 executable. `installed` requires the pinned requirements marker and venv interpreter; worker resources must exist in the app bundle.
 - `install_worker_runtime(pythonPath?) -> jobId` explicitly creates the venv under app data, installs pinned packages, verifies imports, and records setup progress/errors in the existing job queue. Cancellation terminates the setup child. The selected worker starts after both packages and its checkpoint are installed.
 - Worker scripts are bundled in `Contents/Resources/workers`; checkpoints remain under app data `models/`. No production command resolves workers through `CARGO_MANIFEST_DIR`.
+
+## Voice production (schema 1)
+- App data `audio-studio/`: `assets/<UUID>.wav`, `memos/<UUID>.json`, waveform caches, `engines.json`, `profiles.json`, isolated `runtimes/<engine>/`.
+- RecordingSession: schemaVersion, UUID id, name, notes, favorite, deleted, revision, timestamps, takes, selectedTakeId, undo/redo. Optional contextType/chapterId/segmentId/speakerId/text defaults preserve older metadata.
+- AudioVariant: immutable UUID WAV, measured duration/sample rate, parentId, source/preview/accepted/rejected state, name/favorite/notes, composition, cues and optional processing history. Newly recorded sources preserve the input rate; derived media uses mono 48 kHz float WAV.
+- Composition clips: assetId (null means silence), startMs/endMs, gain, fadeInMs/fadeOutMs and incoming crossfadeMs. Duration equals sum of clip spans minus incoming overlaps. At most 4096 validated clips; originals remain intact.
+- Processing history includes engine, adapter/package version, preset, merged params, profileId, source range, backend and timestamp.
+- Preview creation preserves selectedTakeId; acceptance selects the new take and stores undo. Reject/delete never destroys WAVs needed by another composition. Active take deletion is forbidden.
+- Memo commands: list_memos, create_memo, get_memo, update_memo, update_memo_take, choose_memo_take; import_memo_audio, edit_memo_audio, replace_memo_range, extract_memo_selection, memo_audio_url, memo_waveform, export_memo, memo_source_path and convert_memo_segment. Mutations require expectedRevision where applicable.
+- Capture commands: audio_capture_devices, audio_capture_permission, audio_capture_start, audio_capture_control (status/pause/resume/stop/discard). `audio-capture` events report state, elapsedMs, peak/RMS, clipping and bounded recent peaks. Capture limit: one hour.
+- Processor commands: audio_engine_configs, save_audio_engine, audio_engine_status, setup_audio_engine, process_memo_audio, list_voice_profiles, save_voice_profile, publish_memo_audio and import_library_audio.
+- Queued audio jobs use existing job controls/events; processor stages are indeterminate unless meaningful progress exists. Cancellation terminates the process group, reaps it and prevents a new variant from being committed.
+- Worker NDJSON protocol 1: one stdin request, optional stage messages and exactly one result or error. Request ≤1 MB; stdout frames ≤64 KB; retained stderr ≤8 KB. Status validates Python imports and local files. Inference sets Hugging Face offline flags.
+- Publication requires accepted/source selected media. Targets: chapter, segment, sound or voice; project writes check project revision. Chatterbox reference samples retain the 6–20 second limit.
+- Memo export accepts WAV (24-bit), FLAC, M4A/AAC or MP3; writes staging media, probes measured duration and atomically publishes after revision/cancellation checks.
+- Waveform windows return durationMs/startMs/endMs and ≤2048 min/max peaks. Audio protocol responses are capped at 4 MB and support 206/416 byte-range semantics.
+- Cue timings are remapped from composition spans; affected replacement cues are scaled to actual measured output, without claiming word alignment.

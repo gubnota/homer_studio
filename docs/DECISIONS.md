@@ -166,3 +166,13 @@ Context: A chapter batch reached an 18 GB physical footprint and a 30.6 GB peak 
 Decision: Count successful generations in worker health. Before a new request uploads its voice reference, restart the packaged default-port worker after two completed jobs and verify the replacement. Shorten narration requests to 180 characters to reduce per-request peak allocation. Leave custom worker URLs under their operator's control.
 Consequences: Long narration jobs reload the model more often, trading speed for bounded cross-request growth. An individual request can still have a high peak; long-run memory behavior requires an installed-app measurement.
 Related files: `workers/worker_protocol.py`, `src-tauri/src/services/sound_workers.rs`, `src-tauri/src/services/speech.rs`, `src-tauri/src/services/sound_render.rs`.
+
+# ADR-0018: Immutable voice production assets and isolated optional processors
+
+Date: 2026-10-05
+Status: Accepted
+
+Context: The approved voice-production milestone needs lossless capture, retakes, reversible edits and optional local processors while preserving existing audiobook and Chatterbox workflows.
+Decision: Store microphone originals as native-rate mono float WAV and derived takes as 48 kHz float WAV. Persist revisioned memo compositions and selected-take history independently of projects. Render immutable variants with FFmpeg, remap cues from measured spans and publish only accepted results through existing stores. Capture uses one native stream. Optional engines run in separate explicitly installed environments using bounded NDJSON and process-group cancellation.
+Consequences: Failed jobs preserve previous media; edits and processing previews remain reviewable. Models/checkouts must be supplied locally, and adapter readiness does not substitute for live inference verification. Cue timing after voice conversion is approximate. Audio files referenced by compositions are retained after soft deletion.
+Related files: `src-tauri/src/services/audio_*.rs`, `memo_store.rs`, `voice_profiles.rs`, `waveform.rs`; `workers/audio/`; `src/renderer/src/VoiceMemosPage.tsx`; `docs/VOICE_PRODUCTION.md`.

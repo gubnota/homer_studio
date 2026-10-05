@@ -63,3 +63,18 @@
 - `npm run pack:mac`: release `.app` bundle plus arm64/signature verification.
 - `npm run test:smoke`: packaged app startup check.
 - `npm run package:mac`: verified Apple Silicon app, DMG, and ZIP.
+
+## Shared voice production
+- `src/shared/audio.ts`: memo, composition, capture, processing and voice-profile contracts.
+- `src/renderer/src/audioNative.ts`: typed audio/capture/processor bridge.
+- `src/renderer/src/VoiceMemosPage.tsx`: standalone/embedded memo library, recording, retakes, exports and publication.
+- `src/renderer/src/components/AudioEditor.tsx`: selections, waveform, edits, take previews and sentence cues.
+- `AudioTransport.tsx`, `AudioProcessingPanel.tsx`, `StudioControls.tsx` in the same folder: playback, optional processors and styled controls.
+- `src/renderer/src/useNativeRecording.ts`: lossless capture shared by legacy recording entry points.
+- `src-tauri/src/commands/audio.rs`, `audio_capture.rs`, `audio_processing.rs`: validated IPC and queued operations.
+- `src-tauri/src/services/audio_assets.rs`, `audio_edits.rs`, `memo_store.rs`: immutable WAV assets, composition rendering and revisioned memo persistence.
+- `audio_capture.rs`, `waveform.rs` in services: CoreAudio capture lifecycle and bounded multilevel peak cache.
+- `audio_processors.rs`, `voice_profiles.rs` in services: isolated NDJSON supervisors and backward-compatible voice sidecars.
+- `workers/audio/processor.py`, `inference_driver.py`: lazy local inference adapters; per-engine `.txt` files pin environment dependencies.
+- `workers/audio/test_processor.py`, `tests/audio-studio.test.tsx`: protocol validation and shared editor regression coverage; native tests remain colocated with services.
+- `docs/VOICE_PRODUCTION.md`: setup and manual verification guide.

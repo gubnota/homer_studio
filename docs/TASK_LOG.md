@@ -139,3 +139,12 @@
 # 2026-09-23 — Download completed chapters during a batch
 - Review now refreshes when each chapter is committed and keeps Save chapter audio available while later chapters render. Exports exposes per-chapter downloads without requiring full-audiobook approval.
 - Renderer typecheck, nine tests, production web build, and local arm64 app/signature verification passed. The installed app still needs the updated bundle to show these controls.
+
+# 2026-10-05 — Approved voice production implementation
+- Implemented the approved voice production plan: native lossless microphone capture, immutable audio assets, revision-aware memos/takes, reversible selection edits, waveform caching, retake previews, crossfades, and shared playback/editor controls.
+- Added Voice Memos and shared recording/editing integration in Review, Sound Studio, and Voice Lab; persisted take names, favorites, notes, context, undo/redo, voice profiles, processing history, and remapped sentence cues.
+- Added explicit isolated runtime setup and supervised NDJSON adapters for Seed-VC, RVC, DeepFilterNet, and Resemble Enhance. Original Chatterbox remains supported; jobs serialize, report stages, and cancel child process groups.
+- Accepted compositions can become chapter/segment audio, sound assets, or voice references. Exports support WAV, FLAC, AAC, and MP3 with measured duration checks; chapter imports retain lossless WAV sources.
+- Validation: renderer typecheck/production build and 12 tests, 49 native tests (including real FFmpeg exports and waveform fixtures), seven processor tests, and ten existing worker tests passed. Local arm64 app packaging, bundled resource/signature verification, packaged startup smoke, and whitespace checks passed.
+- Added `docs/VOICE_PRODUCTION.md` with engine setup, editing workflows, and manual verification steps. Microphone permission/device behavior, listening checks, actual model installation/inference, and CPU/MPS compatibility still require hands-on verification; automated checks do not establish model quality or availability.
+- Saved in local commits only. No remote push or publishing was requested.

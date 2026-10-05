@@ -34,3 +34,13 @@ Rules:
 - `model_install.rs` owns pinned, allow-listed download paths. Workers load installed checkpoints and never initiate downloads.
 - `worker_runtime.rs` owns the app-data Python environment and bundled worker paths; the launcher must not depend on a checkout or mutate its source directory.
 - `project_store.rs` owns non-destructive take selection and revision checks; UI recording never writes project files directly.
+
+## Voice production boundaries
+- Audio asset/store services own immutable source files and revisioned session metadata. Renderer supplies IDs and intents, never asset paths for playback.
+- `audio_edits` owns selection math, crossfades, measured rendering and cue remapping; originals are never rewritten.
+- Native capture owns microphone permission, stream, bounded disk queue and meters. One active capture is shared across views; normal app quit finalizes capture.
+- Waveform service owns streamed decoding and persistent min/max peaks. Renderer requests bounded time windows.
+- Processor service owns per-engine environments, bounded protocol parsing, deadlines and process-group cancellation. Python owns inference only; it never updates project or memo manifests.
+- Audio commands serialize publication through the shared queue and recheck revisions under the project write lock. Existing project/sound/voice stores retain final publication ownership.
+- Profile sidecars reference existing voice IDs and accepted memos; Chatterbox sample storage and limits remain authoritative.
+- Shared editor/transport components own interaction and presentation; they depend on typed bridges and shared contracts, not native filesystem/process APIs.

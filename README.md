@@ -43,13 +43,17 @@ The Voices screen offers the built-in Chatterbox model voice and custom voices f
 
 For a long chapter, open **Manual sections** in Review. Generate individual sections or the remaining ones, preview saved takes, choose a take, and assemble the chapter. Click a spoken cue to seek to that section. After assembly, drag on its waveform to select up to 20 seconds within one section. Record that passage and convert it to the selected custom narrator voice with Original Chatterbox. The replacement has short edge fades and appears as a new, unselected take; listen, choose **Use take**, and reassemble. Choosing the earlier take restores the previous delivery. Generated chapter audio can be exported or deleted from Review. The Render Queue shows progress, errors, and controls for cancelling or clearing finished jobs.
 
-You can also import existing chapter audio. FFmpeg converts chapter media to 48 kHz stereo AAC/M4A and FFprobe measures its real duration.
+You can also import existing chapter audio. FFmpeg preserves WAV chapter masters and normalizes other chapter media to 48 kHz stereo AAC/M4A and FFprobe measures its real duration.
 
 Approve every current chapter recording before export. Homer Studio rechecks the media, joins it, verifies the final duration, and writes both the M4A and timestamp text file to the project.
 
 ## Standalone sounds
 
 Open **Sound Studio** without a project to create English speech or a supported Chatterbox Turbo vocal gesture. Speech uses the selected voice from the searchable voice picker. Each finished clip stays in a separate library and can be played, retried, or exported as WAV or M4A. Sound effects are no longer generated; earlier clips remain in the library. Settings can install Turbo and Original checkpoints and the shared Python runtime on request. See [workers/README.md](workers/README.md) for setup and limitations. Worker addresses are set in **Settings**.
+
+## Voice recording and editing
+
+Voice Memos records lossless microphone audio, keeps originals, and supports waveform selections, retakes, reversible edits, take comparison and WAV/FLAC/M4A/MP3 export. The editor is also available in Review, Sound Studio and Voice Lab. Optional Seed-VC/RVC conversion and DeepFilterNet/Resemble cleanup use explicitly installed isolated environments and local model files. See [Voice production](docs/VOICE_PRODUCTION.md) for setup, workflow and manual verification requirements.
 
 ## Checks and packages
 
