@@ -19,6 +19,7 @@ pub struct JobRecord {
     pub label: String,
     pub status: String,
     pub progress: u8,
+    pub indeterminate: bool,
     pub message: Option<String>,
     pub created_at_ms: u64,
     pub events: Vec<JobEvent>,
@@ -41,7 +42,10 @@ pub struct JobControl {
 
 impl JobControl {
     pub fn preview() -> Self {
-        Self { cancelled: Arc::new(AtomicBool::new(false)), paused: Arc::new(AtomicBool::new(false)) }
+        Self {
+            cancelled: Arc::new(AtomicBool::new(false)),
+            paused: Arc::new(AtomicBool::new(false)),
+        }
     }
     pub fn boundary(&self) -> Result<(), CommandError> {
         while self.paused.load(Ordering::SeqCst) && !self.cancelled.load(Ordering::SeqCst) {
@@ -89,12 +93,20 @@ impl JobStore {
     where
         F: FnOnce(JobControl, Box<dyn Fn(u8) + Send>) -> Result<(), CommandError> + Send + 'static,
     {
-        self.enqueue_with_report(kind, label, move |control, progress, _report| task(control, progress))
+        self.enqueue_with_report(kind, label, move |control, progress, _report| {
+            task(control, progress)
+        })
     }
 
     pub fn enqueue_with_report<F>(&self, kind: &str, label: String, task: F) -> String
     where
-        F: FnOnce(JobControl, Box<dyn Fn(u8) + Send>, Box<dyn Fn(String) + Send>) -> Result<(), CommandError> + Send + 'static,
+        F: FnOnce(
+                JobControl,
+                Box<dyn Fn(u8) + Send>,
+                Box<dyn Fn(String) + Send>,
+            ) -> Result<(), CommandError>
+            + Send
+            + 'static,
     {
         let id = Uuid::new_v4().to_string();
         let cancelled = Arc::new(AtomicBool::new(false));
@@ -105,9 +117,15 @@ impl JobStore {
             label,
             status: "queued".into(),
             progress: 0,
+            indeterminate: kind.starts_with("audio"),
             message: None,
             created_at_ms: now_ms(),
-            events: vec![JobEvent { at_ms: now_ms(), status: "queued".into(), progress: 0, message: "Waiting for the local worker".into() }],
+            events: vec![JobEvent {
+                at_ms: now_ms(),
+                status: "queued".into(),
+                progress: 0,
+                message: "Waiting for the local worker".into(),
+            }],
         });
         self.controls.lock().unwrap().insert(
             id.clone(),
@@ -140,8 +158,15 @@ impl JobStore {
                 if let Ok(mut records) = report_records.lock() {
                     if let Some(record) = records.iter_mut().find(|record| record.id == report_id) {
                         record.message = Some(message.clone());
-                        record.events.push(JobEvent { at_ms: now_ms(), status: record.status.clone(), progress: record.progress, message });
-                        if record.events.len() > 100 { record.events.remove(0); }
+                        record.events.push(JobEvent {
+                            at_ms: now_ms(),
+                            status: record.status.clone(),
+                            progress: record.progress,
+                            message,
+                        });
+                        if record.events.len() > 100 {
+                            record.events.remove(0);
+                        }
                     }
                 }
             });
@@ -163,9 +188,15 @@ impl JobStore {
             .controls
             .lock()
             .map_err(|_| CommandError::internal("job controls are unavailable"))?;
-        let control = controls
-            .get(id)
-            .ok_or_else(|| CommandError::new("JOB_NOT_ACTIVE", "That job is no longer active."))?;
+        let Some(control) = controls.get(id) else {
+            if action == "cancel" && self.list().iter().any(|r| r.id == id) {
+                return Ok(());
+            }
+            return Err(CommandError::new(
+                "JOB_NOT_ACTIVE",
+                "That job is no longer active.",
+            ));
+        };
         match action {
             "cancel" => control.cancelled.store(true, Ordering::SeqCst),
             "pause" => control.paused.store(true, Ordering::SeqCst),
@@ -181,9 +212,20 @@ impl JobStore {
     }
 
     pub fn dismiss(&self, ids: &[String]) -> Result<usize, CommandError> {
-        let mut records = self.records.lock().map_err(|_| CommandError::internal("job records are unavailable"))?;
-        if ids.iter().any(|id| records.iter().any(|record| &record.id == id && !matches!(record.status.as_str(), "completed" | "failed" | "cancelled"))) {
-            return Err(CommandError::new("JOB_ACTIVE", "Cancel active jobs and wait for them to finish before cleaning the queue."));
+        let mut records = self
+            .records
+            .lock()
+            .map_err(|_| CommandError::internal("job records are unavailable"))?;
+        if ids.iter().any(|id| {
+            records.iter().any(|record| {
+                &record.id == id
+                    && !matches!(record.status.as_str(), "completed" | "failed" | "cancelled")
+            })
+        }) {
+            return Err(CommandError::new(
+                "JOB_ACTIVE",
+                "Cancel active jobs and wait for them to finish before cleaning the queue.",
+            ));
         }
         let before = records.len();
         records.retain(|record| !ids.contains(&record.id));
@@ -202,16 +244,27 @@ fn update(
         if let Some(record) = records.iter_mut().find(|record| record.id == id) {
             record.status = status.into();
             record.progress = progress;
-            if let Some(message) = message { record.message = Some(message); }
+            if let Some(message) = message {
+                record.message = Some(message);
+            }
             let event_message = record.message.clone().unwrap_or_else(|| match status {
                 "running" => "Running locally".into(),
                 "completed" => "Finished".into(),
                 "cancelled" => "Cancelled".into(),
                 _ => "Queued".into(),
             });
-            if record.events.last().is_none_or(|last| last.status != status || last.progress != progress || last.message != event_message) {
-                record.events.push(JobEvent { at_ms: now_ms(), status: status.into(), progress, message: event_message });
-                if record.events.len() > 100 { record.events.remove(0); }
+            if record.events.last().is_none_or(|last| {
+                last.status != status || last.progress != progress || last.message != event_message
+            }) {
+                record.events.push(JobEvent {
+                    at_ms: now_ms(),
+                    status: status.into(),
+                    progress,
+                    message: event_message,
+                });
+                if record.events.len() > 100 {
+                    record.events.remove(0);
+                }
             }
         }
     }
@@ -253,40 +306,69 @@ mod tests {
     #[test]
     fn reports_chapter_progress_in_order() {
         let store = JobStore::new();
-        let id = store.enqueue_with_report("speech", "Batch".into(), |_control, progress, report| {
-            report("Chapter 1 of 2: One".into());
-            progress(50);
-            report("Completed chapter 1 of 2: One".into());
-            report("Chapter 2 of 2: Two".into());
-            progress(99);
-            Ok(())
-        });
+        let id =
+            store.enqueue_with_report("speech", "Batch".into(), |_control, progress, report| {
+                report("Chapter 1 of 2: One".into());
+                progress(50);
+                report("Completed chapter 1 of 2: One".into());
+                report("Chapter 2 of 2: Two".into());
+                progress(99);
+                Ok(())
+            });
         for _ in 0..100 {
-            if store.list()[0].status == "completed" { break; }
+            if store.list()[0].status == "completed" {
+                break;
+            }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         let record = store.list().into_iter().find(|item| item.id == id).unwrap();
         assert_eq!(record.status, "completed");
         assert_eq!(record.progress, 100);
-        let messages: Vec<&str> = record.events.iter().map(|event| event.message.as_str()).collect();
-        assert!(messages.iter().position(|message| *message == "Chapter 1 of 2: One") < messages.iter().position(|message| *message == "Chapter 2 of 2: Two"));
+        let messages: Vec<&str> = record
+            .events
+            .iter()
+            .map(|event| event.message.as_str())
+            .collect();
+        assert!(
+            messages
+                .iter()
+                .position(|message| *message == "Chapter 1 of 2: One")
+                < messages
+                    .iter()
+                    .position(|message| *message == "Chapter 2 of 2: Two")
+        );
     }
 
     #[test]
     fn batch_failure_is_visible_and_events_stay_bounded() {
         let store = JobStore::new();
-        let id = store.enqueue_with_report("speech", "Batch".into(), |_control, _progress, report| {
-            for number in 0..105 { report(format!("Chapter update {number}")); }
-            Err(CommandError::new("SPEECH_FAILED", "Chapter 2 of 3 (Two): Worker stopped"))
-        });
+        let id =
+            store.enqueue_with_report("speech", "Batch".into(), |_control, _progress, report| {
+                for number in 0..105 {
+                    report(format!("Chapter update {number}"));
+                }
+                Err(CommandError::new(
+                    "SPEECH_FAILED",
+                    "Chapter 2 of 3 (Two): Worker stopped",
+                ))
+            });
         for _ in 0..100 {
-            if store.list()[0].status == "failed" { break; }
+            if store.list()[0].status == "failed" {
+                break;
+            }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         let record = store.list().into_iter().find(|item| item.id == id).unwrap();
         assert_eq!(record.status, "failed");
         assert!(record.message.unwrap().contains("Chapter 2 of 3 (Two)"));
         assert_eq!(record.events.len(), 100);
-        assert!(record.events.last().unwrap().message.contains("Worker stopped"));
+        assert!(
+            record
+                .events
+                .last()
+                .unwrap()
+                .message
+                .contains("Worker stopped")
+        );
     }
 }

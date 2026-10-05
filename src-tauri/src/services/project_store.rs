@@ -291,7 +291,12 @@ pub fn commit_chapter_audio(
         .iter_mut()
         .find(|chapter| chapter.id == chapter_id)
         .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
-    let relative_path = format!("chapters/{chapter_id}/audio-{}.m4a", Uuid::new_v4());
+    let extension = if staged_audio.extension().and_then(|v| v.to_str()) == Some("wav") {
+        "wav"
+    } else {
+        "m4a"
+    };
+    let relative_path = format!("chapters/{chapter_id}/audio-{}.{extension}", Uuid::new_v4());
     let destination = owned_path(&root, &relative_path)?;
     fs::rename(staged_audio, &destination)
         .or_else(|_| fs::copy(staged_audio, &destination).map(|_| ()))
@@ -323,19 +328,39 @@ pub fn commit_segment_take(
     duration_ms: u64,
     select: bool,
 ) -> Result<ProjectSnapshot, CommandError> {
-    let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
     let mut manifest = read_manifest(&root)?;
     require_revision(&manifest, expected_revision)?;
-    let chapter = manifest.chapters.iter_mut().find(|item| item.id == chapter_id)
+    let chapter = manifest
+        .chapters
+        .iter_mut()
+        .find(|item| item.id == chapter_id)
         .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
-    let segment = chapter.segments.iter_mut().find(|item| item.id == segment_id)
+    let segment = chapter
+        .segments
+        .iter_mut()
+        .find(|item| item.id == segment_id)
         .ok_or_else(|| CommandError::new("SEGMENT_NOT_FOUND", "The segment no longer exists."))?;
     let take_id = Uuid::new_v4().to_string();
-    let relative_path = format!("chapters/{chapter_id}/takes/{take_id}.m4a");
+    let extension = if staged_audio.extension().and_then(|v| v.to_str()) == Some("wav") {
+        "wav"
+    } else {
+        "m4a"
+    };
+    let relative_path = format!("chapters/{chapter_id}/takes/{take_id}.{extension}");
     let destination = owned_path(&root, &relative_path)?;
-    if let Some(parent) = destination.parent() { fs::create_dir_all(parent).map_err(|error| CommandError::io("Cannot create take folder", error))?; }
-    fs::copy(staged_audio, &destination).map_err(|error| CommandError::io("Cannot store segment take", error))?;
-    segment.takes.push(SegmentTake { id: take_id.clone(), audio_path: relative_path, duration_ms });
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| CommandError::io("Cannot create take folder", error))?;
+    }
+    fs::copy(staged_audio, &destination)
+        .map_err(|error| CommandError::io("Cannot store segment take", error))?;
+    segment.takes.push(SegmentTake {
+        id: take_id.clone(),
+        audio_path: relative_path,
+        duration_ms,
+    });
     if select {
         segment.selected_take = Some(take_id);
         chapter.audio_stale = chapter.audio_path.is_some();
@@ -343,47 +368,120 @@ pub fn commit_segment_take(
     }
     manifest.revision += 1;
     manifest.updated_at_ms = now_ms();
-    if let Err(error) = write_manifest(&root, &manifest) { let _ = fs::remove_file(destination); return Err(error); }
+    if let Err(error) = write_manifest(&root, &manifest) {
+        let _ = fs::remove_file(destination);
+        return Err(error);
+    }
     let _ = fs::remove_file(staged_audio);
     snapshot(&root, manifest)
 }
 
-pub fn selected_segment_takes(root_path: &str, chapter_id: &str) -> Result<Vec<(Segment, PathBuf)>, CommandError> {
-    let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
+pub fn selected_segment_takes(
+    root_path: &str,
+    chapter_id: &str,
+) -> Result<Vec<(Segment, PathBuf)>, CommandError> {
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
     let manifest = read_manifest(&root)?;
-    let chapter = manifest.chapters.iter().find(|item| item.id == chapter_id)
+    let chapter = manifest
+        .chapters
+        .iter()
+        .find(|item| item.id == chapter_id)
         .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
-    chapter.segments.iter().map(|segment| {
-        let take = segment.takes.iter().find(|take| Some(&take.id) == segment.selected_take.as_ref())
-            .ok_or_else(|| CommandError::new("SEGMENT_NOT_NARRATED", format!("Segment {} needs a take before assembly.", segment.order + 1)))?;
-        let path = owned_path(&root, &take.audio_path)?;
-        if !path.is_file() { return Err(CommandError::new("TAKE_MISSING", format!("Audio for segment {} is missing.", segment.order + 1))); }
-        Ok((segment.clone(), path))
-    }).collect()
+    chapter
+        .segments
+        .iter()
+        .map(|segment| {
+            let take = segment
+                .takes
+                .iter()
+                .find(|take| Some(&take.id) == segment.selected_take.as_ref())
+                .ok_or_else(|| {
+                    CommandError::new(
+                        "SEGMENT_NOT_NARRATED",
+                        format!(
+                            "Segment {} needs a take before assembly.",
+                            segment.order + 1
+                        ),
+                    )
+                })?;
+            let path = owned_path(&root, &take.audio_path)?;
+            if !path.is_file() {
+                return Err(CommandError::new(
+                    "TAKE_MISSING",
+                    format!("Audio for segment {} is missing.", segment.order + 1),
+                ));
+            }
+            Ok((segment.clone(), path))
+        })
+        .collect()
 }
 
-pub fn segment_take_path(root_path: &str, chapter_id: &str, segment_id: &str, take_id: &str) -> Result<PathBuf, CommandError> {
-    let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
+pub fn segment_take_path(
+    root_path: &str,
+    chapter_id: &str,
+    segment_id: &str,
+    take_id: &str,
+) -> Result<PathBuf, CommandError> {
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
     let manifest = read_manifest(&root)?;
-    let segment = manifest.chapters.iter().find(|chapter| chapter.id == chapter_id).and_then(|chapter| chapter.segments.iter().find(|segment| segment.id == segment_id))
+    let segment = manifest
+        .chapters
+        .iter()
+        .find(|chapter| chapter.id == chapter_id)
+        .and_then(|chapter| {
+            chapter
+                .segments
+                .iter()
+                .find(|segment| segment.id == segment_id)
+        })
         .ok_or_else(|| CommandError::new("SEGMENT_NOT_FOUND", "The section no longer exists."))?;
-    let take = segment.takes.iter().find(|take| take.id == take_id)
+    let take = segment
+        .takes
+        .iter()
+        .find(|take| take.id == take_id)
         .ok_or_else(|| CommandError::new("TAKE_NOT_FOUND", "The take no longer exists."))?;
     let path = owned_path(&root, &take.audio_path)?;
-    if !path.is_file() { return Err(CommandError::new("TAKE_MISSING", "The take audio is missing.")); }
+    if !path.is_file() {
+        return Err(CommandError::new(
+            "TAKE_MISSING",
+            "The take audio is missing.",
+        ));
+    }
     Ok(path)
 }
 
-pub fn select_segment_take(root_path: &str, expected_revision: u64, chapter_id: &str, segment_id: &str, take_id: &str) -> Result<ProjectSnapshot, CommandError> {
-    let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
+pub fn select_segment_take(
+    root_path: &str,
+    expected_revision: u64,
+    chapter_id: &str,
+    segment_id: &str,
+    take_id: &str,
+) -> Result<ProjectSnapshot, CommandError> {
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
     let mut manifest = read_manifest(&root)?;
     require_revision(&manifest, expected_revision)?;
-    let chapter = manifest.chapters.iter_mut().find(|chapter| chapter.id == chapter_id)
+    let chapter = manifest
+        .chapters
+        .iter_mut()
+        .find(|chapter| chapter.id == chapter_id)
         .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
-    let segment = chapter.segments.iter_mut().find(|segment| segment.id == segment_id)
+    let segment = chapter
+        .segments
+        .iter_mut()
+        .find(|segment| segment.id == segment_id)
         .ok_or_else(|| CommandError::new("SEGMENT_NOT_FOUND", "The section no longer exists."))?;
-    if !segment.takes.iter().any(|take| take.id == take_id) { return Err(CommandError::new("TAKE_NOT_FOUND", "The take no longer exists.")); }
-    if segment.selected_take.as_deref() == Some(take_id) { return snapshot(&root, manifest); }
+    if !segment.takes.iter().any(|take| take.id == take_id) {
+        return Err(CommandError::new(
+            "TAKE_NOT_FOUND",
+            "The take no longer exists.",
+        ));
+    }
+    if segment.selected_take.as_deref() == Some(take_id) {
+        return snapshot(&root, manifest);
+    }
     segment.selected_take = Some(take_id.into());
     chapter.audio_stale = chapter.audio_path.is_some();
     chapter.review_status = chapter.audio_path.as_ref().map(|_| "pending".into());
@@ -402,11 +500,16 @@ pub fn delete_generated_audio(
         .map_err(|error| CommandError::io("Cannot open project folder", error))?;
     let mut manifest = read_manifest(&root)?;
     require_revision(&manifest, expected_revision)?;
-    let chapter = manifest.chapters.iter_mut()
+    let chapter = manifest
+        .chapters
+        .iter_mut()
         .find(|chapter| chapter.id == chapter_id)
         .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "The chapter no longer exists."))?;
     if chapter.audio_origin.as_deref() != Some("generated") || chapter.audio_path.is_none() {
-        return Err(CommandError::new("AUDIO_NOT_GENERATED", "This chapter has no generated audio to delete."));
+        return Err(CommandError::new(
+            "AUDIO_NOT_GENERATED",
+            "This chapter has no generated audio to delete.",
+        ));
     }
     let former_path = owned_path(&root, chapter.audio_path.as_deref().unwrap())?;
     chapter.audio_path = None;
@@ -422,25 +525,47 @@ pub fn delete_generated_audio(
     snapshot(&root, manifest)
 }
 
-pub fn delete_generated_audio_many(root_path: &str, expected_revision: u64, ids: &[String]) -> Result<ProjectSnapshot, CommandError> {
-    let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
+pub fn delete_generated_audio_many(
+    root_path: &str,
+    expected_revision: u64,
+    ids: &[String],
+) -> Result<ProjectSnapshot, CommandError> {
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
     let mut manifest = read_manifest(&root)?;
     require_revision(&manifest, expected_revision)?;
     let unique: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
     if unique.is_empty() || unique.len() != ids.len() || unique.len() > manifest.chapters.len() {
-        return Err(CommandError::new("INVALID_SELECTION", "Choose existing chapters to delete."));
+        return Err(CommandError::new(
+            "INVALID_SELECTION",
+            "Choose existing chapters to delete.",
+        ));
     }
     let mut paths = Vec::new();
     for id in &unique {
-        let chapter = manifest.chapters.iter().find(|chapter| chapter.id == *id)
-            .ok_or_else(|| CommandError::new("CHAPTER_NOT_FOUND", "A selected chapter no longer exists."))?;
+        let chapter = manifest
+            .chapters
+            .iter()
+            .find(|chapter| chapter.id == *id)
+            .ok_or_else(|| {
+                CommandError::new("CHAPTER_NOT_FOUND", "A selected chapter no longer exists.")
+            })?;
         if chapter.audio_origin.as_deref() != Some("generated") {
-            return Err(CommandError::new("AUDIO_NOT_GENERATED", "Only generated chapter audio can be deleted."));
+            return Err(CommandError::new(
+                "AUDIO_NOT_GENERATED",
+                "Only generated chapter audio can be deleted.",
+            ));
         }
-        let relative = chapter.audio_path.as_deref().ok_or_else(|| CommandError::new("AUDIO_NOT_FOUND", "Generated chapter audio is missing."))?;
+        let relative = chapter.audio_path.as_deref().ok_or_else(|| {
+            CommandError::new("AUDIO_NOT_FOUND", "Generated chapter audio is missing.")
+        })?;
         paths.push(existing_owned_file(&root, relative)?);
     }
-    for chapter in manifest.chapters.iter_mut().filter(|chapter| unique.contains(chapter.id.as_str())) {
+    for chapter in manifest
+        .chapters
+        .iter_mut()
+        .filter(|chapter| unique.contains(chapter.id.as_str()))
+    {
         chapter.audio_path = None;
         chapter.audio_duration_ms = None;
         chapter.audio_origin = None;
@@ -451,29 +576,52 @@ pub fn delete_generated_audio_many(root_path: &str, expected_revision: u64, ids:
     manifest.revision += 1;
     manifest.updated_at_ms = now_ms();
     write_manifest(&root, &manifest)?;
-    for path in paths { fs::remove_file(path).map_err(|error| CommandError::io("Chapter record was removed but audio cleanup failed", error))?; }
+    for path in paths {
+        fs::remove_file(path).map_err(|error| {
+            CommandError::io("Chapter record was removed but audio cleanup failed", error)
+        })?;
+    }
     snapshot(&root, manifest)
 }
 
-pub fn delete_exports(root_path: &str, expected_revision: u64, ids: &[String]) -> Result<ProjectSnapshot, CommandError> {
-    let root = fs::canonicalize(root_path).map_err(|error| CommandError::io("Cannot open project folder", error))?;
+pub fn delete_exports(
+    root_path: &str,
+    expected_revision: u64,
+    ids: &[String],
+) -> Result<ProjectSnapshot, CommandError> {
+    let root = fs::canonicalize(root_path)
+        .map_err(|error| CommandError::io("Cannot open project folder", error))?;
     let mut manifest = read_manifest(&root)?;
     require_revision(&manifest, expected_revision)?;
     let unique: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
     if unique.is_empty() || unique.len() != ids.len() || unique.len() > manifest.exports.len() {
-        return Err(CommandError::new("INVALID_SELECTION", "Choose existing exports to delete."));
+        return Err(CommandError::new(
+            "INVALID_SELECTION",
+            "Choose existing exports to delete.",
+        ));
     }
     let mut paths = Vec::new();
     for id in &unique {
-        let item = manifest.exports.iter().find(|item| item.id == *id)
-            .ok_or_else(|| CommandError::new("EXPORT_NOT_FOUND", "A selected export no longer exists."))?;
+        let item = manifest
+            .exports
+            .iter()
+            .find(|item| item.id == *id)
+            .ok_or_else(|| {
+                CommandError::new("EXPORT_NOT_FOUND", "A selected export no longer exists.")
+            })?;
         paths.push(existing_owned_file(&root, &item.audio_path)?);
         paths.push(existing_owned_file(&root, &item.timestamps_path)?);
     }
-    manifest.exports.retain(|item| !unique.contains(item.id.as_str()));
+    manifest
+        .exports
+        .retain(|item| !unique.contains(item.id.as_str()));
     manifest.revision += 1;
     write_manifest(&root, &manifest)?;
-    for path in paths { fs::remove_file(path).map_err(|error| CommandError::io("Export record was removed but file cleanup failed", error))?; }
+    for path in paths {
+        fs::remove_file(path).map_err(|error| {
+            CommandError::io("Export record was removed but file cleanup failed", error)
+        })?;
+    }
     snapshot(&root, manifest)
 }
 
@@ -749,9 +897,13 @@ fn owned_path(root: &Path, relative: &str) -> Result<PathBuf, CommandError> {
 
 fn existing_owned_file(root: &Path, relative: &str) -> Result<PathBuf, CommandError> {
     let path = owned_path(root, relative)?;
-    let resolved = fs::canonicalize(&path).map_err(|error| CommandError::io("Cannot locate owned audio file", error))?;
+    let resolved = fs::canonicalize(&path)
+        .map_err(|error| CommandError::io("Cannot locate owned audio file", error))?;
     if !resolved.starts_with(root) || !resolved.is_file() {
-        return Err(CommandError::new("UNSAFE_PROJECT_PATH", "Project asset is not a file inside this project."));
+        return Err(CommandError::new(
+            "UNSAFE_PROJECT_PATH",
+            "Project asset is not a file inside this project.",
+        ));
     }
     Ok(path)
 }
@@ -893,7 +1045,9 @@ fn segment_text(text: &str) -> Vec<Segment> {
                     current.push_str(&piece);
                 }
             }
-            if !current.is_empty() { chunks.push(current); }
+            if !current.is_empty() {
+                chunks.push(current);
+            }
         } else {
             chunks.push(paragraph.to_string());
         }
@@ -914,7 +1068,10 @@ fn segment_text(text: &str) -> Vec<Segment> {
 fn preserve_segments(mut next: Vec<Segment>, previous: &[Segment]) -> Vec<Segment> {
     let mut used = std::collections::HashSet::new();
     for segment in &mut next {
-        if let Some(old) = previous.iter().find(|old| old.text == segment.text && used.insert(old.id.clone())) {
+        if let Some(old) = previous
+            .iter()
+            .find(|old| old.text == segment.text && used.insert(old.id.clone()))
+        {
             segment.id = old.id.clone();
             segment.selected_take = old.selected_take.clone();
             segment.takes = old.takes.clone();
@@ -984,22 +1141,31 @@ mod tests {
         );
         let segments = segment_text(&input);
         assert_eq!(segments.len(), 3);
-        assert!(segments
-            .iter()
-            .all(|segment| segment.text.chars().count() <= MAX_SEGMENT_CHARS));
+        assert!(
+            segments
+                .iter()
+                .all(|segment| segment.text.chars().count() <= MAX_SEGMENT_CHARS)
+        );
     }
 
     #[test]
     fn retains_takes_for_unchanged_segments_only() {
         let mut before = segment_text("First paragraph.\n\nSecond paragraph.");
         before[0].selected_take = Some("take-one".into());
-        before[0].takes.push(SegmentTake { id: "take-one".into(), audio_path: "chapters/a/takes/one.m4a".into(), duration_ms: 1234 });
+        before[0].takes.push(SegmentTake {
+            id: "take-one".into(),
+            audio_path: "chapters/a/takes/one.m4a".into(),
+            duration_ms: 1234,
+        });
         let after = preserve_segments(segment_text("First paragraph.\n\nA replacement."), &before);
         assert_eq!(after[0].id, before[0].id);
         assert_eq!(after[0].selected_take.as_deref(), Some("take-one"));
         assert_ne!(after[1].id, before[1].id);
         assert!(after[1].takes.is_empty());
-        let legacy: Segment = serde_json::from_value(serde_json::json!({"id":"old","order":0,"text":"Hello","selectedTake":null})).unwrap();
+        let legacy: Segment = serde_json::from_value(
+            serde_json::json!({"id":"old","order":0,"text":"Hello","selectedTake":null}),
+        )
+        .unwrap();
         assert!(legacy.takes.is_empty());
     }
 
@@ -1023,9 +1189,11 @@ mod tests {
             .expect("update chapter");
         assert_eq!(updated.revision, 2);
         assert_eq!(updated.chapters[0].source_text, "Updated");
-        assert!(Path::new(&updated.root_path)
-            .join("project.json.bak")
-            .is_file());
+        assert!(
+            Path::new(&updated.root_path)
+                .join("project.json.bak")
+                .is_file()
+        );
 
         let conflict = update_chapter(&created.root_path, 1, &chapter_id, "Old", "Stale")
             .expect_err("reject stale revision");
@@ -1039,11 +1207,13 @@ mod tests {
             processed.chapters[0].processed_text.as_deref(),
             Some("Spoken version")
         );
-        assert!(Path::new(&processed.root_path)
-            .join("chapters")
-            .join(&chapter_id)
-            .join("processed.txt")
-            .is_file());
+        assert!(
+            Path::new(&processed.root_path)
+                .join("chapters")
+                .join(&chapter_id)
+                .join("processed.txt")
+                .is_file()
+        );
         fs::remove_dir_all(parent).expect("remove temporary project");
     }
 }

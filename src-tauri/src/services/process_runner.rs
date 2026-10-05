@@ -68,46 +68,70 @@ pub fn run_bounded(
     timeout: Duration,
     cancelled: Arc<AtomicBool>,
 ) -> Result<ProcessResult, CommandError> {
-    let mut child = Command::new(executable)
+    use std::{io::Read, os::unix::process::CommandExt};
+    let mut command = Command::new(executable);
+    command
         .args(arguments)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .process_group(0);
+    let mut child = command
         .spawn()
-        .map_err(|error| CommandError::io("Cannot start local process", error))?;
+        .map_err(|e| CommandError::io("Cannot start local process", e))?;
+    let pid = child.id();
+    fn drain(mut pipe: impl Read + Send + 'static) -> thread::JoinHandle<String> {
+        thread::spawn(move || {
+            let mut tail = Vec::new();
+            let mut chunk = [0; 8192];
+            while let Ok(n) = pipe.read(&mut chunk) {
+                if n == 0 {
+                    break;
+                }
+                tail.extend_from_slice(&chunk[..n]);
+                if tail.len() > MAX_OUTPUT_BYTES {
+                    tail.drain(..tail.len() - MAX_OUTPUT_BYTES);
+                }
+            }
+            bounded_utf8(tail)
+        })
+    }
+    let stdout = drain(child.stdout.take().unwrap());
+    let stderr = drain(child.stderr.take().unwrap());
     let started = Instant::now();
-    loop {
+    let result = (|| loop {
         if cancelled.load(Ordering::SeqCst) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(CommandError::new(
+            break Err(CommandError::new(
                 "JOB_CANCELLED",
                 "The operation was cancelled.",
             ));
         }
         if started.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(CommandError::new(
+            break Err(CommandError::new(
                 "PROCESS_TIMEOUT",
                 "The local process timed out.",
             ));
         }
         match child.try_wait() {
-            Ok(Some(status)) => {
-                let output = child.wait_with_output().map_err(|error| {
-                    CommandError::io("Cannot collect local process output", error)
-                })?;
-                return Ok(ProcessResult {
-                    success: status.success(),
-                    stdout: bounded_utf8(output.stdout),
-                    stderr: bounded_utf8(output.stderr),
-                });
-            }
+            Ok(Some(status)) => break Ok(status.success()),
             Ok(None) => thread::sleep(Duration::from_millis(25)),
-            Err(error) => return Err(CommandError::io("Cannot monitor local process", error)),
+            Err(e) => break Err(CommandError::io("Cannot monitor local process", e)),
         }
-    }
+    })();
+    let _ = Command::new("/bin/kill")
+        .args(["-KILL", &format!("-{pid}")])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let _ = child.kill();
+    let _ = child.wait();
+    let stdout = stdout.join().unwrap_or_default();
+    let stderr = stderr.join().unwrap_or_default();
+    result.map(|success| ProcessResult {
+        success,
+        stdout,
+        stderr,
+    })
 }
 
 fn bounded_utf8(mut bytes: Vec<u8>) -> String {
@@ -155,5 +179,25 @@ mod tests {
         )
         .expect_err("cancel child");
         assert_eq!(error.code, "JOB_CANCELLED");
+    }
+    #[test]
+    fn drains_verbose_output_without_blocking() {
+        let result=run_bounded(Path::new("/bin/sh"), &["-c".into(), "i=0; while [ $i -lt 12000 ]; do echo verbose-output; echo verbose-error >&2; i=$((i+1)); done".into()], Duration::from_secs(10),Default::default()).unwrap();
+        assert!(result.success);
+        assert!(result.stdout.len() <= MAX_OUTPUT_BYTES);
+        assert!(result.stderr.len() <= MAX_OUTPUT_BYTES);
+    }
+    #[test]
+    fn kills_descendants_holding_output_pipes() {
+        let start = Instant::now();
+        let result = run_bounded(
+            Path::new("/bin/sh"),
+            &["-c".into(), "sleep 30 & exit 0".into()],
+            Duration::from_secs(2),
+            Default::default(),
+        )
+        .unwrap();
+        assert!(result.success);
+        assert!(start.elapsed() < Duration::from_secs(5));
     }
 }

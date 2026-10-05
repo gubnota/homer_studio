@@ -18,6 +18,12 @@ serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 uuid = { version = "1", features = ["v4"] }
+cpal = "=0.16.0"
+hound = "=3.5.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-av-foundation = { version = "=0.3.2", default-features = false, features = ["AVCaptureDevice", "AVMediaFormat", "block2"] }
+block2 = "=0.6.2"
 
 [profile.release]
 panic = "abort"
