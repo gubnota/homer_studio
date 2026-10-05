@@ -58,6 +58,17 @@ if (entitlements["com.apple.security.device.audio-input"] !== true) {
 requireFile(join(appPath, "Contents", "Resources", iconName.endsWith(".icns") ? iconName : `${iconName}.icns`), "Application icon");
 for (const resource of [
   "sfx/sitcom_laugh01.m4a",
+  "sfx/intro.m4a",
+  "sfx/outro.m4a",
+  "sfx/rewind.webm",
+  "sfx/shoosh_large.webm",
+  "sfx/riser.webm",
+  "sfx/suspense.webm",
+  "sfx/thud.webm",
+  "sfx/surprise_shocked.mp3",
+  "sfx/gong.mp3",
+  "sfx/closing_door.mp3",
+
   "workers/start_local.py",
   "workers/worker_protocol.py",
   "workers/chatterbox/server.py",

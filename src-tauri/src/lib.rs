@@ -67,6 +67,11 @@ pub fn run() {
         .manage(services::audio_capture::CaptureService::default())
         .invoke_handler(tauri::generate_handler![
             desktop_info,
+            commands::wave_studio::wave_normalize,
+            commands::wave_studio::wave_join,
+            commands::wave_studio::wave_generate_speech,
+            commands::wave_studio::wave_convert_regions,
+            commands::wave_studio::wave_processing_result,
             commands::wave_studio::wave_list,
             commands::wave_studio::wave_get,
             commands::wave_studio::wave_create,
@@ -169,6 +174,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("failed to build Homer Studio")
         .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested {
+                api, code: None, ..
+            } = &event
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    api.prevent_exit();
+                    let _ = window.close();
+                }
+            }
             if let tauri::RunEvent::Exit = event {
                 app.state::<services::audio_capture::CaptureService>()
                     .shutdown();

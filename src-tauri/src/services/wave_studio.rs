@@ -57,6 +57,17 @@ impl Timeline {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct View {
+    pub offset_ms: f64,
+    pub span_ms: f64,
+    pub playhead_ms: f64,
+    pub selection: Option<[f64; 2]>,
+    pub selected_id: Option<String>,
+    #[serde(rename = "loop")]
+    pub loop_: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Project {
     pub schema_version: u32,
     pub id: String,
@@ -65,6 +76,10 @@ pub struct Project {
     pub updated_at_ms: u64,
     pub sources: Vec<Source>,
     pub timeline: Timeline,
+    #[serde(default)]
+    pub view: Option<View>,
+    #[serde(default)]
+    pub voice_original: Option<Timeline>,
 }
 pub fn validate(p: &Project) -> Result<(), CommandError> {
     let bad = || {
@@ -152,6 +167,27 @@ pub fn validate(p: &Project) -> Result<(), CommandError> {
             return Err(bad());
         }
     }
+    if let Some(v) = &p.view {
+        if !v.offset_ms.is_finite()
+            || v.offset_ms < 0.
+            || !v.span_ms.is_finite()
+            || !(250. ..=86_400_000.).contains(&v.span_ms)
+            || !v.playhead_ms.is_finite()
+            || v.playhead_ms < 0.
+            || v.selection.is_some_and(|s| {
+                !s[0].is_finite() || !s[1].is_finite() || s[0] < 0. || s[1] <= s[0]
+            })
+        {
+            return Err(bad());
+        }
+    }
+    if let Some(original) = &p.voice_original {
+        let mut baseline = p.clone();
+        baseline.timeline = original.clone();
+        baseline.voice_original = None;
+        baseline.view = None;
+        validate(&baseline)?;
+    }
     Ok(())
 }
 
@@ -165,6 +201,8 @@ mod tests {
             name: "Narration".into(),
             revision: 0,
             updated_at_ms: 0,
+            view: None,
+            voice_original: None,
             sources: vec![],
             timeline: Timeline {
                 clips: vec![Clip {
@@ -213,6 +251,30 @@ mod tests {
         assert!(validate(&p).is_err());
         p.timeline.clips[0].speed = 1.;
         p.timeline.clips[0].source_id = Some(uuid::Uuid::new_v4().to_string());
+        assert!(validate(&p).is_err());
+    }
+    #[test]
+    fn legacy_projects_and_saved_view_and_original_roundtrip() {
+        let mut p = project();
+        let mut legacy = serde_json::to_value(&p).unwrap();
+        legacy.as_object_mut().unwrap().remove("view");
+        legacy.as_object_mut().unwrap().remove("voiceOriginal");
+        let old: Project = serde_json::from_value(legacy).unwrap();
+        assert!(old.view.is_none() && old.voice_original.is_none());
+        p.view = Some(View {
+            offset_ms: 125.,
+            span_ms: 1000.,
+            playhead_ms: 250.,
+            selection: Some([100., 300.]),
+            selected_id: Some(p.timeline.clips[0].id.clone()),
+            loop_: true,
+        });
+        p.voice_original = Some(p.timeline.clone());
+        let restored: Project = serde_json::from_slice(&serde_json::to_vec(&p).unwrap()).unwrap();
+        assert!(validate(&restored).is_ok());
+        assert!(restored.view.unwrap().loop_);
+        assert_eq!(restored.voice_original.unwrap().clips.len(), 1);
+        p.view.as_mut().unwrap().span_ms = 0.;
         assert!(validate(&p).is_err());
     }
 }

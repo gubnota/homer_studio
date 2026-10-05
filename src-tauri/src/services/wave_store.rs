@@ -53,6 +53,8 @@ pub fn create(app: &AppHandle, name: &str) -> Result<Project, CommandError> {
         updated_at_ms: now(),
         sources: vec![],
         timeline: Timeline::default(),
+        view: None,
+        voice_original: None,
     };
     super::wave_studio::validate(&p)?;
     audio_assets::atomic_json(&project_path(app, &p.id)?, &p)?;
@@ -112,7 +114,7 @@ pub fn import(
                 .unwrap_or("")
                 .to_ascii_lowercase()
                 .as_str(),
-            "wav" | "mp3" | "m4a" | "aac" | "flac" | "aif" | "aiff" | "ogg"
+            "wav" | "mp3" | "m4a" | "aac" | "flac" | "aif" | "aiff" | "ogg" | "webm"
         )
     {
         return Err(CommandError::new(

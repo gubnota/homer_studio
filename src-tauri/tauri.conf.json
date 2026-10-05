@@ -48,7 +48,17 @@
       "../workers/audio/rvc.txt": "workers/audio/rvc.txt",
       "../workers/audio/deepfilternet.txt": "workers/audio/deepfilternet.txt",
       "../workers/audio/resemble_enhance.txt": "workers/audio/resemble_enhance.txt",
-      "../resources/sfx/sitcom_laugh01.m4a": "sfx/sitcom_laugh01.m4a"
+      "../resources/sfx/sitcom_laugh01.m4a": "sfx/sitcom_laugh01.m4a",
+      "../resources/sfx/intro.m4a": "sfx/intro.m4a",
+      "../resources/sfx/outro.m4a": "sfx/outro.m4a",
+      "../resources/sfx/rewind.webm": "sfx/rewind.webm",
+      "../resources/sfx/shoosh_large.webm": "sfx/shoosh_large.webm",
+      "../resources/sfx/riser.webm": "sfx/riser.webm",
+      "../resources/sfx/suspense.webm": "sfx/suspense.webm",
+      "../resources/sfx/thud.webm": "sfx/thud.webm",
+      "../resources/sfx/surprise_shocked.mp3": "sfx/surprise_shocked.mp3",
+      "../resources/sfx/gong.mp3": "sfx/gong.mp3",
+      "../resources/sfx/closing_door.mp3": "sfx/closing_door.mp3"
     },
     "category": "Productivity",
     "shortDescription": "Local-first audiobook production studio",

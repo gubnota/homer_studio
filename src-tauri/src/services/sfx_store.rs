@@ -8,7 +8,22 @@ pub struct Asset {
     pub source: Source,
     pub category: String,
     pub built_in: bool,
+    #[serde(default)]
+    pub resource: Option<String>,
 }
+const BUNDLED: [(&str, &str, &str); 11] = [
+    ("sitcom_laugh01.m4a", "Sitcom laugh", "Audience"),
+    ("intro.m4a", "Intro", "Intro"),
+    ("outro.m4a", "Outro", "Outro"),
+    ("rewind.webm", "Rewind", "Transitions"),
+    ("shoosh_large.webm", "Large whoosh", "Transitions"),
+    ("riser.webm", "Riser", "Transitions"),
+    ("suspense.webm", "Suspense", "Atmosphere"),
+    ("thud.webm", "Thud", "UI"),
+    ("surprise_shocked.mp3", "Surprised / shocked", "Audience"),
+    ("gong.mp3", "Gong", "Transitions"),
+    ("closing_door.mp3", "Closing door", "Atmosphere"),
+];
 pub const CATEGORIES: [&str; 7] = [
     "Audience",
     "Transitions",
@@ -31,13 +46,23 @@ pub fn list(app: &AppHandle) -> Result<Vec<Asset>, CommandError> {
     } else {
         vec![]
     };
-    if !assets.iter().any(|a| a.built_in) {
+    let mut changed = false;
+    for (file, name, category) in BUNDLED {
+        // Match the immutable resource identity, even if the user renames it.
+        if assets.iter().any(|a| {
+            a.built_in
+                && (a.resource.as_deref() == Some(file)
+                    || (file == "sitcom_laugh01.m4a" && a.resource.is_none()))
+        }) {
+            continue;
+        }
         let bundled = app
             .path()
-            .resolve("sfx/sitcom_laugh01.m4a", BaseDirectory::Resource)
+            .resolve(format!("sfx/{file}"), BaseDirectory::Resource)
             .map_err(|e| CommandError::internal(e.to_string()))?;
         let fallback = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../resources/sfx/sitcom_laugh01.m4a");
+            .join("../resources/sfx")
+            .join(file);
         let source = wave_store::import(
             app,
             if bundled.is_file() {
@@ -45,14 +70,20 @@ pub fn list(app: &AppHandle) -> Result<Vec<Asset>, CommandError> {
             } else {
                 &fallback
             },
-            "sitcom_laugh01",
+            name,
             &settings::load(app)?,
         )?;
         assets.push(Asset {
             source,
-            category: "Audience".into(),
+            category: category.into(),
             built_in: true,
+            resource: Some(file.into()),
         });
+        // Publish each imported resource so a retry never duplicates preceding entries.
+        audio_assets::atomic_json(&p, &assets)?;
+        changed = true;
+    }
+    if changed {
         audio_assets::atomic_json(&p, &assets)?;
     }
     Ok(assets)
@@ -69,6 +100,7 @@ pub fn add(app: &AppHandle, source: Source, category: &str) -> Result<Vec<Asset>
         source,
         category: category.into(),
         built_in: false,
+        resource: None,
     });
     audio_assets::atomic_json(&path(app)?, &all)?;
     Ok(all)
@@ -88,7 +120,7 @@ pub fn update(
     if delete && a.built_in {
         return Err(CommandError::new(
             "BUILTIN_SFX",
-            "The bundled laugh stays in the library.",
+            "Bundled sounds stay in the library.",
         ));
     }
     if !CATEGORIES.contains(&category) || name.trim().is_empty() || name.len() > 320 {

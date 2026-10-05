@@ -27,3 +27,5 @@ pub mod sfx_store;
 pub mod wave_render;
 pub mod wave_store;
 pub mod wave_studio;
+
+pub mod wave_processing;

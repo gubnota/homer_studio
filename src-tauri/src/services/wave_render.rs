@@ -309,6 +309,8 @@ mod tests {
             name: "Fixture".into(),
             revision: 0,
             updated_at_ms: 0,
+            view: None,
+            voice_original: None,
             sources: vec![source],
             timeline: Timeline {
                 clips: vec![clip],

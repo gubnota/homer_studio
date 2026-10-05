@@ -320,3 +320,116 @@ pub fn wave_source_url(
         .insert(id.clone(), path);
     Ok(format!("audio://localhost/{id}"))
 }
+
+#[tauri::command]
+pub async fn wave_normalize(
+    app: AppHandle,
+    project: Project,
+    clip_id: String,
+) -> Result<f64, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::services::wave_processing::normalize(
+            &app,
+            &project,
+            &clip_id,
+            &settings::load(&app)?,
+        )
+    })
+    .await
+    .map_err(|e| CommandError::internal(e.to_string()))?
+}
+#[tauri::command]
+pub async fn wave_join(
+    app: AppHandle,
+    project: Project,
+    clip_ids: Vec<String>,
+) -> Result<Source, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::services::wave_processing::join(&app, &project, &clip_ids, &settings::load(&app)?)
+    })
+    .await
+    .map_err(|e| CommandError::internal(e.to_string()))?
+}
+fn enqueue_processing<F>(app: AppHandle, state: State<'_, AppState>, label: &str, task: F) -> String
+where
+    F: FnOnce(
+            &AppHandle,
+            &crate::services::jobs::JobControl,
+            &dyn Fn(u8),
+        ) -> Result<crate::services::wave_processing::ProcessingResult, CommandError>
+        + Send
+        + 'static,
+{
+    let (send, receive) = std::sync::mpsc::channel::<String>();
+    let id = state
+        .jobs
+        .enqueue("wave_processing", label.into(), move |control, progress| {
+            let id = receive
+                .recv()
+                .map_err(|e| CommandError::internal(e.to_string()))?;
+            control.boundary()?;
+            let result = task(&app, &control, &*progress)?;
+            control.boundary()?;
+            crate::services::wave_processing::write(&app, &id, &result)
+        });
+    let _ = send.send(id.clone());
+    id
+}
+#[tauri::command]
+pub fn wave_generate_speech(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    text: String,
+    voice_id: String,
+    project_id: String,
+    revision: u64,
+) -> Result<String, CommandError> {
+    if text.trim().is_empty() || text.len() > 100_000 {
+        return Err(CommandError::new(
+            "INVALID_TEXT",
+            "Enter text shorter than 100,000 bytes.",
+        ));
+    }
+    let settings = settings::load(&app)?;
+    Ok(enqueue_processing(
+        app,
+        state,
+        "Generate Wave speech",
+        move |app, control, progress| {
+            crate::services::wave_processing::generate(
+                app,
+                &text,
+                &voice_id,
+                &project_id,
+                revision,
+                &settings,
+                control,
+                progress,
+            )
+        },
+    ))
+}
+#[tauri::command]
+pub fn wave_convert_regions(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    project: Project,
+) -> Result<String, CommandError> {
+    wave_store::validate_sources(&app, &project)?;
+    let settings = settings::load(&app)?;
+    Ok(enqueue_processing(
+        app,
+        state,
+        "Apply tagged voices",
+        move |app, control, progress| {
+            crate::services::wave_processing::convert(app, &project, &settings, control, progress)
+        },
+    ))
+}
+#[tauri::command]
+pub fn wave_processing_result(
+    app: AppHandle,
+    job_id: String,
+) -> Result<crate::services::wave_processing::ProcessingResult, CommandError> {
+    crate::services::wave_processing::read(&app, &job_id)
+}

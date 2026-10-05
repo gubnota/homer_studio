@@ -242,7 +242,7 @@ pub fn generate_with_progress(
     result
 }
 
-fn ensure_worker_ready(
+pub(super) fn ensure_worker_ready(
     app: &AppHandle,
     url: &str,
     original: bool,
