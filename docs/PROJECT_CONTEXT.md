@@ -122,3 +122,11 @@
 - `docs/DECISIONS.md`: accepted architecture decisions.
 - `docs/TASK_LOG.md`: progress and verification status.
 - `docs/IMPLEMENTATION_PLAN_NARRATION_EDITING_AND_MODEL_SETUP.md`: approved current feature plan.
+
+## Wave Studio
+- Default workspace: independent persistent narration timeline with voice annotations and a separate SFX lane. Existing chapter, memo and conversion workflows remain available.
+- Immutable app-owned 48 kHz stereo sources; non-destructive splits, ripple edits, silence, moves, gain/fades and pitch-preserving speed. Voice assignments label passages without invoking AI.
+- App-level undo/redo survives navigation; revisioned schema-v1 projects and viewport settings reopen after restart.
+- Renderer requests viewport peaks and bounded ten-second mixed previews. Native FFmpeg renders playback and exports using the same sample-accurate processing.
+- Changed-speed clips use disk-cached native tempo variants; first playback/export may wait for preparation. No full audiobook is decoded in the renderer.
+- See `docs/WAVE_STUDIO.md` for controls, storage and limits.

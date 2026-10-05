@@ -118,3 +118,13 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 - Memo export accepts WAV (24-bit), FLAC, M4A/AAC or MP3; writes staging media, probes measured duration and atomically publishes after revision/cancellation checks.
 - Waveform windows return durationMs/startMs/endMs and ≤2048 min/max peaks. Audio protocol responses are capped at 4 MB and support 206/416 byte-range semantics.
 - Cue timings are remapped from composition spans; affected replacement cues are scaled to actual measured output, without claiming word alignment.
+
+## Wave Studio schema 1
+- App data `wave-studio/`: `projects/<UUID>.json`, immutable `sources/`, `sfx.json`, disk tempo variants and bounded preview caches. Projects carry schemaVersion, UUID, name, revision, timestamps, sources and timeline (`clips`, `sfx`, `voices`).
+- Clip fields: UUID, sourceId (null = silence), name, startMs, sourceStartMs/sourceEndMs, speed, gainDb, fadeInMs/fadeOutMs. Effective duration is source span / speed; main clips cannot overlap. SFX can overlap.
+- Bounds: finite times within 24 hours, speed 0.85–1.20, gain -96..+6 dB, fades within clip duration, unique IDs and owned stereo sources. Voice regions have voiceId/name/color and positive timeline bounds.
+- `wave_list`, `wave_get`, `wave_create`, `wave_save` use revision checks and atomic JSON. `wave_import` accepts file, memo or saved sound and returns an owned measured source.
+- `wave_peaks` returns at most 2048 min/max pairs. `wave_preview` returns bounded PCM WAV for at most 10001 ms; `wave_cancel_preview` cancels native preparation. Preview and export share sample-accurate gain/fade/mixing and cached pitch-preserving tempo processing.
+- `wave_export` queues verified WAV/MP3/M4A/AAC/FLAC output using existing job cancellation. `wave_sfx_list/add/update`, `wave_source_url` expose reusable library assets through owned IDs.
+- Future AI selection input: project ID + expected revision + selected timeline range + target voice ID + source spans. Any future result must be an immutable preview requiring acceptance; this milestone performs annotation only.
+- Voice metadata adds backward-compatible color, notes and modelProvider defaults; updates retain existing sample identity.

@@ -176,3 +176,13 @@ Context: The approved voice-production milestone needs lossless capture, retakes
 Decision: Store microphone originals as native-rate mono float WAV and derived takes as 48 kHz float WAV. Persist revisioned memo compositions and selected-take history independently of projects. Render immutable variants with FFmpeg, remap cues from measured spans and publish only accepted results through existing stores. Capture uses one native stream. Optional engines run in separate explicitly installed environments using bounded NDJSON and process-group cancellation.
 Consequences: Failed jobs preserve previous media; edits and processing previews remain reviewable. Models/checkouts must be supplied locally, and adapter readiness does not substitute for live inference verification. Cue timing after voice conversion is approximate. Audio files referenced by compositions are retained after soft deletion.
 Related files: `src-tauri/src/services/audio_*.rs`, `memo_store.rs`, `voice_profiles.rs`, `waveform.rs`; `workers/audio/`; `src/renderer/src/VoiceMemosPage.tsx`; `docs/VOICE_PRODUCTION.md`.
+
+# ADR-0019: Independent narration timeline with bounded native audio
+
+Date: 2026-10-05
+Status: Accepted
+
+Context: Wave Studio needs reversible long-recording edits and independent SFX without loading complete audiobooks in a web view or changing legacy projects.
+Decision: Store immutable stereo sources and revisioned timeline metadata independently. Keep pure editing/history in the renderer provider; serve bounded native waveform windows and ten-second mixed audio chunks. Prepare disk-cached tempo variants so preview windows and exports use identical pitch-preserving samples. Voice assignments remain annotations.
+Consequences: Originals survive edits, navigation preserves history, and renderer audio memory stays bounded. First playback of a changed-speed long clip can require native preparation; disk cache retains variants referenced by active projects.
+Related files: `src/shared/waveStudio*.ts`, `src/renderer/src/WaveStudioProvider.tsx`, `src-tauri/src/services/wave_*.rs`, `docs/WAVE_STUDIO.md`.

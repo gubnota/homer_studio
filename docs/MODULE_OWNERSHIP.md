@@ -44,3 +44,10 @@ Rules:
 - Audio commands serialize publication through the shared queue and recheck revisions under the project write lock. Existing project/sound/voice stores retain final publication ownership.
 - Profile sidecars reference existing voice IDs and accepted memos; Chatterbox sample storage and limits remain authoritative.
 - Shared editor/transport components own interaction and presentation; they depend on typed bridges and shared contracts, not native filesystem/process APIs.
+
+## Wave Studio boundaries
+- Shared pure edits own timeline transformations and timing remaps; they have no filesystem, process or model access.
+- Renderer provider owns navigation-safe history and save scheduling; canvas owns bounded viewport visualization, playback owns bounded preview scheduling.
+- Native stores validate revisions and owned source identities; native render owns FFmpeg processing, cancellation, tempo variants and verified exports.
+- Voice library owns canonical names, colors, notes and provider metadata. Timeline annotations refer to voice IDs and never trigger conversion or model installation.
+- SFX library owns reusable assets; projects own gain/fade/trim placements. Removing a placement never alters the original. Legacy project and memo schemas remain independent.

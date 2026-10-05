@@ -79,3 +79,13 @@
 - `workers/audio/processor.py`, `inference_driver.py`: lazy local inference adapters; per-engine `.txt` files pin environment dependencies.
 - `workers/audio/test_processor.py`, `tests/audio-studio.test.tsx`: protocol validation and shared editor regression coverage; native tests remain colocated with services.
 - `docs/VOICE_PRODUCTION.md`: setup and manual verification guide.
+
+## Wave Studio
+- `src/shared/waveStudio.ts`, `waveStudioEdits.ts`: schema, timing and immutable editing operations.
+- `src/renderer/src/WaveStudioProvider.tsx`: session history, revisioned saves, restore and import handoffs.
+- `WaveStudioPage.tsx`, `components/WaveStudio*.tsx`, `WaveformCanvas.tsx`: project toolbar, selection, inspector, libraries and canvas lanes.
+- `useWaveStudioPlayback.ts`, `waveStudioNative.ts`: bounded Web Audio scheduling and typed native calls.
+- `src-tauri/src/commands/wave_studio.rs`: import, persistence, peaks, preview cancellation, exports and SFX commands.
+- `services/wave_studio.rs`, `wave_store.rs`, `wave_render.rs`, `sfx_store.rs`: validation, owned media, shared preview/export processing and reusable effects.
+- `resources/sfx/sitcom_laugh01.m4a`: immutable bundled Audience effect; release verification requires it.
+- `src/renderer/styles/wave-studio.css`; `tests/wave-studio.test.ts`; native validation/render tests in the services above.
