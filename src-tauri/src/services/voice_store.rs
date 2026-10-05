@@ -26,6 +26,12 @@ pub struct Voice {
     pub samples: Vec<VoiceSample>,
     pub selected_sample_id: Option<String>,
     pub built_in: bool,
+    #[serde(default = "default_color")]
+    pub color: String,
+    #[serde(default)]
+    pub notes: String,
+    #[serde(default = "default_provider")]
+    pub provider: String,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -84,6 +90,9 @@ pub fn list(app: &AppHandle) -> Result<Vec<Voice>, CommandError> {
         samples: Vec::new(),
         selected_sample_id: None,
         built_in: true,
+        color: default_color(),
+        notes: String::new(),
+        provider: default_provider(),
     }];
     voices.extend(load(app)?.voices);
     Ok(voices)
@@ -104,6 +113,9 @@ pub fn create(app: &AppHandle, name: &str) -> Result<Voice, CommandError> {
         samples: Vec::new(),
         selected_sample_id: None,
         built_in: false,
+        color: default_color(),
+        notes: String::new(),
+        provider: default_provider(),
     };
     library.voices.push(voice.clone());
     save(app, &library)?;
@@ -302,4 +314,46 @@ pub fn delete(app: &AppHandle, voice_id: &str, active_voice_id: &str) -> Result<
             .map_err(|error| CommandError::io("Cannot remove voice samples", error))?;
     }
     Ok(())
+}
+
+fn default_color() -> String {
+    "#718392".into()
+}
+fn default_provider() -> String {
+    "chatterbox_turbo".into()
+}
+pub fn update(
+    app: &AppHandle,
+    id: &str,
+    name: &str,
+    color: &str,
+    notes: &str,
+    provider: &str,
+) -> Result<Voice, CommandError> {
+    if name.trim().is_empty()
+        || name.chars().count() > 80
+        || color.len() != 7
+        || !color.starts_with('#')
+        || !color[1..].chars().all(|c| c.is_ascii_hexdigit())
+        || notes.len() > 4000
+        || !matches!(provider, "chatterbox_turbo" | "chatterbox_original")
+    {
+        return Err(CommandError::new(
+            "INVALID_VOICE",
+            "Enter a voice name, color and Chatterbox model.",
+        ));
+    }
+    let mut library = load(app)?;
+    let voice = library
+        .voices
+        .iter_mut()
+        .find(|v| v.id == id)
+        .ok_or_else(|| CommandError::new("VOICE_NOT_FOUND", "Choose a custom voice to edit."))?;
+    voice.name = name.trim().into();
+    voice.color = color.into();
+    voice.notes = notes.into();
+    voice.provider = provider.into();
+    let saved = voice.clone();
+    save(app, &library)?;
+    Ok(saved)
 }

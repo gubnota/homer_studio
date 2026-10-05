@@ -1,3 +1,4 @@
+use crate::services::voice_store;
 use crate::services::{
     llm::{self, TextCandidate},
     project_store::{self, CommandError, ProjectSnapshot},
@@ -936,4 +937,21 @@ mod tests {
         assert_eq!(assets.get("chapter"), Some(&other_audio));
         std::fs::remove_dir_all(root).unwrap();
     }
+}
+
+#[tauri::command]
+pub fn update_voice(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    voice_id: String,
+    name: String,
+    color: String,
+    notes: String,
+    provider: String,
+) -> Result<voice_store::Voice, CommandError> {
+    let _guard = state
+        .project_write_lock
+        .lock()
+        .map_err(|_| CommandError::internal("Voice lock unavailable"))?;
+    voice_store::update(&app, &voice_id, &name, &color, &notes, &provider)
 }

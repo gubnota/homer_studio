@@ -7,3 +7,5 @@ pub mod system;
 pub mod audio;
 
 pub mod audio_processing;
+
+pub mod wave_studio;

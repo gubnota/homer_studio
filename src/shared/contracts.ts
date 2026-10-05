@@ -57,7 +57,7 @@ export interface TextCandidate {
 }
 
 export interface VoiceSample { id: string; name: string; durationMs: number }
-export interface Voice { id: string; name: string; samples: VoiceSample[]; selectedSampleId: string | null; builtIn: boolean }
+export interface Voice { id: string; name: string; samples: VoiceSample[]; selectedSampleId: string | null; builtIn: boolean; color?: string; notes?: string; provider?: string }
 export interface VoicePreset { id: string; name: string; voiceId: string; rate: number; builtIn: boolean }
 
 export type LlmSettings =

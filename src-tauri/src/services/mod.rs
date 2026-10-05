@@ -22,3 +22,8 @@ pub mod worker_runtime;
 pub mod audio_processors;
 
 pub mod voice_profiles;
+
+pub mod sfx_store;
+pub mod wave_render;
+pub mod wave_store;
+pub mod wave_studio;
