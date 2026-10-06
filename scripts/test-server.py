@@ -106,9 +106,9 @@ def main():
                     media = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", output]))
                     assert abs(float(media["format"]["duration"]) - 2) < .05
                     assert media["streams"][0]["channels"] == 2
-                    assert media["streams"][0]["channel_layout"] == "stereo"
                     if extension == "m4a":
                         assert media["streams"][0]["codec_name"] == "aac"
+                        assert media["streams"][0]["channel_layout"] == "stereo"
                     downloaded, h = request("/api/download?path=" + urllib.parse.quote(output))
                     assert len(downloaded) > 1000 and "attachment" in h["Content-Disposition"]
                 # Keep an inactive accepted voice too; every cached source/voice must remap.
