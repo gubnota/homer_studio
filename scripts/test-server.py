@@ -105,6 +105,8 @@ def main():
                     wait_job(command("wave_export", project=project, outputPath=output))
                     media = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", output]))
                     assert abs(float(media["format"]["duration"]) - 2) < .05
+                    assert media["streams"][0]["channels"] == 2
+                    assert media["streams"][0]["channel_layout"] == "stereo"
                     if extension == "m4a":
                         assert media["streams"][0]["codec_name"] == "aac"
                     downloaded, h = request("/api/download?path=" + urllib.parse.quote(output))

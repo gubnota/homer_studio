@@ -102,7 +102,7 @@ pub fn arguments(
             }
         );
         let delay = ((c.start_ms - start).max(0.) * 48.).round() as u64;
-        filters.push(format!("[{}:a]atrim=end_sample={},asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,aeval='val(0)*({})|val(1)*({})',adelay={}S:all=1[a{}]",i+1,((stop-local)*48000.).round() as u64,envelope,envelope,delay,i));
+        filters.push(format!("[{}:a]atrim=end_sample={},asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,aeval='val(0)*({})|val(1)*({})':channel_layout=stereo,adelay={}S:all=1[a{}]",i+1,((stop-local)*48000.).round() as u64,envelope,envelope,delay,i));
         mix.push_str(&format!("[a{i}]"));
     }
     filters.push(format!("{mix}amix=inputs={}:duration=first:normalize=0:dropout_transition=0,atrim=end_sample={}[out]",active.len()+1,(seconds*48000.).round() as u64));
@@ -113,6 +113,8 @@ pub fn arguments(
         "[out]".into(),
         "-ar".into(),
         "48000".into(),
+        "-ac".into(),
+        "2".into(),
     ]);
     let codec = match output
         .extension()
