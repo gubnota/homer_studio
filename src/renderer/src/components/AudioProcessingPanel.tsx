@@ -3,12 +3,12 @@ import { useEffect, useState } from 'react'
 import type { AudioEngine, EngineConfig, EngineStatus, RecordingSession, VoiceProfile } from '../../../shared/audio'
 import type { Voice } from '../../../shared/contracts'
 import { processorApi } from '../audioNative'
-import { errorMessage, isDesktop, productionApi } from '../native'
+import { errorMessage, hasBackend, productionApi } from '../native'
 const names: Record<AudioEngine,string> = {passthrough:'Reference test',seed_vc:'Seed-VC',rvc:'RVC',deepfilternet:'DeepFilterNet',resemble_enhance:'Resemble Enhance'}
 export function AudioProcessingPanel({memo,selection,disabled,onQueued}:{memo:RecordingSession;selection:[number,number];disabled:boolean;onQueued:(id:string)=>void}):JSX.Element{
  const [configs,setConfigs]=useState<EngineConfig[]>([]),[engine,setEngine]=useState<AudioEngine>('deepfilternet'),[status,setStatus]=useState<EngineStatus|null>(null),[profiles,setProfiles]=useState<VoiceProfile[]>([]),[voices,setVoices]=useState<Voice[]>([]),[profileId,setProfileId]=useState(''),[preset,setPreset]=useState('Quick Clean'),[preprocess,setPreprocess]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[setupPython,setSetupPython]=useState(''),[params,setParams]=useState('{}'),[crossfade,setCrossfade]=useState(30)
  const config=configs.find(c=>c.engine===engine),profile=profiles.find(p=>p.id===profileId),convert=engine==='seed_vc'||engine==='rvc'
- useEffect(()=>{if(isDesktop())void Promise.all([processorApi.configs(),processorApi.profiles(),productionApi.voices()]).then(([c,p,v])=>{setConfigs(c);setProfiles(p);setVoices(v)}).catch(e=>setError(errorMessage(e)))},[])
+ useEffect(()=>{if(hasBackend())void Promise.all([processorApi.configs(),processorApi.profiles(),productionApi.voices()]).then(([c,p,v])=>{setConfigs(c);setProfiles(p);setVoices(v)}).catch(e=>setError(errorMessage(e)))},[])
  useEffect(()=>{let active=true;setStatus(null);if(config)void processorApi.status(config).then(s=>{if(active)setStatus(s)}).catch(e=>{if(active)setError(errorMessage(e))});return()=>{active=false}},[engine,configs.length])
  async function run(task:()=>Promise<void>):Promise<void>{setError('');setBusy(true);try{await task()}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
  const patch=(key:keyof EngineConfig,value:unknown):void=>{setStatus(null);setConfigs(cs=>cs.map(c=>c.engine===engine?{...c,[key]:value}:c))}

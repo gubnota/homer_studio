@@ -1,19 +1,20 @@
-import { Checkbox, Select, StudioSlider } from './StudioControls'
+import { Checkbox, StudioSlider } from './StudioControls'
 import { useEffect, useRef, useState } from 'react'
 export function audioTime(ms: number): string { const s = Math.max(0, ms) / 1000; return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}` }
-export function AudioTransport({ url, durationMs, selection, seekTo, onPosition }: { url: string | null; durationMs?: number; selection?: [number, number]; seekTo?: number; onPosition?: (ms: number) => void }): JSX.Element {
+export function AudioTransport({ url, durationMs, selection, seekTo, onPosition, playRequest }: { url: string | null; playRequest?: number; durationMs?: number; selection?: [number, number]; seekTo?: number; onPosition?: (ms: number) => void }): JSX.Element {
   const [measuredDuration, setMeasuredDuration] = useState(0)
   durationMs = durationMs || measuredDuration
   const audio = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false), [position, setPosition] = useState(0), [rate, setRate] = useState(1), [loop, setLoop] = useState(false), [error, setError] = useState('')
-  useEffect(() => { setPlaying(false); setError('') }, [url])
+  useEffect(() => { setPlaying(false); setPosition(0); setMeasuredDuration(0); setError('') }, [url])
+  useEffect(() => { if (url && playRequest) { const a=audio.current; if(a) { a.currentTime=0; void a.play().catch(() => setError('Playback could not start. Press Play to retry.')) } } }, [url, playRequest])
   useEffect(() => { const pauseOthers = (event: Event): void => { if (event.target instanceof HTMLAudioElement) document.querySelectorAll('audio').forEach(other => { if (other !== event.target) other.pause() }) }; document.addEventListener('play', pauseOthers, true); return () => document.removeEventListener('play', pauseOthers, true) }, [])
   function seek(ms: number): void { if (audio.current) audio.current.currentTime = ms / 1000; setPosition(ms); onPosition?.(ms) }
   useEffect(() => { if (seekTo !== undefined && audio.current) { audio.current.currentTime = Math.min(durationMs, seekTo) / 1000; setPosition(Math.min(durationMs, seekTo)) } }, [seekTo])
   async function toggle(): Promise<void> { const a = audio.current; if (!a) return; if (playing) a.pause(); else { if (selection && (a.currentTime * 1000 < selection[0] || a.currentTime * 1000 >= selection[1])) seek(selection[0]); try { await a.play() } catch { setError('Playback could not start.') } } }
   return <div className="audio-transport"><audio ref={audio} src={url || undefined} preload="metadata" onLoadedMetadata={() => { if(audio.current) { setMeasuredDuration(Number.isFinite(audio.current.duration) ? audio.current.duration*1000 : 0); audio.current.currentTime=Math.min(position,audio.current.duration*1000 || 0)/1000 } }} loop={loop && !selection} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onError={() => setError('This audio could not be played.')} onTimeUpdate={() => { const a = audio.current!; let p = a.currentTime * 1000; if (selection && p >= selection[1]) { if (loop) { a.currentTime = selection[0] / 1000; p = selection[0] } else a.pause() } else if (loop && !selection && a.ended) { a.currentTime = 0; void a.play() } setPosition(p); onPosition?.(p) }} />
     <button data-audio-play disabled={!url} onClick={() => void toggle()}>{playing ? 'Pause' : 'Play'}</button><button disabled={!url} onClick={() => { audio.current?.pause(); seek(0) }}>Stop</button><button disabled={!url} onClick={() => seek(0)}>Beginning</button><button disabled={!url} onClick={() => seek(durationMs)}>End</button><button disabled={!url} onClick={() => seek(Math.max(0, position - 5000))}>−5s</button><button disabled={!url} onClick={() => seek(Math.min(durationMs, position + 5000))}>+5s</button>
-    <input aria-label="Playback position" type="range" min={0} max={durationMs || 1} step={10} value={position} onChange={e => seek(Number(e.target.value))} /><span>{audioTime(position)} / {audioTime(durationMs)}</span>
-    <Select aria-label="Playback speed" value={rate} onChange={e => { const n = Number(e.target.value); setRate(n); if (audio.current) audio.current.playbackRate = n }}>{[0.5, 0.75, 1, 1.25, 1.5, 2].map(n => <option key={n} value={n}>{n}×</option>)}</Select><label><Checkbox checked={loop} onChange={e => setLoop(e.target.checked)} />Loop</label>{error && <span role="alert">{error}</span>}
+    <StudioSlider aria-label="Playback position" min={0} max={durationMs || 1} step={10} value={position} onChange={e => seek(Number(e.target.value))} /><span>{audioTime(position)} / {audioTime(durationMs)}</span>
+    <label>Speed · {rate.toFixed(2)}×<StudioSlider aria-label="Playback speed" min={-100} max={100} step={1} value={rate<=1?(rate-1)*200:(rate-1)*100} onChange={e=>{let n=Number(e.target.value);if(Math.abs(n)<4)n=0;const speed=1+n/(n<0?200:100);setRate(speed);if(audio.current)audio.current.playbackRate=speed}} /></label><label><Checkbox checked={loop} onChange={e => setLoop(e.target.checked)} />Loop</label>{error && <span role="alert">{error}</span>}
   </div>
 }

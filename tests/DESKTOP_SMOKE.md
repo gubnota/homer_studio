@@ -22,3 +22,10 @@ For a release candidate, also check these actions manually:
 15. Preview the built-in voice with the bundled recording. For a custom voice, verify the copied selected sample plays when a generated preview is unavailable.
 16. Generate longer speech, verify its final duration, and listen at each joined segment boundary.
 17. Start both local Chatterbox workers, generate one clip to load each model, then Quit Homer Studio normally. Confirm both Python worker processes exit and their memory is released. Start the app again and confirm workers can be relaunched. Ollama, if separately running, should remain available.
+
+## 0.2.6 manual follow-up (not established by startup smoke)
+- In a separate project, check audible SFX preview, overlapping instances, Shift/Cmd selection, double-click and every displayed shortcut during playback.
+- Check Join with conflicting voice tags, neutral gain/fade/speed snapping, cancellation and retry of real TTS/conversion.
+- Import the reported MP3 when supplied; compare waveform/playback and file handles across repeated import/cancel/remove cycles.
+- Verify desktop drag/File Open/CLI `.wavehs`, custom-voice round trip, video remux/fallback cancellation and collapsed-sidebar spacing.
+- On a supplied CUDA Linux host, test secure-origin browser microphone, inference quality, cancellation and RAM/VRAM over long jobs.

@@ -206,3 +206,23 @@ Context: Reapplying voice conversion processed completed audio repeatedly; proje
 Decision: Record completed voice production against the selected voice and audible source intervals, preserving it across splits and level changes. Skip complete passages unless regeneration is explicit. Store video as owned silent MP4 references outside audio export. Portable project copies include media and import with new owned IDs; deletion is recoverable.
 Consequences: Existing schema-1 projects remain readable through optional fields. Video import may take time; references cannot accidentally contribute audio. History remains session-local while production and view state persist.
 Related files: `src/shared/waveStudio.ts`, `WaveProductionPanel.tsx`, `WaveProjectsPanel.tsx`, `WaveVideoReference.tsx`, `services/wave_store.rs`, `services/wave_video.rs`.
+
+# ADR-0022: Shared services and optional Linux browser server
+
+Date: 2026-10-06
+Status: Accepted
+
+Context: User requested a Linux GPU machine running Homer Studio through a browser.
+Decision: Extract platform-neutral Rust commands into homer-core, retain Tauri adapters, add a single-owner Axum server and renderer HTTP transport. Ship Linux x86_64 archive and optional CUDA container instructions. Require explicit model installation.
+Consequences: Server owns media and jobs; browser streams uploads and recording chunks. Loopback is the default; secure tunneling/HTTPS is required for remote microphone access. GPU performance remains unverified without a host.
+Related files: crates/homer-core, server, src/renderer/src/platform.ts, docs/LINUX_SERVER.md.
+
+# ADR-0023: Bounded media work and portable Wave archives
+
+Date: 2026-10-06
+Status: Accepted
+
+Context: Long imports and stale waveform/playback work exhausted process/file resources; projects needed transferable voice and media state.
+Decision: Bound subprocess/decoder work, cancel obsolete requests, stream recording and `.wavehs` archives, and keep conversion chunks sequential. Package owned media and voice references with checked paths and checksums.
+Consequences: Large work uses disk staging and may require worker restart after cancellation. Model baseline memory and exact user MP3 failures still require hardware/file-specific validation.
+Related files: crates/homer-core/src/services, src/renderer/src/useWaveStudioPlayback.ts, workers/chatterbox/original.py.

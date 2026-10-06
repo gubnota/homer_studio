@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { listen } from '@tauri-apps/api/event'
+import { listen } from './platform'
 import type { CaptureState, RecordingSession } from '../../shared/audio'
 import { audioApi } from './audioNative'
 import { errorMessage } from './native'

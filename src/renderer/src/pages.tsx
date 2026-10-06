@@ -1,3 +1,4 @@
+import { isDesktop } from './platform'
 import { VoiceMetadataEditor } from './components/VoiceMetadataEditor'
 import { AudioTransport } from './components/AudioTransport'
 import { Checkbox, Select } from './components/StudioControls'
@@ -5,11 +6,11 @@ import { useNativeRecording } from './useNativeRecording'
 import type { RecordingSession } from '../../shared/audio'
 import { VoiceMemosPage } from './VoiceMemosPage'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from './platform'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { Chapter, JobRecord, ModelStatus, ProjectSnapshot, Settings, ToolDiagnostic, Voice, WorkerRuntimeStatus } from '../../shared/contracts'
 import type { RouteId } from '../../shared/navigation'
-import { chooseAudio, chooseFolder, chooseManuscript, chooseTool, defaultProjectParent, errorMessage, isDesktop, loadDroppedManuscript, productionApi, projectApi, systemApi } from './native'
+import { chooseAudio, chooseFolder, chooseManuscript, chooseTool, defaultProjectParent, errorMessage, hasBackend, loadDroppedManuscript, productionApi, projectApi, systemApi } from './native'
 import { VoicePicker } from './VoicePicker'
 
 interface DesktopInfo { platform: string; architecture: string; runtime: string }
@@ -55,7 +56,7 @@ export function ImportPage({ onCreated }: { onCreated: (project: ProjectSnapshot
   const [error, setError] = useState('')
   const [dragging, setDragging] = useState(false)
 
-  useEffect(() => { if (isDesktop()) void defaultProjectParent().then(setParentPath).catch((cause) => setError(errorMessage(cause))) }, [])
+  useEffect(() => { if (hasBackend()) void defaultProjectParent().then(setParentPath).catch((cause) => setError(errorMessage(cause))) }, [])
 
   function applyManuscript(selected: { name: string; text: string }): void {
     setSourceName(selected.name)
@@ -185,9 +186,9 @@ export function ReviewPage({ project, onProjectChange, onOpenQueue }: { project:
   const [batchJobId, setBatchJobId] = useState('')
   const [batchMessage, setBatchMessage] = useState('')
   useEffect(() => setSelectedChapters((ids) => ids.filter((id) => project?.chapters.some((chapter) => chapter.id === id) ?? false)), [project])
-  useEffect(() => { if (isDesktop()) void Promise.all([productionApi.voices(), systemApi.settings()]).then(([found, current]) => { setVoices(found); setSettings(current) }).catch((cause) => setError(errorMessage(cause))) }, [])
+  useEffect(() => { if (hasBackend()) void Promise.all([productionApi.voices(), systemApi.settings()]).then(([found, current]) => { setVoices(found); setSettings(current) }).catch((cause) => setError(errorMessage(cause))) }, [])
   useEffect(() => {
-    if (!isDesktop() || !project?.rootPath) return
+    if (!hasBackend() || !project?.rootPath) return
     setBatchJobId(window.sessionStorage.getItem(`review-batch:${project.rootPath}`) ?? '')
     void projectApi.open(project.rootPath).then(onProjectChange).catch((cause) => setError(errorMessage(cause)))
   }, [project?.rootPath])
@@ -492,7 +493,7 @@ export function ExportsPage({ project, onProjectChange }: { project: ProjectSnap
   const [selected, setSelected] = useState<string[]>([])
   useEffect(() => setSelected((ids) => ids.filter((id) => project?.exports.some((item) => item.id === id) ?? false)), [project])
   useEffect(() => {
-    if (!project?.rootPath || !isDesktop()) return
+    if (!project?.rootPath || !hasBackend()) return
     let disposed = false
     const refresh = (): void => {
       void projectApi.open(project.rootPath).then((fresh) => {
@@ -580,7 +581,7 @@ export function SettingsPage(): JSX.Element {
   const [jobs, setJobs] = useState<JobRecord[]>([])
   const refreshModels = async (): Promise<void> => { setModels(await Promise.all(['turbo', 'original'].map((model) => systemApi.modelStatus(model as 'turbo' | 'original')))) }
   useEffect(() => { if ('__TAURI_INTERNALS__' in window) { void invoke<DesktopInfo>('desktop_info').then(setDesktop); void Promise.all([systemApi.settings(), systemApi.diagnostics()]).then(([value, found]) => { setSettings(value); setTools(found) }).catch((cause) => setMessage(errorMessage(cause))) } }, [])
-  useEffect(() => { if (!isDesktop()) return; void refreshModels().catch((cause) => setMessage(errorMessage(cause))); void systemApi.workerRuntimeStatus(settings?.pythonPath).then(setRuntime).catch((cause) => setMessage(errorMessage(cause))); const timer = window.setInterval(() => { void refreshModels().catch(() => {}); void systemApi.workerRuntimeStatus(settings?.pythonPath).then(setRuntime).catch(() => {}); void systemApi.jobs().then(setJobs).catch(() => {}) }, 1000); return () => window.clearInterval(timer) }, [settings?.pythonPath])
+  useEffect(() => { if (!hasBackend()) return; void refreshModels().catch((cause) => setMessage(errorMessage(cause))); void systemApi.workerRuntimeStatus(settings?.pythonPath).then(setRuntime).catch((cause) => setMessage(errorMessage(cause))); const timer = window.setInterval(() => { void refreshModels().catch(() => {}); void systemApi.workerRuntimeStatus(settings?.pythonPath).then(setRuntime).catch(() => {}); void systemApi.jobs().then(setJobs).catch(() => {}) }, 1000); return () => window.clearInterval(timer) }, [settings?.pythonPath])
   async function installRuntime(): Promise<void> {
     try { const id = await systemApi.installWorkerRuntime(settings?.pythonPath); setRuntimeJobId(id); setJobs(await systemApi.jobs()) } catch (cause) { setMessage(errorMessage(cause)) }
   }
@@ -629,7 +630,7 @@ function toolStatus(status: ToolDiagnostic['status']): string {
 function SettingsForm({ settings, tools, onChange }: { settings: Settings; tools: ToolDiagnostic[]; onChange: (value: Settings) => void }): JSX.Element {
   const [voices, setVoices] = useState<Voice[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
-  useEffect(() => { if (isDesktop()) void productionApi.voices().then(setVoices) }, [])
+  useEffect(() => { if (hasBackend()) void productionApi.voices().then(setVoices) }, [])
   const ollama = settings.llm.provider === 'ollama' ? settings.llm : null
   const llama = settings.llm.provider === 'llama_cpp' ? settings.llm : null
   const detected = (key: ToolDiagnostic['key']): string => tools.find((tool) => tool.key === key)?.detectedPath ?? ''

@@ -3,12 +3,15 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   apple-silicon-release:
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: macos-15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -34,8 +37,39 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" src-tauri/target/release/bundle/dmg/*.dmg src-tauri/target/release/bundle/macos/*.zip --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" src-tauri/target/release/bundle/dmg/*.dmg src-tauri/target/release/bundle/macos/*.zip --generate-notes
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --generate-notes || gh release view "$GITHUB_REF_NAME"
+          gh release upload "$GITHUB_REF_NAME" src-tauri/target/release/bundle/dmg/*.dmg src-tauri/target/release/bundle/macos/*.zip --clobber
+
+  linux-server:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install build and audio tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg build-essential pkg-config libssl-dev
+          rustup update stable
+          rustup default stable
+      - name: Verify and package browser server
+        run: |
+          npm ci
+          npm run build
+          cargo test -p homer-core -p homer-server --features homer-core/server
+          python3 -m unittest discover -s workers/tests
+          python3 workers/audio/test_processor.py
+          cargo build --release -p homer-server
+          python3 scripts/test-server.py
+          HOMER_PACKAGE_PLATFORM=linux-x86_64 scripts/package-server.sh
+      - name: Publish Linux server artifact
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --generate-notes || gh release view "$GITHUB_REF_NAME"
           fi
+          gh release upload "$GITHUB_REF_NAME" release-artifacts/*.tar.gz --clobber

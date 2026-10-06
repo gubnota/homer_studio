@@ -101,10 +101,17 @@ export function replaceRange(t: WaveTimeline, a: number, b: number, clip: WaveCl
  const next = isolate(t,a,b)
  return { ...next, clips: [...next.clips.filter(c=>c.startMs<a || c.startMs>=b), {...clip,startMs:a}].sort((x,y)=>x.startMs-y.startMs) }
 }
-export function joinCandidateIds(t: WaveTimeline, selection: [number,number] | null, playhead: number, selectedId: string | null): string[] {
+export function joinCandidateIds(t: WaveTimeline, selection: [number,number] | null, playhead: number, selectedId: string | null, selectedIds: string[] = []): string[] {
  const clips = [...t.clips].sort((a,b)=>a.startMs-b.startMs)
+ if (selectedIds.length > 1) return clips.filter(c=>selectedIds.includes(c.id)).map(c=>c.id)
  if (selection) return clips.filter(c=>c.startMs>=selection[0]-.01 && clipEnd(c)<=selection[1]+.01).map(c=>c.id)
  const selected = clips.findIndex(c=>c.id===selectedId)
  const i = selected>=0 ? selected : clips.findIndex(c=>c.startMs<=playhead && clipEnd(c)>playhead)
  return i<0 ? [] : clips.slice(i,i+2).map(c=>c.id)
+}
+
+export function packSfxRows(clips: WaveClip[]): WaveClip[][] {
+ const rows: WaveClip[][] = []
+ for (const clip of [...clips].sort((a,b)=>a.startMs-b.startMs)) { let row=rows.find(r=>clipEnd(r[r.length-1]!)<=clip.startMs); if(!row){row=[];rows.push(row)} row.push(clip) }
+ return rows.length ? rows : [[]]
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Homer Studio",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "identifier": "com.gubnota.homerstudio",
   "build": {
     "beforeDevCommand": "npm run dev:web",
@@ -67,6 +67,16 @@
       "minimumSystemVersion": "13.0",
       "signingIdentity": "-",
       "entitlements": "Entitlements.plist"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "wavehs"
+        ],
+        "name": "Homer Studio Wave Project",
+        "role": "Editor",
+        "mimeType": "application/x-homer-wave"
+      }
+    ]
   }
 }

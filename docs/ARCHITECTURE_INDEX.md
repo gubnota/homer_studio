@@ -12,28 +12,28 @@
 - `docs/`: persistent project context and implementation plan.
 
 ## Application
-- `src-tauri/`: Tauri lifecycle, permissions, Rust commands, icons, build configuration, and future native services.
-- `src-tauri/src/commands/project.rs`: native project and manuscript commands.
-- `src-tauri/src/services/project_store.rs`: schema-v1 persistence, Markdown import, stable sections/takes, audio cues, atomic saves, and filesystem tests.
-- `src-tauri/src/services/settings.rs`: validated app settings, legacy voice-setting migration, atomic persistence, and local tool/service diagnostics.
-- `src-tauri/src/services/process_runner.rs`: argument-only child processes, timeout, cancellation, and bounded diagnostics.
-- `src-tauri/src/services/jobs.rs`: serialized heavy-work queue, bounded event logs, progress, pause/resume/cancel, and terminal-row cleanup.
-- `src-tauri/src/services/llm.rs`: bounded llama.cpp and loopback Ollama text processing with candidate-only results.
-- `src-tauri/src/services/spoken_text.rs`: Markdown-to-spoken-text normalization.
-- `src-tauri/src/services/model_install.rs`: explicit pinned Turbo/Original downloads, verification, progress, and disk use.
-- `src-tauri/src/services/worker_runtime.rs`: bundled worker resource lookup, app-data Python environment status and installation.
-- `src-tauri/src/services/speech.rs`: Chatterbox narration, audio import, FFmpeg normalization, duration probing, and waveform peaks.
+- `src-tauri/`: Tauri lifecycle, permissions, desktop command adapters, native capture/audio protocol, icons and packaging.
+- `crates/homer-core/src/commands/project.rs`: native project and manuscript commands.
+- `crates/homer-core/src/services/project_store.rs`: schema-v1 persistence, Markdown import, stable sections/takes, audio cues, atomic saves, and filesystem tests.
+- `crates/homer-core/src/services/settings.rs`: validated app settings, legacy voice-setting migration, atomic persistence, and local tool/service diagnostics.
+- `crates/homer-core/src/services/process_runner.rs`: argument-only child processes, timeout, cancellation, and bounded diagnostics.
+- `crates/homer-core/src/services/jobs.rs`: serialized heavy-work queue, bounded event logs, progress, pause/resume/cancel, and terminal-row cleanup.
+- `crates/homer-core/src/services/llm.rs`: bounded llama.cpp and loopback Ollama text processing with candidate-only results.
+- `crates/homer-core/src/services/spoken_text.rs`: Markdown-to-spoken-text normalization.
+- `crates/homer-core/src/services/model_install.rs`: explicit pinned Turbo/Original downloads, verification, progress, and disk use.
+- `crates/homer-core/src/services/worker_runtime.rs`: bundled worker resource lookup, app-data Python environment status and installation.
+- `crates/homer-core/src/services/speech.rs`: Chatterbox narration, audio import, FFmpeg normalization, duration probing, and waveform peaks.
 - `src-tauri/src/services/audio_protocol.rs`: registry-backed project audio delivery with byte-range support.
-- `src-tauri/src/services/exports.rs`: re-probed chapter assembly, copy/re-encode fallback, duration verification, and timestamp generation.
-- `src-tauri/src/services/sound_workers.rs`: bounded loopback worker client, health, job polling, cancellation, WAV transfer, and verified shutdown on app exit.
-- `src-tauri/src/services/sound_render.rs`: standalone request validation, segmented long effects, media verification, and conversion.
-- `src-tauri/src/services/sound_store.rs`: independent versioned clip library and safe asset paths.
-- `src-tauri/src/commands/sounds.rs`: generate/list/play/export/delete commands and segmented standalone voice conversion.
-- `src-tauri/src/commands/system.rs`: settings, diagnostics, and job-control commands.
-- `src-tauri/src/commands/production.rs`: text candidates, disposable voice previews, queued narration/import/export, per-section takes, recorded-delivery conversion, audio playback, waveforms, chapter review, and export retrieval.
+- `crates/homer-core/src/services/exports.rs`: re-probed chapter assembly, copy/re-encode fallback, duration verification, and timestamp generation.
+- `crates/homer-core/src/services/sound_workers.rs`: bounded loopback worker client, health, job polling, cancellation, WAV transfer, and verified shutdown on app exit.
+- `crates/homer-core/src/services/sound_render.rs`: standalone request validation, segmented long effects, media verification, and conversion.
+- `crates/homer-core/src/services/sound_store.rs`: independent versioned clip library and safe asset paths.
+- `crates/homer-core/src/commands/sounds.rs`: generate/list/play/export/delete commands and segmented standalone voice conversion.
+- `crates/homer-core/src/commands/system.rs`: settings, diagnostics, and job-control commands.
+- `crates/homer-core/src/commands/production.rs`: text candidates, disposable voice previews, queued narration/import/export, per-section takes, recorded-delivery conversion, audio playback, waveforms, chapter review, and export retrieval.
 - `src/shared/`: serializable contracts and pure chapter/time logic.
 - `src/renderer/src/native.ts`: typed renderer bridge to native commands, validated dropped manuscripts, and file dialogs.
-- `src-tauri/src/services/voice_store.rs`: app-data voice library, normalized reference samples, selected sample, and deletion.
+- `crates/homer-core/src/services/voice_store.rs`: app-data voice library, normalized reference samples, selected sample, and deletion.
 - `src/renderer/src/VoicePicker.tsx`: searchable modal voice picker shared across production screens.
 - `src/renderer/`: React project library, drop-enabled importer, source/candidate chapter editor, neural voices, sample recording, and previews, narration/review, verified export history/timestamps, live queue, settings/tool status, shared controls, and prototype-derived styles.
 - `src/renderer/src/SoundStudioPage.tsx`: book-independent prompt, worker status, clip library, playback, retry, export, and deletion.
@@ -72,8 +72,8 @@
 - `src/renderer/src/components/AudioEditor.tsx`: selections, waveform, edits, take previews and sentence cues.
 - `AudioTransport.tsx`, `AudioProcessingPanel.tsx`, `StudioControls.tsx` in the same folder: playback, optional processors and styled controls.
 - `src/renderer/src/useNativeRecording.ts`: lossless capture shared by legacy recording entry points.
-- `src-tauri/src/commands/audio.rs`, `audio_capture.rs`, `audio_processing.rs`: validated IPC and queued operations.
-- `src-tauri/src/services/audio_assets.rs`, `audio_edits.rs`, `memo_store.rs`: immutable WAV assets, composition rendering and revisioned memo persistence.
+- `crates/homer-core/src/commands/audio.rs`, `audio_capture.rs`, `audio_processing.rs`: validated IPC and queued operations.
+- `crates/homer-core/src/services/audio_assets.rs`, `audio_edits.rs`, `memo_store.rs`: immutable WAV assets, composition rendering and revisioned memo persistence.
 - `audio_capture.rs`, `waveform.rs` in services: CoreAudio capture lifecycle and bounded multilevel peak cache.
 - `audio_processors.rs`, `voice_profiles.rs` in services: isolated NDJSON supervisors and backward-compatible voice sidecars.
 - `workers/audio/processor.py`, `inference_driver.py`: lazy local inference adapters; per-engine `.txt` files pin environment dependencies.
@@ -85,7 +85,7 @@
 - `src/renderer/src/WaveStudioProvider.tsx`: session history, revisioned saves, restore and import handoffs.
 - `WaveStudioPage.tsx`, `components/WaveStudio*.tsx`, `WaveformCanvas.tsx`: project toolbar, selection, inspector, libraries and canvas lanes.
 - `useWaveStudioPlayback.ts`, `waveStudioNative.ts`: bounded Web Audio scheduling and typed native calls.
-- `src-tauri/src/commands/wave_studio.rs`: import, persistence, peaks, preview cancellation, exports and SFX commands.
+- `crates/homer-core/src/commands/wave_studio.rs`: import, persistence, peaks, preview cancellation, exports and SFX commands.
 - `services/wave_studio.rs`, `wave_store.rs`, `wave_render.rs`, `wave_processing.rs`, `wave_video.rs`, `sfx_store.rs`: validation, owned media, shared preview/export processing and reusable effects.
 - `resources/sfx/sitcom_laugh01.m4a`: immutable bundled Audience effect; release verification requires it.
 - `src/renderer/styles/wave-studio.css`; `tests/wave-studio.test.ts`; native validation/render tests in the services above.
@@ -93,3 +93,13 @@
 - `components/WaveRecordingPanel.tsx` and `WaveProductionPanel.tsx`: microphone capture and queued TTS/tagged-voice preview/acceptance.
 
 - `components/WaveProjectsPanel.tsx`, `WaveExportPanel.tsx`, `WaveVideoReference.tsx`: searchable portable project manager, explicit WAV/M4A format choice and synchronized muted video frame.
+
+## Optional Linux browser edition (0.2.6)
+- Root `Cargo.toml` / `Cargo.lock`: shared core and server workspace; desktop keeps its platform-specific lockfile.
+- `crates/homer-core/src/{commands,services}`: shared persistence, jobs, model workers, media and Wave editor logic.
+- `crates/homer-core/src/services/wave_bundle.rs`: streamed, checked `.wavehs` archives and voice/media remapping.
+- `server/src/main.rs`, `server/src/api.rs`: owner authentication, allowed command dispatch, scoped files, uploads, recording append and range streaming.
+- `src/renderer/src/platform.ts`, `browserCapture.ts`: desktop/HTTP transport, downloads and bounded browser microphone uploads.
+- `server/{run.sh,Dockerfile,compose.yaml}`, `scripts/package-server.sh`: server operation, optional GPU container and release archive.
+- `scripts/test-server.py`, `tests/server-transport.test.ts`: isolated real-media HTTP flows and transport regressions.
+- `docs/LINUX_SERVER.md`: secure access, deployment, explicit model installation and GPU requirements.

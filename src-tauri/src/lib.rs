@@ -4,15 +4,26 @@ mod services;
 use serde::Serialize;
 use std::{
     collections::HashMap,
-    path::PathBuf,
     sync::{Arc, Mutex, RwLock},
 };
 use tauri::Manager;
 
-pub struct AppState {
-    pub project_write_lock: Arc<Mutex<()>>,
-    pub jobs: services::jobs::JobStore,
-    pub audio_assets: Arc<RwLock<HashMap<String, PathBuf>>>,
+pub use homer_core::AppState;
+static OPEN_FILES: std::sync::LazyLock<Mutex<Vec<String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(Vec::new()));
+#[tauri::command]
+fn take_open_wave_files() -> Vec<String> {
+    OPEN_FILES
+        .lock()
+        .map(|mut q| std::mem::take(&mut *q))
+        .unwrap_or_default()
+}
+fn queue_wave_file(path: String) {
+    if path == ":open-dialog:" || path.to_lowercase().ends_with(".wavehs") {
+        if let Ok(mut q) = OPEN_FILES.lock() {
+            q.push(path)
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -34,11 +45,43 @@ fn desktop_info() -> DesktopInfo {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    for path in std::env::args().skip(1) {
+        queue_wave_file(path)
+    }
     let audio_assets = Arc::new(RwLock::new(HashMap::new()));
     let protocol_assets = audio_assets.clone();
+    let mut context = tauri::generate_context!();
+    if let Ok(identifier) = std::env::var("HOMER_SMOKE_IDENTIFIER") {
+        context.config_mut().identifier = identifier;
+        if let Some(window) = context.config_mut().app.windows.first_mut() {
+            window.data_directory =
+                std::env::var_os("HOMER_SMOKE_WEB_DATA").map(std::path::PathBuf::from);
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            let menu = tauri::menu::Menu::default(app.handle())?;
+            for item in menu.items()? {
+                if let tauri::menu::MenuItemKind::Submenu(file) = item {
+                    if file.text()? == "File" {
+                        file.insert(
+                            &tauri::menu::MenuItem::with_id(
+                                app,
+                                "open-wave-project",
+                                "Open Wave Project…",
+                                true,
+                                Some("CmdOrCtrl+O"),
+                            )?,
+                            0,
+                        )?;
+                    }
+                }
+            }
+            app.set_menu(menu)?;
+            if std::env::var_os("HOMER_SMOKE_IDENTIFIER").is_some() {
+                return Ok(());
+            }
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 let selected = services::settings::load(&handle)
@@ -56,6 +99,11 @@ pub fn run() {
             });
             Ok(())
         })
+        .on_menu_event(|_, event| {
+            if event.id().as_ref() == "open-wave-project" {
+                queue_wave_file(":open-dialog:".into())
+            }
+        })
         .register_uri_scheme_protocol("audio", move |_context, request| {
             services::audio_protocol::respond(&protocol_assets, request)
         })
@@ -67,18 +115,24 @@ pub fn run() {
         .manage(services::audio_capture::CaptureService::default())
         .invoke_handler(tauri::generate_handler![
             desktop_info,
+            take_open_wave_files,
+            commands::wave_studio::wave_cancel_peaks,
             commands::wave_studio::wave_normalize,
             commands::wave_studio::wave_join,
             commands::wave_studio::wave_generate_speech,
             commands::wave_studio::wave_convert_regions,
             commands::wave_studio::wave_processing_result,
             commands::wave_studio::wave_list,
+            commands::wave_studio::wave_operation_status,
+            commands::wave_studio::wave_cancel_operation,
             commands::wave_studio::wave_has_video,
             commands::wave_studio::wave_import_video,
             commands::wave_studio::wave_video_url,
             commands::wave_studio::wave_deleted,
             commands::wave_studio::wave_delete,
             commands::wave_studio::wave_save_copy,
+            commands::wave_studio::wave_export_bundle,
+            commands::wave_studio::wave_import_bundle,
             commands::wave_studio::wave_open_copy,
             commands::wave_studio::wave_get,
             commands::wave_studio::wave_create,
@@ -178,7 +232,7 @@ pub fn run() {
             commands::sounds::export_sound,
             commands::sounds::export_sounds
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("failed to build Homer Studio")
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested {

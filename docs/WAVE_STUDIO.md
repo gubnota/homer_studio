@@ -41,3 +41,12 @@ Export opens a format selector: M4A (AAC) or WAV. The selected format controls t
 - Gain, fade in/out, speed and preview position use styled sliders; number fields retain precise entry. Join is beside Split and also on the main toolbar.
 - Projects opens a vertical list with search, explicit Save current, portable Save copy/Open copy and recoverable Delete/Restore. Copies include immutable audio and video, so they can reopen independently.
 - Import/drop a video to add a separate reference lane and current-frame preview. Drag it or change Timeline start to align it with narration. References are muted, their audio is removed during import, and audio export contains only narration/SFX.
+
+## 0.2.6 editing and portability
+- Double-click selects a fragment; Shift-click adds fragments and Cmd-click toggles them. Join prompts for one resulting voice if tags differ.
+- Left/Right select adjacent fragments; Cmd/Ctrl+Left/Right seek fragment bounds; Shift+Left/Right seek five seconds; Shift+Space plays selection. Shortcut help is available in the editor.
+- Gain supports −96 to +20 dB with neutral zero at the center. Fade sliders snap to zero; playback speed snaps to 1. Peak normalization can attenuate loud peaks and boost quiet audio within the gain bounds; it does not measure perceived loudness.
+- Coincident SFX occupy visible rows. Preview starts on one click. Bottom timeline control adjusts zoom.
+- Cancel is available for generation and media preparation. Cancelled managed inference may require starting its worker again.
+- Save/import `.wavehs` to transfer media, video references and custom voice samples. Bundles open by drag, File menu or desktop argument.
+- Optional browser operation is documented in `LINUX_SERVER.md`. Server projects and models reside on the server.

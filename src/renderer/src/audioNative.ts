@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from './platform'
 import type { AudioEdit, CaptureDevice, CaptureState, PeakWindow, RecordingSession } from '../../shared/audio'
 export const audioApi = {
   sourcePath: (memo: RecordingSession) => invoke<string>('memo_source_path', { memoId: memo.id, expectedRevision: memo.revision }),

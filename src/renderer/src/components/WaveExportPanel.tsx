@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { save } from '@tauri-apps/plugin-dialog'
+import { save } from '../platform'
 import { useWaveStudio } from '../WaveStudioProvider'
 import { waveApi } from '../waveStudioNative'
 import { errorMessage } from '../native'

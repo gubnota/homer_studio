@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { voiceAudioKey, voiceComplete, reconcileVoiceProduction, projectDuration, blankTimeline, clipDuration, clipEnd, formatWaveTime, sourceClip, timelineDuration } from '../src/shared/waveStudio'
-import { insertMain, transferClip, replaceRange, joinCandidateIds, assignVoice, changeSpeed, historyEdit, historyRedo, historyUndo, insertSilence, moveClip, removeRange, splitAt } from '../src/shared/waveStudioEdits'
+import { packSfxRows, insertMain, transferClip, replaceRange, joinCandidateIds, assignVoice, changeSpeed, historyEdit, historyRedo, historyUndo, insertSilence, moveClip, removeRange, splitAt } from '../src/shared/waveStudioEdits'
 const source = { id: crypto.randomUUID(), name: 'Narration', durationMs: 10000, channels: 2 }
 const original = () => ({ ...blankTimeline(), clips: [sourceClip(source)] })
 describe('Wave Studio reversible editing', () => {
@@ -30,4 +30,10 @@ describe('Voice production completion', () => {
  it('invalidates completion when source audio changes or a different voice is assigned', () => { const t=completed();t.clips[0]!.sourceId='new-recording';expect(reconcileVoiceProduction(t).voices[0]!.production).toBeUndefined();const next=completed();next.voices[0]!.voiceId='another-voice';expect(voiceComplete(next,next.voices[0]!)).toBe(false) })
  it('keeps completed regions after moving a whole passage without changing its content', () => { const t=completed();t.clips[0]!.startMs=1000;t.voices[0]!.startMs=1000;t.voices[0]!.endMs=11000;expect(voiceComplete(t,t.voices[0]!)).toBe(true) })
  it('includes reference video placement in playback duration', () => {expect(projectDuration({schemaVersion:1,id:'p',name:'P',revision:0,updatedAtMs:0,sources:[],timeline:blankTimeline(),videos:[{id:'v',name:'Video',startMs:1000,durationMs:2000}]})).toBe(3000)})
+})
+
+
+describe('overlapping effects and multi-fragment selection',()=>{
+ it('keeps coincident effects visible and reuses a free row',()=>{const a=sourceClip({...source,durationMs:500},0,true),b=sourceClip({...source,durationMs:1000},0,true),c=sourceClip({...source,durationMs:200},500,true);expect(packSfxRows([c,b,a]).map(row=>row.map(clip=>clip.id))).toEqual([[b.id],[a.id,c.id]]);expect(packSfxRows([a,b,c]).flat()).toHaveLength(3)})
+ it('joins only explicitly selected fragments rather than everything in the time range',()=>{const t=splitAt(splitAt(original(),2000),4000),ids=[t.clips[0]!.id,t.clips[2]!.id];expect(joinCandidateIds(t,[0,10000],0,null,ids)).toEqual(ids)})
 })

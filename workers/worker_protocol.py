@@ -229,3 +229,7 @@ def serve(worker, port):
             for path in worker.references.values():
                 Path(path).unlink(missing_ok=True)
             worker.references.clear()
+        # Native callers use shutdown to interrupt inference. Daemon inference
+        # threads cannot unwind device kernels; terminating releases the device.
+        if os.environ.get("HOMER_MANAGED_WORKER") == "1":
+            os._exit(0)

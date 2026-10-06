@@ -1310,15 +1310,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "homer-core"
+version = "0.2.6"
+dependencies = [
+ "hound",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "uuid",
+]
+
+[[package]]
 name = "homer-studio"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "block2",
  "cpal",
+ "homer-core",
  "hound",
  "objc2-av-foundation",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

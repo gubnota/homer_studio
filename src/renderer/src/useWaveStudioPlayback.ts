@@ -7,17 +7,18 @@ export function useWaveStudioPlayback(project: WaveProject | null, onTime: (ms: 
  const [playing, setPlaying] = useState(false), [loading, setLoading] = useState(false)
  const context = useRef<AudioContext | null>(null), run = useRef<Run | null>(null), token = useRef(0), cache = useRef(new Map<string, AudioBuffer>())
  const callbacks = useRef({ onTime, onError }); callbacks.current = { onTime, onError }
- function stop(update = true): void { token.current++; void waveApi.cancelPreview().catch(() => {}); const r = run.current; if (r) { if (update && context.current) callbacks.current.onTime(Math.max(r.start, Math.min(r.end, r.start + (context.current.currentTime - r.origin) * 1000))); for (const n of r.nodes) { try { n.stop() } catch {} } }; run.current = null; setPlaying(false); setLoading(false) }
+ function stop(update = true): void { token.current++; void waveApi.cancelPreview().catch(() => {}); const r = run.current; if (r) { if (update && context.current) callbacks.current.onTime(Math.max(r.start, Math.min(r.end, r.start + (context.current.currentTime - r.origin) * 1000))); for (const n of r.nodes) { try { n.stop(); n.disconnect() } catch {} } }; run.current = null; setPlaying(false); setLoading(false) }
  async function play(startMs: number, endMs = project ? projectDuration(project) : 0, loop = false): Promise<void> {
    stop(false); if (!project || endMs <= startMs) return
    // AudioContext must be created/resumed within the user gesture.
-   const audio = context.current ??= new AudioContext({ sampleRate: 48000 }); await audio.resume()
+   const audio = context.current ??= new AudioContext({ sampleRate: 48000 }); try { await audio.resume() } catch(cause) { callbacks.current.onError(errorMessage(cause)); return }
    document.querySelectorAll('audio').forEach(a => a.pause())
    const mine = ++token.current, snapshot = project; setLoading(true)
    const chunk = async (start: number, end: number) => {
      const key = `${JSON.stringify(snapshot.timeline)}:${snapshot.id}:${start}:${end}`
      const existing = cache.current.get(key); if (existing) return existing
-     const data = await waveApi.preview(snapshot, start, end)
+     let timer:number|undefined
+     const data = await Promise.race([waveApi.preview(snapshot, start, end), new Promise<never>((_,reject)=>{timer=window.setTimeout(()=>reject(new Error('Audio preparation timed out. Cancel and retry, or re-import this source.')),45000)})]).finally(()=>window.clearTimeout(timer))
      if (mine !== token.current) throw new Error('superseded')
      const buffer = await audio.decodeAudioData(data instanceof ArrayBuffer ? data : new Uint8Array(data as unknown as number[]).buffer)
      cache.current.set(key, buffer); while (cache.current.size > 4) cache.current.delete(cache.current.keys().next().value!)

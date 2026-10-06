@@ -187,3 +187,11 @@
 - Installed the verified final build in `/Applications/Homer Studio.app`; previous bundle retained at `/private/tmp/homer-studio-before-025/Homer Studio.app`. The user resumed interacting with the app during final UI checks, so automated UI interaction stopped. GitHub publishing is explicitly authorized; CI publishing now tolerates an existing release.
 
 - Published verified DMG and ZIP packages at https://github.com/gubnota/homer_studio/releases/tag/v0.2.5; pushed main and annotated v0.2.5 (implementation commit 3d25b64). Subsequent user feedback: large video imports spend too long in the generic Working state; investigating a fast import path and cancellable progress as a follow-up.
+
+# 2026-10-06 — Approved 0.2.6 reliability and Linux browser edition
+- Added cancellable media preparation and generation, bounded decoder/subprocess/playback lifecycles, fast muted video remux, visible overlapping SFX rows, multiple selection, voice-aware Join, keyboard help, real zoom and neutral styled effect controls through +20 dB.
+- Added checked streaming `.wavehs` bundles with media/custom voices, remapped identity and desktop drag/menu/CLI opening. Browser transport shares extracted Rust core services with Tauri; server provides owner authentication, scoped file streaming, recording uploads and persistent projects.
+- Added Linux x86_64 packaging, GPU container configuration and operational documentation. Original worker unloads inactive model modes and retains bounded conversion chunks. No automatic model downloads.
+- Local verification: 38 renderer tests, typecheck/production assets, 55 optimized core tests, 2 HTTP unit tests, 3 desktop tests and 18 Python tests passed. Isolated real-FFmpeg HTTP integration covered auth/path/ranges, MP3 peaks/preview, exact-duration WAV/M4A exports, bundle restore, eleven SFX and streamed recording import.
+- Release is 0.2.6 as requested, with main/tag and macOS/Linux artifacts authorized for GitHub publication. Packaging/startup and Linux CI outcomes will be recorded after verification. The running installed app and user projects were preserved.
+- Exact user MP3, real CUDA inference/memory and comprehensive live browser microphone/listening checks remain manual; automated success is not a quality/performance guarantee.

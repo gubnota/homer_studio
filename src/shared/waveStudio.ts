@@ -5,7 +5,7 @@ export interface WaveTimeline { clips: WaveClip[]; sfx: WaveClip[]; voices: Voic
 export interface WaveVideo { id:string; name:string; durationMs:number; startMs:number }
 export interface WaveProject { schemaVersion: 1; id: string; name: string; revision: number; updatedAtMs: number; sources: WaveSource[]; timeline: WaveTimeline; view?: WaveView; voiceOriginal?: WaveTimeline | null; videos?: WaveVideo[] }
 export interface SfxAsset extends WaveSource { category: string; builtIn: boolean }
-export interface WaveView { offsetMs: number; spanMs: number; playheadMs: number; selection: [number, number] | null; selectedId: string | null; loop: boolean }
+export interface WaveView { offsetMs: number; spanMs: number; playheadMs: number; selection: [number, number] | null; selectedId: string | null; selectedIds?: string[]; loop: boolean }
 export const sfxCategories = ['Audience', 'Transitions', 'Atmosphere', 'UI', 'Intro', 'Outro', 'Custom'] as const
 export const speedPresets = [.85, .9, .95, 1, 1.05, 1.1, 1.15, 1.2]
 export const blankTimeline = (): WaveTimeline => ({ clips: [], sfx: [], voices: [] })

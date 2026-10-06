@@ -122,7 +122,7 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 ## Wave Studio schema 1
 - App data `wave-studio/`: `projects/<UUID>.json`, immutable `sources/`, `sfx.json`, disk tempo variants and bounded preview caches. Projects carry schemaVersion, UUID, name, revision, timestamps, sources and timeline (`clips`, `sfx`, `voices`). Optional `view` and `voiceOriginal` retain schema-1 compatibility; old projects default to no stored view/baseline.
 - Clip fields: UUID, sourceId (null = silence), name, startMs, sourceStartMs/sourceEndMs, speed, gainDb, fadeInMs/fadeOutMs. Effective duration is source span / speed; main clips cannot overlap. SFX can overlap.
-- Bounds: finite times within 24 hours, speed 0.85–1.20, gain -96..+6 dB, fades within clip duration, unique IDs and owned stereo sources. Voice regions have voiceId/name/color and positive timeline bounds.
+- Bounds: finite times within 24 hours, speed 0.85–1.20, gain -96..+20 dB, fades within clip duration, unique IDs and owned stereo sources. Voice regions have voiceId/name/color and positive timeline bounds.
 - `wave_list`, `wave_get`, `wave_create`, `wave_save` use revision checks and atomic JSON. `wave_import` accepts file, memo or saved sound and returns an owned measured source.
 - `wave_peaks` returns at most 2048 min/max pairs. `wave_preview` returns bounded PCM WAV for at most 10001 ms; `wave_cancel_preview` cancels native preparation. Preview and export share sample-accurate gain/fade/mixing and cached pitch-preserving tempo processing.
 - `wave_export` queues verified WAV/MP3/M4A/AAC/FLAC output using existing job cancellation. `wave_sfx_list/add/update`, `wave_source_url` expose reusable library assets through owned IDs.
@@ -133,3 +133,14 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 - Optional schema-1 `VoiceRegion.production` records generated/converted status, voiceId and audioKey. Audio identity ignores clip IDs, gain and fades; changed source/range/speed or voice invalidates completion. Conversion defaults to pending regions; regenerate is explicit. Built-in conversion may omit referenceId.
 - Optional `videos` contains owned id/name/durationMs/startMs. Video import removes audio, bounds frames to 1280×720 and serves range-enabled MP4. Preview duration includes video; audio export excludes references.
 - `wave_deleted`, `wave_delete(id, restore)` move project manifests into/out of recoverable trash. `wave_save_copy(project, directory)` writes a new portable directory including immutable sources and videos. `wave_open_copy(directory)` validates contained media and imports a new independent project with remapped media IDs.
+
+## Platform transport and portable Wave projects (0.2.6)
+- `WaveView.selectedIds?: string[]` complements legacy `selectedId`; older saved views migrate automatically. Join uses explicit IDs and asks for a resulting voice when tags differ.
+- `.wavehs`: streamed `WAVEHS01` archive with SHA-256 per entry; project JSON, owned audio/video and referenced custom voice samples. Import remaps IDs, rejects traversal, duplicate entries, corrupt/trailing bytes and rolls back partial state. Limits: 20,000 entries, 100 GB total, 16 MB manifest.
+- Desktop drag/Open/CLI paths enqueue `.wavehs` imports; original projects remain separate.
+- Server `POST /api/login`: owner token, at least 24 ASCII alphanumeric characters; HttpOnly SameSite=Strict cookie. Bearer token also supported. Mutation Origin must match Host.
+- `POST /api/command/{name}`: allowlisted command, camelCase JSON arguments; structured core errors. Binary previews are encoded for transport then restored to ArrayBuffer by platform adapter.
+- `/api/upload`, `/api/download`, `/api/media/{id}`: owned file streaming, authenticated ranged audio/video. Top-level filesystem arguments are scoped to server data/resources.
+- `/api/recording`: create a staged webm/m4a recording; PUT chunks up to 8 MB; stop queues existing memo import. Capture buffers and duration are bounded.
+- `GET /api/projects`: bounded list of saved manuscript project folders under server data; Wave projects use shared list/get/save commands.
+- Managed worker cancellation requests DELETE then verified local worker shutdown; restart is explicit when the worker is needed again. Unrelated services are not interrupted.

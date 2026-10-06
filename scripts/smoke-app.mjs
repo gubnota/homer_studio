@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,9 +29,12 @@ for (const resource of ["start_local.py", "worker_protocol.py", "chatterbox/serv
 }
 
 const smokeDataRoot = mkdtempSync(join(tmpdir(), "homer-studio-smoke-"));
+const smokeIdentifier = `com.homer-studio.smoke.${randomUUID()}`;
 const child = spawn(executablePath, [], {
   env: {
     ...process.env,
+    HOMER_SMOKE_IDENTIFIER: smokeIdentifier,
+    HOMER_SMOKE_WEB_DATA: join(smokeDataRoot, "web"),
     XDG_CONFIG_HOME: join(smokeDataRoot, "config"),
     XDG_DATA_HOME: join(smokeDataRoot, "data"),
   },
@@ -51,7 +56,7 @@ const earlyExit = await Promise.race([
 ]);
 
 if (earlyExit) {
-  rmSync(smokeDataRoot, { recursive: true, force: true });
+  cleanupSmoke();
   throw new Error(
     `Packaged app exited during startup (${JSON.stringify(earlyExit)}).\n${stderr}`,
   );
@@ -63,5 +68,10 @@ await Promise.race([
   new Promise((resolveTimeout) => setTimeout(resolveTimeout, 2_000)),
 ]);
 if (child.exitCode === null) child.kill("SIGKILL");
-rmSync(smokeDataRoot, { recursive: true, force: true });
+cleanupSmoke();
 console.log("Packaged app remained healthy through the startup smoke window.");
+
+function cleanupSmoke() {
+  rmSync(smokeDataRoot, {recursive: true, force: true});
+  for (const directory of ["Application Support", "Caches", "WebKit"]) rmSync(join(homedir(), "Library", directory, smokeIdentifier), {recursive: true, force: true});
+}

@@ -9,6 +9,7 @@
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
+- Version 0.2.6: bounded imports/playback, cancellable generation, overlapping SFX rows, multiple selection, shortcut help, neutral effect sliders, portable `.wavehs` bundles and an authenticated Linux browser edition. User authorized the version increase and GitHub artifacts.
 - Version 0.2.4 includes app-owned Chatterbox setup, narration recovery when a local worker stops, a two-job restart boundary for local Chatterbox memory, per-section narration and takes, batch chapter narration from Review, queue progress/cleanup, and recording-to-narrator conversion.
 - The Tauri app, durable project storage, drag-and-drop import, optional local text providers, local neural voice library, narration/import, review, export, and packaging are implemented.
 - The arm64 app bundle is verified for patch releases. Review, Exports, and clip libraries have bulk save/delete controls; Voice Lab converts standalone recordings; Review has zoomable waveform playback.
@@ -19,7 +20,7 @@
 - Tauri 2 desktop shell with a narrow Rust command boundary.
 - React 18, TypeScript, Vite, and Vitest renderer reconstructed from prototype components.
 - Prototype-derived styling maintained as the visual baseline.
-- Rust filesystem and subprocess services in the native backend.
+- Shared Rust services in `crates/homer-core`; Tauri desktop adapters and optional Axum HTTP server use the same commands.
 - JSON project/configuration files; no database.
 - FFmpeg, FFprobe, llama.cpp, and Ollama executables are discovered in bounded system and user Homebrew locations or selected explicitly in Settings.
 - Replaceable local text providers: llama.cpp / GGUF and Ollama.
@@ -27,14 +28,14 @@
 - Packaged worker scripts are Tauri resources. Chatterbox's Python 3.10 environment, checkpoint files, logs, and cache live in app data; setup is explicit in Settings.
 - English speech uses local Chatterbox Turbo or Original with a built-in or selected recorded/imported voice reference; Original also converts recorded delivery to the chosen narrator voice.
 - Sound Studio uses Chatterbox Turbo for standalone English speech and inline vocal gestures through versioned loopback HTTP. Sound-effect generation is retired; previously generated effects remain in the clip library. Turbo and Original checkpoints can be explicitly installed from Settings.
-- GitHub Actions builds and verifies packages on macOS arm64.
+- GitHub Actions builds and verifies macOS arm64 packages and a Linux x86_64 browser-server archive.
 
 ## Hard constraints
 - Primary target is macOS arm64 / Apple Silicon.
 - Preserve the prototype's layout and visual intent.
 - Do not claim compiled assets are a maintainable source project.
 - Do not invent a reference application that is not present.
-- Remain local-first; no application accounts or remote backend.
+- Remain local-first. Optional user-managed Linux server uses one owner token; no hosted account service or automatic model downloads.
 - Models and executables are configurable, never tied to one machine's paths.
 - Download Turbo/Original weights only after an explicit user action in Settings; show byte progress and disk use.
 - No mandatory Apple Developer credentials for test packages.

@@ -6,7 +6,7 @@ import { Checkbox } from './components/StudioControls'
 import { VoiceMemosPage } from './VoiceMemosPage'
 import { useEffect, useState } from 'react'
 import type { JobRecord, Settings, SoundAsset, SoundRequest, Voice, WorkerHealth } from '../../shared/contracts'
-import { errorMessage, isDesktop, productionApi, soundsApi, systemApi } from './native'
+import { errorMessage, hasBackend, productionApi, soundsApi, systemApi } from './native'
 import { VoicePicker } from './VoicePicker'
 
 export function isValidSoundRequest(request: SoundRequest): boolean {
@@ -18,7 +18,7 @@ const gestures = ['[clear throat]', '[sigh]', '[shush]', '[cough]', '[groan]', '
 export function SoundStudioPage(): JSX.Element {
  const wave = useOptionalWaveStudio()
  const [effects,setEffects]=useState<SfxAsset[]>([]),[effectUrl,setEffectUrl]=useState(''),[effectId,setEffectId]=useState('')
- useEffect(()=>{if(isDesktop())void waveApi.sfx().then(setEffects).catch(e=>setError(errorMessage(e)))},[])
+ useEffect(()=>{if(hasBackend())void waveApi.sfx().then(setEffects).catch(e=>setError(errorMessage(e)))},[])
   const [prompt, setPrompt] = useState('Hello there. This is a short spoken sample.')
   const [duration, setDuration] = useState(5)
   const [seed, setSeed] = useState('')
@@ -36,7 +36,7 @@ export function SoundStudioPage(): JSX.Element {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
 
   useEffect(() => {
-    if (!isDesktop()) return
+    if (!hasBackend()) return
     const refresh = (): void => {
       void soundsApi.workers().then(setWorkers).catch((cause) => setError(errorMessage(cause)))
       void soundsApi.list().then(setAssets).catch((cause) => setError(errorMessage(cause)))
@@ -114,7 +114,7 @@ export function SoundStudioPage(): JSX.Element {
         <div className="voice-field"><span>Voice · {voices.find((voice) => voice.id === settings?.speech.voiceId)?.name ?? 'Loading'}</span><button onClick={() => setPickerOpen(true)} disabled={!settings}>Choose voice</button></div>
         <div className="gesture-panel"><p className="field-note">Add a documented Turbo gesture inline with speech. Punctuation and sentence breaks shape phrasing. Longer text is generated in short parts and joined. The maximum duration does not stretch a short sentence.</p><div className="gesture-list">{gestures.map((tag) => <button type="button" key={tag} onClick={() => setPrompt((value) => `${value.trimEnd()} ${tag} `)}>{tag}</button>)}</div></div>
         <div className="sound-controls"><label>Maximum duration · seconds<input type="number" min="1" max="120" value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></label><label>Seed · optional<input type="number" min="0" max="2147483647" value={seed} onChange={(event) => setSeed(event.target.value)} placeholder="Random" /></label></div>
-        <div className="sound-action"><span>Engine: Chatterbox Turbo</span><div className="actions"><button className="primary" disabled={!isDesktop() || !selectedWorker?.ready || !valid || busy} onClick={() => void generate(request)}>{busy ? 'Generating…' : 'Generate clip'}</button></div></div>
+        <div className="sound-action"><span>Engine: Chatterbox Turbo</span><div className="actions"><button className="primary" disabled={!hasBackend() || !selectedWorker?.ready || !valid || busy} onClick={() => void generate(request)}>{busy ? 'Generating…' : 'Generate clip'}</button></div></div>
         {job && <div className="sound-job"><div className="sound-job-row"><strong>{job.status} · {job.progress}%</strong>{busy && <button onClick={() => void systemApi.controlJob(job.id, 'cancel')}>Cancel</button>}</div>{job.message && <p>{job.message}</p>}</div>}
       </section>
       <aside className="panel sound-workers"><h2>Local model</h2>{selectedWorker && <div className="sound-worker"><strong>Chatterbox Turbo</strong><span className={selectedWorker.ready ? 'ready' : 'unavailable'}>{selectedWorker.ready ? 'Ready' : 'Unavailable'}</span><small>{selectedWorker.message}</small></div>}<p className="field-note">Chatterbox makes English speech and documented gestures. Results vary with the prompt and voice.</p></aside>

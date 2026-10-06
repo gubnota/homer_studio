@@ -3,7 +3,7 @@ import { isRouteId, routes, type RouteId } from '../../shared/navigation'
 import type { ProjectSnapshot } from '../../shared/contracts'
 import { StudioLayout } from './components/StudioLayout'
 import { EditorPage, ExportsPage, ImportPage, ProjectsPage, QueuePage, ReviewPage, SettingsPage, StudioPage, VoicesPage } from './pages'
-import { chooseFolder, errorMessage, isDesktop, projectApi } from './native'
+import { chooseFolder, errorMessage, hasBackend, projectApi } from './native'
 import { SoundStudioPage } from './SoundStudioPage'
 import { VoiceLabPage } from './VoiceLabPage'
 import { WaveStudioPage } from './WaveStudioPage'
@@ -24,7 +24,7 @@ function StudioApp(): JSX.Element {
 
   useEffect(() => {
     const recent = localStorage.getItem('homer.recentProject')
-    if (!recent || !isDesktop()) return
+    if (!recent || !hasBackend()) return
     void projectApi.open(recent).then(setProject).catch(() => localStorage.removeItem('homer.recentProject'))
   }, [])
 

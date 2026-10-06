@@ -1,13 +1,12 @@
-import { invoke } from '@tauri-apps/api/core'
-import { open, save } from '@tauri-apps/plugin-dialog'
+import { invoke } from './platform'
+import { open, save } from './platform'
 import type { JobRecord, ModelStatus, ProjectSnapshot, Settings, SoundAsset, SoundRequest, TextCandidate, ToolDiagnostic, Voice, WorkerHealth, WorkerRuntimeStatus } from '../../shared/contracts'
 
-export function isDesktop(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-}
+import { hasBackend } from './platform'
+export { isDesktop, hasBackend } from './platform'
 
 export async function chooseFolder(title: string): Promise<string | null> {
-  if (!isDesktop()) return null
+  if (!hasBackend()) return null
   const selected = await open({ directory: true, multiple: false, title })
   return typeof selected === 'string' ? selected : null
 }
@@ -17,7 +16,7 @@ export async function defaultProjectParent(): Promise<string> {
 }
 
 export async function chooseManuscript(): Promise<{ name: string; text: string } | null> {
-  if (!isDesktop()) return null
+  if (!hasBackend()) return null
   const selected = await open({
     directory: false,
     multiple: false,
@@ -40,7 +39,7 @@ export function loadDroppedManuscript(paths: string[]): Promise<{ name: string; 
 }
 
 export async function chooseAudio(): Promise<string | null> {
-  if (!isDesktop()) return null
+  if (!hasBackend()) return null
   const selected = await open({
     directory: false,
     multiple: false,
@@ -51,7 +50,7 @@ export async function chooseAudio(): Promise<string | null> {
 }
 
 export async function chooseTool(title: string, extensions?: string[]): Promise<string | null> {
-  if (!isDesktop()) return null
+  if (!hasBackend()) return null
   const selected = await open({
     directory: false,
     multiple: false,

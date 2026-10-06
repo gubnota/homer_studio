@@ -15,3 +15,8 @@ workers/**/models/
 workers/**/.cache/
 .env
 .env.*
+
+/target/
+/homer-data/
+
+/release-artifacts/

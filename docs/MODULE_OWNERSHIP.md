@@ -4,8 +4,8 @@ Status: accepted boundaries for the authorized implementation.
 
 | Module | Owns | May depend on |
 | --- | --- | --- |
-| Renderer | Screens, editing state, playback controls, progress/errors | Shared contracts and explicit Tauri commands |
-| Tauri application | App lifecycle, capabilities, command validation, service coordination | Rust domain services and shared serialized contracts |
+| Renderer | Screens, editing state, playback controls, progress/errors | Shared contracts and explicit platform transport |
+| Tauri application | App lifecycle, capabilities, command validation, service coordination | Shared Rust core and serialized contracts |
 | Project/configuration services | Validated JSON, safe paths, atomic writes, recovery, tool diagnostics, and legacy voice-setting migration | Rust standard library, Serde schemas, bounded process discovery |
 | Job/process services | Sequential execution, cancellation, bounded logs | Rust process APIs and shared job types |
 | LLM providers | Optional text transformation through GGUF or Ollama | Process runner or local HTTP; shared provider contract |
@@ -55,3 +55,10 @@ Rules:
 - Wave processing owns isolated peak measurement, lossless Join, owned generated sources and Original conversion with duration fitting. Renderer owns explicit acceptance, original timeline restoration and project/view save draining. Capture retains memo assets before Wave import.
 
 - Wave native storage owns portable media validation and recoverable manifest deletion. Video service owns silent reference transcoding; renderer synchronizes frames to the audio clock. Shared timeline helpers own voice completion identity; acceptance records completion after replacement.
+
+## Server and shared core
+- `homer-core` owns domain commands/services and resource bounds. Desktop and HTTP adapters depend on it; core server builds must not require Tauri or CoreAudio.
+- Tauri owns native microphone/device access, menus, OS file-open handling and desktop audio URLs.
+- Axum owns single-owner authentication, same-origin checks, scoped paths, streamed transfers and browser recording staging. It exposes an explicit command allowlist.
+- Browser renderer owns microphone permission and capture; chunks go directly to server storage. Only core services execute media tools or workers.
+- Release tooling owns macOS arm64 and Linux x86_64 artifacts. Real GPU validation requires a supplied Linux CUDA host.

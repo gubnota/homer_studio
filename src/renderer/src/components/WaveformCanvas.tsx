@@ -8,7 +8,7 @@ export function WaveformCanvas({ clips, view, height: preferredHeight, selectedI
  const callbacks = useRef(onError); callbacks.current = onError
  useEffect(() => { const element = ref.current; if (!element) return; const observer = new ResizeObserver(() => { setWidth(element.clientWidth); setHeight(element.clientHeight) }); observer.observe(element); return () => observer.disconnect() }, [])
  useEffect(() => {
-   let alive = true, cursor = 0
+   let alive = true, cursor = 0; const requests = new Set<string>()
    const visible = clips.filter(c => c.sourceId && c.startMs < view.offsetMs + view.spanMs && clipEnd(c) > view.offsetMs).slice(0, 200)
    const work = async () => { while (alive && cursor < visible.length) {
      const c = visible[cursor++]!, a = Math.max(c.startMs, view.offsetMs), b = Math.min(clipEnd(c), view.offsetMs + view.spanMs)
@@ -16,9 +16,9 @@ export function WaveformCanvas({ clips, view, height: preferredHeight, selectedI
      if (end <= start) continue
      const count = Math.max(1, Math.min(2048, Math.ceil((b - a) / view.spanMs * width / 3))), key = `${c.sourceId}:${start}:${end}:${count}`
      if (peakCache.has(key)) continue
-     try { const peaks = await waveApi.peaks(c.sourceId!, start, end, count); peakCache.set(key, peaks.peaks); while (peakCache.size > 120) peakCache.delete(peakCache.keys().next().value!); if (alive) refresh(n => n + 1) } catch { if (alive) callbacks.current('Some waveform peaks could not be read. Your audio remains available for playback.') }
+     const requestId=crypto.randomUUID();requests.add(requestId);try { const peaks = await waveApi.peaks(c.sourceId!, start, end, count, requestId); peakCache.set(key, peaks.peaks); while (peakCache.size > 120) peakCache.delete(peakCache.keys().next().value!); if (alive) refresh(n => n + 1) } catch { if (alive) callbacks.current('Some waveform peaks could not be read. Your audio remains available for playback.') } finally {requests.delete(requestId)}
    } }
-   void Promise.all([work(), work(), work(), work()]); return () => { alive = false }
+   void Promise.all([work(), work()]); return () => { alive = false; for(const id of requests)void waveApi.cancelPeaks(id).catch(()=>{}) }
  }, [clips, view.offsetMs, view.spanMs, width])
  useEffect(() => {
    const canvas = ref.current; if (!canvas || width <= 0) return
@@ -29,8 +29,8 @@ export function WaveformCanvas({ clips, view, height: preferredHeight, selectedI
    for (const c of clips) {
      if (c.startMs >= view.offsetMs + view.spanMs || clipEnd(c) <= view.offsetMs) continue
      const a = Math.max(c.startMs, view.offsetMs), b = Math.min(clipEnd(c), view.offsetMs + view.spanMs), left = x(a), right = x(b)
-     ctx.fillStyle = c.id === selectedId ? '#edf1f4' : c.sourceId ? '#f3f4f1' : '#fafaf8'; ctx.fillRect(left, 1, Math.max(1, right - left), height - 2)
-     ctx.strokeStyle = c.id === selectedId ? '#758d9c' : '#d6d8d1'; ctx.strokeRect(x(c.startMs) + .5, .5, Math.max(1, x(clipEnd(c)) - x(c.startMs) - 1), height - 1)
+     ctx.fillStyle = (c.id === selectedId || view.selectedIds?.includes(c.id)) ? '#edf1f4' : c.sourceId ? '#f3f4f1' : '#fafaf8'; ctx.fillRect(left, 1, Math.max(1, right - left), height - 2)
+     ctx.strokeStyle = (c.id === selectedId || view.selectedIds?.includes(c.id)) ? '#758d9c' : '#d6d8d1'; ctx.strokeRect(x(c.startMs) + .5, .5, Math.max(1, x(clipEnd(c)) - x(c.startMs) - 1), height - 1)
      if (!c.sourceId) { ctx.fillStyle = '#9da097'; ctx.font = '11px -apple-system, sans-serif'; if (right - left > 48) ctx.fillText('Silence', left + 10, height / 2 - 8); continue }
      const start = Math.max(0, Math.floor(c.sourceStartMs + (a - c.startMs) * c.speed)), end = Math.ceil(Math.min(c.sourceEndMs, c.sourceStartMs + (b - c.startMs) * c.speed)), count = Math.max(1, Math.min(2048, Math.ceil((b - a) / view.spanMs * width / 3)))
      const peaks = peakCache.get(`${c.sourceId}:${start}:${end}:${count}`), gain = c.gainDb <= -96 ? 0 : 10 ** (c.gainDb / 20)
@@ -39,6 +39,6 @@ export function WaveformCanvas({ clips, view, height: preferredHeight, selectedI
      ctx.save(); ctx.beginPath(); ctx.rect(left + 5, 0, Math.max(0, right - left - 10), 24); ctx.clip(); ctx.fillStyle = '#737971'; ctx.font = '10px -apple-system, sans-serif'; ctx.fillText(`${c.name}${c.speed !== 1 ? ` · ${c.speed.toFixed(2)}×` : ''}`, left + 8, 16); ctx.restore()
      if (c.fadeInMs || c.fadeOutMs) { ctx.strokeStyle = '#9b7956'; ctx.beginPath(); ctx.moveTo(x(c.startMs), height - 5); ctx.lineTo(x(c.startMs + c.fadeInMs), 22); ctx.lineTo(x(clipEnd(c) - c.fadeOutMs), 22); ctx.lineTo(x(clipEnd(c)), height - 5); ctx.stroke() }
    }
- }, [clips, view.offsetMs, view.spanMs, width, height, selectedId, version])
+ }, [clips, view.offsetMs, view.spanMs, width, height, selectedId, view.selectedIds, version])
  return <canvas ref={ref} className="wave-canvas" style={{ height: preferredHeight }} aria-label="Audio waveform" />
 }

@@ -1,5 +1,6 @@
 """English Chatterbox TTS with explicit local weights and expression controls."""
 
+import gc
 import io
 import importlib.util
 import os
@@ -31,6 +32,13 @@ def generate(request, model_dir):
     from chatterbox.tts import ChatterboxTTS
 
     if request["category"] == "voice_conversion":
+        if _model is not None:
+            _model = None
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            elif torch.backends.mps.is_available():
+                torch.mps.empty_cache()
         from chatterbox.vc import ChatterboxVC
         device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
         if _vc_model is None:
@@ -50,6 +58,13 @@ def generate(request, model_dir):
     if request["category"] != "speech":
         raise ValueError("Original Chatterbox supports speech, not Turbo vocal tags.")
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    if _vc_model is not None:
+        _vc_model = _vc_builtin = None
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif torch.backends.mps.is_available():
+            torch.mps.empty_cache()
     if _model is None:
         _model = ChatterboxTTS.from_local(str(model_dir), device=device)
     exaggeration = request.get("exaggeration", 0.5)

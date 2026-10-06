@@ -50,6 +50,7 @@ def start(name, port, model, python, script, data_dir):
     environment = os.environ.copy()
     # Bundled scripts are signed resources; imports must not modify the app.
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment["HOMER_MANAGED_WORKER"] = "1"
     cache = data_dir / "cache" / name
     cache.mkdir(parents=True, exist_ok=True)
     environment["HF_HOME"] = str(cache)

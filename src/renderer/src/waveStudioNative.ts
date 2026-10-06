@@ -1,9 +1,11 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from './platform'
 import type { PeakWindow } from '../../shared/audio'
 import type { SfxAsset, WaveProject, WaveSource, WaveProcessingResult, WaveVideo } from '../../shared/waveStudio'
 export const waveApi = {
+ operationStatus:(requestId:string)=>invoke<{id:string;label:string;progress:number}|null>('wave_operation_status',{requestId}),
+ cancelOperation:(requestId:string)=>invoke<void>('wave_cancel_operation',{requestId}),
  hasVideo: (path:string)=>invoke<boolean>('wave_has_video',{path}),
- importVideo: (path:string)=>invoke<WaveVideo>('wave_import_video',{path}),
+ importVideo: (path:string,requestId:string|null=null)=>invoke<WaveVideo>('wave_import_video',{path,requestId}),
  videoUrl:(id:string)=>invoke<string>('wave_video_url',{id}),
  deleted:()=>invoke<WaveProject[]>('wave_deleted'),
  delete:(id:string,restore=false)=>invoke<void>('wave_delete',{id,restore}),
@@ -14,12 +16,15 @@ export const waveApi = {
  generateSpeech: (text: string, voiceId: string, projectId: string, revision: number) => invoke<string>('wave_generate_speech', { text, voiceId, projectId, revision }),
  convertRegions: (project: WaveProject, regionIds: string[], regenerate = false) => invoke<string>('wave_convert_regions', { project, regionIds, regenerate }),
  processingResult: (jobId: string) => invoke<WaveProcessingResult>('wave_processing_result', { jobId }),
+ exportBundle:(project:WaveProject,path:string)=>invoke<void>("wave_export_bundle",{project,path}),
+ importBundle:(path:string)=>invoke<WaveProject>("wave_import_bundle",{path}),
  list: () => invoke<WaveProject[]>('wave_list'),
  get: (id: string) => invoke<WaveProject>('wave_get', { id }),
  create: (name: string) => invoke<WaveProject>('wave_create', { name }),
  save: (project: WaveProject, expectedRevision: number) => invoke<WaveProject>('wave_save', { project, expectedRevision }),
- import: (kind: 'file' | 'memo' | 'sound', path: string | null = null, id: string | null = null) => invoke<WaveSource>('wave_import', { kind, path, id }),
- peaks: (sourceId: string, startMs: number, endMs: number, maxPeaks: number) => invoke<PeakWindow>('wave_peaks', { sourceId, startMs: Math.max(0, Math.floor(startMs)), endMs: Math.ceil(endMs), maxPeaks: Math.min(2048, Math.max(1, Math.floor(maxPeaks))) }),
+ import: (kind: 'file' | 'memo' | 'sound', path: string | null = null, id: string | null = null, requestId:string|null=null) => invoke<WaveSource>('wave_import', { kind, path, id, requestId }),
+ cancelPeaks: (requestId:string) => invoke<void>('wave_cancel_peaks',{requestId}),
+ peaks: (sourceId: string, startMs: number, endMs: number, maxPeaks: number, requestId?: string) => invoke<PeakWindow>('wave_peaks', { requestId, sourceId, startMs: Math.max(0, Math.floor(startMs)), endMs: Math.ceil(endMs), maxPeaks: Math.min(2048, Math.max(1, Math.floor(maxPeaks))) }),
  cancelPreview: () => invoke<void>('wave_cancel_preview'),
  preview: (project: WaveProject, startMs: number, endMs: number) => invoke<ArrayBuffer>('wave_preview', { project, startMs, endMs }),
  export: (project: WaveProject, outputPath: string) => invoke<string>('wave_export', { project, outputPath }),
