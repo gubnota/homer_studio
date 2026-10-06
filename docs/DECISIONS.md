@@ -256,3 +256,13 @@ Context: Retagging converted audio lost earlier accepted results; large binary p
 Decision: Persist passage-local original clips and accepted versions by voice. Convert from original, restore cached versions when retagging, and invalidate incompatible snapshots after content edits. Export streaming gzip WAVEHS02 documents and continue reading WAVEHS01. Serialize opening, expose cancellation and adopt validated canonical WAV without decoding again.
 Consequences: Projects retain original and alternate media; compression is lossless but size depends on media. Finder/CLI/menu/global drops share the opening workflow. Linux process-group termination uses an explicit option boundary so descendants release output pipes.
 Related files: waveStudioEdits.ts, WaveStudioProvider.tsx, wave_studio.rs, wave_processing.rs, wave_bundle.rs, wave_store.rs, process_runner.rs, audio_processors.rs.
+
+# ADR-0027: Incremental project folders and project-scoped audio
+
+Date: 2026-10-06
+Status: Accepted
+
+Context: Binary documents were large and opaque; project recordings appeared in global memo lists, and synchronized video needed edited-audio export.
+Decision: Default desktop saves use readable `.wavehs` packages and incremental copies. Keep video linked unless explicitly included; preserve legacy archive reading and explicit portable export. Use selected video length for MP4 export, with silent gaps. Scope Wave recordings to their owning project.
+Consequences: Moving a linked-video project may require Locate video. Project-owned recordings do not clutter standalone Voice Memos. Manual CSS and waveform caches remain intact.
+Related files: wave_store.rs, wave_bundle.rs, wave_video.rs, memo_store.rs, WaveProjectsPanel.tsx, WaveExportPanel.tsx, WaveRecordingPanel.tsx.

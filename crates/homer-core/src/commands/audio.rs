@@ -32,6 +32,9 @@ pub fn create_memo(
         .lock()
         .map_err(|_| CommandError::internal("Library lock unavailable"))?;
     if let Some(context) = &context {
+        if let Some(id) = &context.project_id {
+            crate::services::wave_store::load(&app, id)?;
+        }
         if serde_json::to_vec(context)
             .map_err(|e| CommandError::internal(e.to_string()))?
             .len()

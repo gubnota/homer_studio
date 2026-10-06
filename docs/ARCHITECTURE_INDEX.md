@@ -111,3 +111,8 @@
 - `README.ru.md`: Russian setup and workflows, kept aligned with the English README.
 
 - Shared UI: `StudioIcon.tsx`, `StudioModal.tsx`, `StudioToast.tsx`; waveform memory LRU: `src/renderer/src/waveformCache.ts` (120 windows per editor).
+
+## v0.3.2 storage and export
+- `wave_store.rs` / `wave_bundle.rs`: folder binding, incremental media copies, legacy archive import and explicit portable archive export.
+- `wave_video.rs`: original-video links, relinking and cancellable MP4 mux with edited audio.
+- `AudioTransport.tsx`, `AudioEditor.tsx`, `VoiceMemosPage.tsx`: playback lifecycle, compact takes and recording shortcuts.

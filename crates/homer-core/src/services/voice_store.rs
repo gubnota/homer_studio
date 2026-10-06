@@ -383,14 +383,11 @@ pub fn export_portable(
         .collect();
     for voice in &voices {
         for sample in &voice.samples {
-            let directory = folder.join("voices").join(&voice.id);
-            fs::create_dir_all(&directory)
-                .map_err(|e| CommandError::io("Cannot prepare voice bundle", e))?;
-            fs::copy(
-                sample_path(app, &voice.id, &sample.id)?,
-                directory.join(format!("{}.wav", sample.id)),
-            )
-            .map_err(|e| CommandError::io("Cannot copy voice reference", e))?;
+            super::wave_store::copy_media(
+                folder,
+                &sample_path(app, &voice.id, &sample.id)?,
+                &std::path::PathBuf::from(format!("voices/{}/{}.wav", voice.id, sample.id)),
+            )?;
         }
     }
     super::audio_assets::atomic_json(&folder.join("voices.json"), &voices)

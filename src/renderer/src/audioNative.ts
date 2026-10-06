@@ -5,7 +5,7 @@ const waveformCache = new WaveformCache<PeakWindow>()
 export const audioApi = {
   sourcePath: (memo: RecordingSession) => invoke<string>('memo_source_path', { memoId: memo.id, expectedRevision: memo.revision }),
   list: (includeDeleted = false) => invoke<RecordingSession[]>('list_memos', { includeDeleted }),
-  create: (name: string, context: Partial<Pick<RecordingSession, 'contextType' | 'chapterId' | 'segmentId' | 'speakerId' | 'text'>> | null = null) => invoke<RecordingSession>('create_memo', { name, context }),
+  create: (name: string, context: Partial<Pick<RecordingSession, 'projectId' | 'contextType' | 'chapterId' | 'segmentId' | 'speakerId' | 'text'>> | null = null) => invoke<RecordingSession>('create_memo', { name, context }),
   get: (memoId: string) => invoke<RecordingSession>('get_memo', { memoId }),
   update: (memo: RecordingSession) => invoke<RecordingSession>('update_memo', { memoId: memo.id, expectedRevision: memo.revision, name: memo.name, notes: memo.notes, favorite: memo.favorite, deleted: memo.deleted }),
   choose: (memo: RecordingSession, takeId: string, action: string) => invoke<RecordingSession>('choose_memo_take', { memoId: memo.id, expectedRevision: memo.revision, takeId, action }),

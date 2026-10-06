@@ -326,9 +326,23 @@ pub fn wave_export(
     state: State<'_, AppState>,
     project: Project,
     output_path: String,
+    video_id: Option<String>,
 ) -> Result<String, CommandError> {
     wave_store::validate_sources(&app, &project)?;
-    if project.timeline.duration() <= 0. {
+    let video = video_id
+        .as_ref()
+        .map(|id| {
+            project
+                .videos
+                .iter()
+                .find(|v| &v.id == id)
+                .cloned()
+                .ok_or_else(|| {
+                    CommandError::new("VIDEO_NOT_FOUND", "Select a video in this project.")
+                })
+        })
+        .transpose()?;
+    if project.timeline.duration() <= 0. && video.is_none() {
         return Err(CommandError::new(
             "EMPTY_WAVE_PROJECT",
             "Import some audio first.",
@@ -344,20 +358,44 @@ pub fn wave_export(
             let ext = output.extension().and_then(|x| x.to_str()).unwrap_or("");
             let temp =
                 output.with_file_name(format!(".homer-wave-{}.{}", uuid::Uuid::new_v4(), ext));
+            let audio_temp = temp.with_extension("wav");
             let result = (|| {
+                let settings = settings::load(&app)?;
+                let (start, duration) = video
+                    .as_ref()
+                    .map(|v| (v.start_ms, v.duration_ms))
+                    .unwrap_or((0., project.timeline.duration()));
+                if video.is_some() && ext != "mp4" {
+                    return Err(CommandError::new(
+                        "INVALID_DESTINATION",
+                        "Choose an MP4 filename for video export.",
+                    ));
+                }
                 wave_render::render(
                     &project,
                     &wave_store::root(&app)?,
-                    0.,
-                    project.timeline.duration(),
-                    &temp,
-                    &settings::load(&app)?,
+                    start,
+                    start + duration,
+                    if video.is_some() { &audio_temp } else { &temp },
+                    &settings,
                     control.cancelled.clone(),
                 )?;
                 control.boundary()?;
-                let duration =
+                if let Some(video) = &video {
+                    progress(30);
+                    crate::services::wave_video::export_mix(
+                        &app,
+                        video,
+                        &audio_temp,
+                        &temp,
+                        &settings,
+                        control.cancelled.clone(),
+                        std::sync::Arc::new(|_| {}),
+                    )?;
+                }
+                let measured =
                     crate::services::speech::probe_duration(&temp, &settings::load(&app)?)?;
-                if (duration as f64 - project.timeline.duration()).abs() > 150. {
+                if (measured as f64 - duration).abs() > 150. {
                     return Err(CommandError::new(
                         "INVALID_EXPORT_DURATION",
                         "The exported duration did not match the timeline.",
@@ -367,6 +405,7 @@ pub fn wave_export(
                     .map_err(|e| CommandError::io("Cannot publish mix", e))?;
                 Ok(())
             })();
+            let _ = std::fs::remove_file(audio_temp);
             if result.is_err() {
                 let _ = std::fs::remove_file(temp);
             }
@@ -654,9 +693,15 @@ pub async fn wave_save_copy(
     app: AppHandle,
     project: Project,
     path: String,
+    include_video: Option<bool>,
 ) -> Result<(), CommandError> {
     crate::runtime::async_runtime::spawn_blocking(move || {
-        wave_store::save_copy(&app, &project, std::path::Path::new(&path))
+        wave_store::save_folder(
+            &app,
+            &project,
+            std::path::Path::new(&path),
+            include_video.unwrap_or(false),
+        )
     })
     .await
     .map_err(|e| CommandError::internal(e.to_string()))?
@@ -675,9 +720,15 @@ pub async fn wave_export_bundle(
     app: AppHandle,
     project: Project,
     path: String,
+    include_video: Option<bool>,
 ) -> Result<(), CommandError> {
     crate::runtime::async_runtime::spawn_blocking(move || {
-        crate::services::wave_bundle::export(&app, &project, std::path::Path::new(&path))
+        crate::services::wave_bundle::export_options(
+            &app,
+            &project,
+            std::path::Path::new(&path),
+            include_video.unwrap_or(false),
+        )
     })
     .await
     .map_err(|e| CommandError::internal(e.to_string()))?

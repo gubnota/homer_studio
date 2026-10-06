@@ -15,6 +15,8 @@ use std::{
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecordingContext {
+    #[serde(default)]
+    pub project_id: Option<String>,
     pub context_type: Option<String>,
     pub chapter_id: Option<String>,
     pub segment_id: Option<String>,
@@ -125,7 +127,10 @@ pub fn list(app: &AppHandle, include_deleted: bool) -> Result<Vec<RecordingSessi
             .to_string_lossy()
             .into_owned();
         let memo = load(app, &id)?;
-        if include_deleted || !memo.deleted {
+        if memo.context.project_id.is_none()
+            && memo.context.chapter_id.is_none()
+            && (include_deleted || !memo.deleted)
+        {
             result.push(memo);
         }
     }
@@ -523,6 +528,29 @@ pub fn publish_processed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(all(feature = "server", not(feature = "desktop")))]
+    #[test]
+    fn project_recordings_are_not_global_memos() {
+        let base = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let app = AppHandle::new(base.clone(), base.clone());
+        let standalone = create(&app, "Standalone").unwrap();
+        let mut project = create(&app, "Project recording").unwrap();
+        project.context.project_id = Some(uuid::Uuid::new_v4().to_string());
+        save(&app, &project).unwrap();
+        let mut chapter = create(&app, "Book recording").unwrap();
+        chapter.context.chapter_id = Some(uuid::Uuid::new_v4().to_string());
+        save(&app, &chapter).unwrap();
+        for include_deleted in [false, true] {
+            let visible = list(&app, include_deleted).unwrap();
+            assert_eq!(visible.len(), 1);
+            assert_eq!(visible[0].id, standalone.id);
+        }
+        assert_eq!(
+            load(&app, &project.id).unwrap().context.project_id,
+            project.context.project_id
+        );
+        fs::remove_dir_all(base).unwrap();
+    }
     #[test]
     fn revision_conflict_preserves_metadata() {
         let m = RecordingSession {
@@ -569,12 +597,6 @@ pub fn update_take(
             "Take notes exceed 64 KB.",
         ));
     }
-    if deleted && memo.selected_take_id.as_deref() == Some(take_id) {
-        return Err(CommandError::new(
-            "ACTIVE_TAKE",
-            "Choose another take before deleting this one.",
-        ));
-    }
     let take = memo
         .takes
         .iter_mut()
@@ -585,6 +607,13 @@ pub fn update_take(
     take.favorite = favorite;
     if deleted {
         take.state = "rejected".into();
+        if memo.selected_take_id.as_deref() == Some(take_id) {
+            memo.selected_take_id = memo
+                .takes
+                .iter()
+                .find(|t| t.id != take_id && t.state == "accepted")
+                .map(|t| t.id.clone());
+        }
         memo.undo.retain(|id| id != take_id);
         memo.redo.retain(|id| id != take_id);
     }

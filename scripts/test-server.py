@@ -154,7 +154,47 @@ def main():
                 assert Path(path).read_bytes() == data
                 memo = command("create_memo", name="Browser recording fixture", context={})
                 wait_job(command("import_memo_audio", memoId=memo["id"], expectedRevision=memo["revision"], sourcePath=path, name="Recording"))
-                assert command("get_memo", memoId=memo["id"])["selectedTakeId"]
+                memo = command("get_memo", memoId=memo["id"])
+                take = next(t for t in memo["takes"] if t["id"] == memo["selectedTakeId"])
+                removed = command("update_memo_take", memoId=memo["id"], expectedRevision=memo["revision"],
+                                  takeId=take["id"], name=take["name"], notes="", favorite=False, deleted=True)
+                assert removed["selectedTakeId"] is None and removed["takes"][0]["state"] == "rejected"
+                scoped = command("create_memo", name="Project recording", context={"projectId": project["id"], "contextType": "wave-project"})
+                assert scoped["projectId"] == project["id"]
+                assert all(m["id"] != scoped["id"] for m in command("list_memos", includeDeleted=True))
+                # Folder saves reuse media; opening the same folder does not multiply project audio.
+                folder = temp / "data/exports/folder.wavehs"
+                command("wave_save_copy", project=project, path=str(folder), includeVideo=False)
+                stored = folder / "media" / (audio["id"] + ".wav")
+                before = stored.stat().st_mtime_ns
+                project["name"] = "Incrementally saved"
+                project = command("wave_save", project=project, expectedRevision=project["revision"])
+                assert stored.stat().st_mtime_ns == before
+                assert json.loads((folder / "project.json").read_text())["name"] == project["name"]
+                opened = command("wave_import_bundle", path=str(folder))
+                assert opened["id"] == project["id"]
+                assert command("wave_import_bundle", path=str(folder))["id"] == opened["id"]
+                # Video owns duration: two seconds of audio plus three seconds of silence.
+                video_file = temp / "video.mp4"
+                subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x90:r=10:d=5",
+                                "-f", "lavfi", "-i", "sine=frequency=900:duration=5", "-c:v", "libx264", "-c:a", "aac", str(video_file)], check=True)
+                video_path = json.loads(request("/api/upload?name=video.mp4", video_file.read_bytes(), method="POST")[0])["path"]
+                video = command("wave_import_video", path=video_path, requestId=str(uuid.uuid4()))
+                project["videos"] = [video]
+                project = command("wave_save", project=project, expectedRevision=project["revision"])
+                assert not list((folder / "media").glob("*.mp4")), "Default folder save must link video"
+                output = json.loads(request("/api/destination", {"name": "synced.mp4"})[0])["path"]
+                wait_job(command("wave_export", project=project, outputPath=output, videoId=video["id"]))
+                media = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", output]))
+                assert abs(float(media["format"]["duration"]) - 5) < .15
+                silence = subprocess.check_output(["ffmpeg", "-v", "error", "-ss", "3", "-i", output, "-t", "1", "-f", "f32le", "-ac", "1", "-"])
+                import array
+                samples = array.array("f"); samples.frombytes(silence)
+                assert samples and max(abs(v) for v in samples) < .001, "Original video audio must be replaced with silence in gaps"
+                bundled_folder = temp / "data/exports/with-video.wavehs"
+                command("wave_save_copy", project=project, path=str(bundled_folder), includeVideo=True)
+                assert (bundled_folder / "media" / (video["id"] + ".mp4")).read_bytes() == video_file.read_bytes()
+
                 # Restore/export uses the saved project, including its timeline and media.
                 command("wave_delete", id=project["id"], restore=False)
                 assert any(p["id"] == project["id"] for p in command("wave_deleted"))

@@ -4,5 +4,12 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>Record voice memos, narration takes, and voice references locally in Homer Studio.</string>
+  <key>UTExportedTypeDeclarations</key>
+  <array><dict>
+    <key>UTTypeIdentifier</key><string>com.homer-studio.wave-project</string>
+    <key>UTTypeDescription</key><string>Homer Studio Wave Project</string>
+    <key>UTTypeConformsTo</key><array><string>com.apple.package</string><string>public.data</string></array>
+    <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>wavehs</string></array></dict>
+  </dict></array>
 </dict>
 </plist>

@@ -4,8 +4,8 @@ import type { CaptureState, RecordingSession } from '../../shared/audio'
 import { audioApi } from './audioNative'
 import { errorMessage } from './native'
 
-// Every recording entry point preserves its native capture in Voice Memos.
-export function useNativeRecording(name: string, limitMs: number, context: Partial<Pick<RecordingSession, 'contextType' | 'chapterId' | 'segmentId' | 'speakerId' | 'text'>> | null = null) {
+// Captures retain their source; project captures stay outside the standalone memo list.
+export function useNativeRecording(name: string, limitMs: number, context: Partial<Pick<RecordingSession, 'projectId' | 'contextType' | 'chapterId' | 'segmentId' | 'speakerId' | 'text'>> | null = null) {
  const [memo,setMemo]=useState<RecordingSession|null>(null),[state,setState]=useState<CaptureState|null>(null),[url,setUrl]=useState(''),[path,setPath]=useState(''),[error,setError]=useState('')
  const id=useRef(''), mounted=useRef(true), active=useRef(false), timer=useRef<ReturnType<typeof setTimeout>|null>(null)
  async function finish():Promise<void>{const next=await audioApi.get(id.current);if(!mounted.current)return;setMemo(next);if(next.selectedTakeId){const [u,p]=await Promise.all([audioApi.url(next.id,next.selectedTakeId),audioApi.sourcePath(next)]);if(mounted.current){setUrl(u);setPath(p)}}}

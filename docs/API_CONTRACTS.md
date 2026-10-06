@@ -149,3 +149,9 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 - Renderer waveform cache keys include immutable source/take identity, window boundaries and peak count; failed/cancelled requests are never cached.
 
 - Wave voice regions optionally persist `audio: {original, versions, activeAudioKey}`. Snapshots use passage-local clip times; versions pair voice ID, clips and production metadata (up to 64 unique voices). Conversion always renders the original snapshot. Voice/source IDs and provenance keys remap on portable import, including inactive cached voices. Legacy regions without snapshots remain readable and can recover from the old pre-conversion timeline.
+
+## v0.3.2 project media
+- Recording context accepts optional `projectId`; project must exist. App-wide memo listing excludes `projectId` and `chapterId`.
+- `wave_save_copy` accepts optional `includeVideo` (default false) and binds a readable `.wavehs` folder for incremental autosave. `wave_export_bundle` remains the explicit binary portable archive path. Legacy archive import remains supported.
+- `wave_export` accepts optional `videoId`; selected video determines length and timeline window, with silent audio gaps. Output is MP4 with edited audio, excluding original video audio.
+- Folder manifests contain relative media paths; original external video links remain app-owned and must be relinked on another machine.

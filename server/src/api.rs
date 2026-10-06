@@ -162,6 +162,7 @@ pub async fn dispatch(app: AppHandle, command: &str, args: Value) -> Result<Valu
                 app.state::<AppState>(),
                 argument(&args, "project")?,
                 argument(&args, "outputPath")?,
+                argument(&args, "videoId")?,
             )?;
             serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
         }
@@ -292,6 +293,7 @@ pub async fn dispatch(app: AppHandle, command: &str, args: Value) -> Result<Valu
                 app.clone(),
                 argument(&args, "project")?,
                 argument(&args, "path")?,
+                argument(&args, "includeVideo")?,
             )
             .await?;
             serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
@@ -307,6 +309,7 @@ pub async fn dispatch(app: AppHandle, command: &str, args: Value) -> Result<Valu
                 app.clone(),
                 argument(&args, "project")?,
                 argument(&args, "path")?,
+                argument(&args, "includeVideo")?,
             )
             .await?;
             serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))

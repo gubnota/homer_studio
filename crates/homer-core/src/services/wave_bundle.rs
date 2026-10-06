@@ -252,6 +252,14 @@ fn unpack_entries(
     Ok(())
 }
 pub fn export(app: &AppHandle, p: &Project, destination: &Path) -> Result<(), CommandError> {
+    export_options(app, p, destination, false)
+}
+pub fn export_options(
+    app: &AppHandle,
+    p: &Project,
+    destination: &Path,
+    include_video: bool,
+) -> Result<(), CommandError> {
     if destination.extension().and_then(|s| s.to_str()) != Some("wavehs") {
         return Err(CommandError::new(
             "INVALID_DESTINATION",
@@ -268,7 +276,7 @@ pub fn export(app: &AppHandle, p: &Project, destination: &Path) -> Result<(), Co
     let scratch = Scratch(parent.join(format!(".wavehs-{}", uuid::Uuid::new_v4())));
     fs::create_dir(&scratch.0).map_err(io)?;
     let media = scratch.0.join("project");
-    super::wave_store::save_copy(app, p, &media)?;
+    super::wave_store::save_copy_options(app, p, &media, include_video)?;
     super::voice_store::export_portable(app, p, &media)?;
     let temporary = scratch.0.join("bundle");
     pack(&media, &temporary)?;
@@ -283,18 +291,36 @@ pub fn import(
 ) -> Result<Project, CommandError> {
     let scratch = Scratch(std::env::temp_dir().join(format!("wavehs-{}", uuid::Uuid::new_v4())));
     fs::create_dir(&scratch.0).map_err(io)?;
-    unpack_controlled(path, &scratch.0, &cancel, &*report)?;
+    let folder = if path.is_dir() {
+        path
+    } else {
+        unpack_controlled(path, &scratch.0, &cancel, &*report)?;
+        &scratch.0
+    };
     if cancel.load(Ordering::SeqCst) {
         return Err(CommandError::new(
             "JOB_CANCELLED",
             "Project opening cancelled.",
         ));
     }
-    let bytes = fs::read(scratch.0.join("project.json")).map_err(io)?;
+    let bytes = fs::read(folder.join("project.json")).map_err(io)?;
     let p: Project = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
     super::wave_studio::validate(&p)?;
-    let mapping = super::voice_store::import_portable(app, &scratch.0, settings)?;
-    let imported = super::wave_store::open_bundle_copy(app, &scratch.0, settings, cancel, report);
+    if path.is_dir() {
+        if let Ok(existing) = super::wave_store::load(app, &p.id) {
+            if super::wave_store::bound_folder(app, &p.id)?.as_deref()
+                == Some(path.canonicalize().map_err(io)?.as_path())
+                && serde_json::to_value(&existing).map_err(|_| invalid())?
+                    == serde_json::to_value(&p).map_err(|_| invalid())?
+            {
+                super::wave_store::validate_sources(app, &existing)?;
+                return Ok(existing);
+            }
+        }
+    }
+    let old_videos = p.videos.clone();
+    let mapping = super::voice_store::import_portable(app, folder, settings)?;
+    let imported = super::wave_store::open_bundle_copy(app, folder, settings, cancel, report);
     let mut p = match imported {
         Ok(p) => p,
         Err(error) => {
@@ -348,7 +374,30 @@ pub fn import(
                 .join(format!("{}.json", p.id)),
         );
     }
-    result
+    let result = result?;
+    if path.is_dir() {
+        for source in &result.sources {
+            super::wave_store::copy_media(
+                path,
+                &super::wave_store::source_path(app, &source.id)?,
+                &PathBuf::from(format!("media/{}.wav", source.id)),
+            )?;
+        }
+        // Linked video stays external; only preserve an explicit bundled copy.
+        for (old, video) in old_videos.iter().zip(result.videos.iter()) {
+            if path.join("media").join(format!("{}.mp4", old.id)).is_file() {
+                super::wave_store::copy_media(
+                    path,
+                    &super::wave_video::original_path(app, &video.id)?,
+                    &PathBuf::from(format!("media/{}.mp4", video.id)),
+                )?;
+            }
+        }
+        super::voice_store::export_portable(app, &result, path)?;
+        super::audio_assets::atomic_json(&path.join("project.json"), &result)?;
+        super::wave_store::bind_folder(app, &result, path)?;
+    }
+    Ok(result)
 }
 #[cfg(test)]
 mod tests {

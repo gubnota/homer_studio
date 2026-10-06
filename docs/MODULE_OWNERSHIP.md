@@ -64,3 +64,7 @@ Rules:
 - Release tooling owns macOS arm64 and Linux x86_64 artifacts. Real GPU validation requires a supplied Linux CUDA host.
 
 - Shared renderer components own dialog focus/Escape and expiring toast behavior. Renderer waveform cache retains completed immutable take/source windows only; Rust owns persistent decoded waveform validation.
+
+## Project media ownership
+- Wave project sources and recorded memos with `context.projectId` are project-owned. Standalone memo lists exclude project/chapter-owned recordings.
+- The shared core owns validated folder binding and media persistence; renderer supplies save/export choices. External video paths stay in trusted app-owned metadata.

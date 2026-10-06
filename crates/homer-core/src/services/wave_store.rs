@@ -75,6 +75,17 @@ pub fn save(app: &AppHandle, mut p: Project, expected: u64) -> Result<Project, C
     validate_sources(app, &p)?;
     p.revision = expected + 1;
     p.updated_at_ms = now();
+    if let Some(folder) = bound_folder(app, &p.id)? {
+        let include = fs::read(
+            root(app)?
+                .join("folders")
+                .join(format!("{}.options.json", p.id)),
+        )
+        .ok()
+        .and_then(|b| serde_json::from_slice::<bool>(&b).ok())
+        .unwrap_or(false);
+        save_copy_options(app, &p, &folder, include)?;
+    }
     audio_assets::atomic_json(&project_path(app, &p.id)?, &p)?;
     Ok(p)
 }
@@ -315,9 +326,9 @@ pub fn reveal(app: &AppHandle, id: &str, deleted: bool) -> Result<(), CommandErr
     let path = if deleted {
         root(app)?.join("trash").join(format!("{id}.json"))
     } else {
-        project_path(app, id)?
+        bound_folder(app, id)?.unwrap_or(project_path(app, id)?)
     };
-    if !path.is_file() {
+    if !path.exists() {
         return Err(CommandError::new(
             "PROJECT_NOT_FOUND",
             "Project is no longer available.",
@@ -337,41 +348,133 @@ pub fn reveal(app: &AppHandle, id: &str, deleted: bool) -> Result<(), CommandErr
     Ok(())
 }
 
+// Only app-owned bindings authorize automatic writes to a user-selected folder.
+fn binding_path(app: &AppHandle, id: &str) -> Result<PathBuf, CommandError> {
+    audio_assets::id(id)?;
+    Ok(root(app)?.join("folders").join(format!("{id}.json")))
+}
+pub fn bind_folder(app: &AppHandle, p: &Project, folder: &Path) -> Result<(), CommandError> {
+    let folder = folder
+        .canonicalize()
+        .map_err(|e| CommandError::io("Cannot resolve project folder", e))?;
+    audio_assets::atomic_json(&binding_path(app, &p.id)?, &folder)
+}
+pub fn bound_folder(app: &AppHandle, id: &str) -> Result<Option<PathBuf>, CommandError> {
+    let path = binding_path(app, id)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let bytes = fs::read(path).map_err(|e| CommandError::io("Cannot read project location", e))?;
+    serde_json::from_slice(&bytes)
+        .map(Some)
+        .map_err(|e| CommandError::internal(e.to_string()))
+}
+pub fn save_folder(
+    app: &AppHandle,
+    p: &Project,
+    destination: &Path,
+    include_video: bool,
+) -> Result<(), CommandError> {
+    save_copy_options(app, p, destination, include_video)?;
+    audio_assets::atomic_json(
+        &root(app)?
+            .join("folders")
+            .join(format!("{}.options.json", p.id)),
+        &include_video,
+    )?;
+    bind_folder(app, p, destination)
+}
 pub fn save_copy(app: &AppHandle, p: &Project, destination: &Path) -> Result<(), CommandError> {
+    save_copy_options(app, p, destination, false)
+}
+/// Publish immutable media atomically and reject redirected package paths.
+pub fn copy_media(folder: &Path, source: &Path, relative: &Path) -> Result<(), CommandError> {
+    let mut target = folder.to_path_buf();
+    for component in relative.components() {
+        let std::path::Component::Normal(component) = component else {
+            return Err(CommandError::new(
+                "UNSAFE_PATH",
+                "Invalid project media path.",
+            ));
+        };
+        target.push(component);
+        if fs::symlink_metadata(&target).is_ok_and(|m| m.file_type().is_symlink()) {
+            return Err(CommandError::new(
+                "UNSAFE_PATH",
+                "Project media cannot use symbolic links.",
+            ));
+        }
+    }
+    if target.is_file() {
+        return Ok(());
+    }
+    fs::create_dir_all(target.parent().unwrap())
+        .map_err(|e| CommandError::io("Cannot create media folder", e))?;
+    let temp = target.with_extension(format!("{}.part", uuid::Uuid::new_v4()));
+    let result = (|| {
+        fs::copy(source, &temp).map_err(|e| CommandError::io("Cannot copy project media", e))?;
+        fs::rename(&temp, &target).map_err(|e| CommandError::io("Cannot publish project media", e))
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(temp);
+    }
+    result
+}
+pub fn save_copy_options(
+    app: &AppHandle,
+    p: &Project,
+    destination: &Path,
+    include_video: bool,
+) -> Result<(), CommandError> {
     validate_sources(app, p)?;
-    if destination.exists() {
-        return Err(CommandError::new(
-            "DESTINATION_EXISTS",
-            "Choose a new folder name for this project copy.",
-        ));
+    let existed = destination.exists();
+    if existed {
+        let bytes = fs::read(destination.join("project.json"))
+            .map_err(|_| CommandError::new("DESTINATION_EXISTS", "Choose a new project folder."))?;
+        let existing: Project = serde_json::from_slice(&bytes)
+            .map_err(|_| CommandError::new("DESTINATION_EXISTS", "Choose a new project folder."))?;
+        if existing.id != p.id {
+            return Err(CommandError::new(
+                "DESTINATION_EXISTS",
+                "This folder belongs to another project.",
+            ));
+        }
     }
     let parent = destination
         .parent()
         .ok_or_else(|| CommandError::new("INVALID_DESTINATION", "Choose a project folder."))?;
-    let work = parent.join(format!(".homer-copy-{}", uuid::Uuid::new_v4()));
-    fs::create_dir(&work).map_err(|e| CommandError::io("Cannot create project copy", e))?;
+    let work = if existed {
+        destination.to_path_buf()
+    } else {
+        parent.join(format!(".homer-copy-{}", uuid::Uuid::new_v4()))
+    };
+    fs::create_dir_all(work.join("media"))
+        .map_err(|e| CommandError::io("Cannot create media folder", e))?;
     let result = (|| {
-        fs::create_dir(work.join("media"))
-            .map_err(|e| CommandError::io("Cannot create media folder", e))?;
         for source in &p.sources {
-            fs::copy(
-                source_path(app, &source.id)?,
-                work.join("media").join(format!("{}.wav", source.id)),
-            )
-            .map_err(|e| CommandError::io("Cannot copy project audio", e))?;
+            copy_media(
+                &work,
+                &source_path(app, &source.id)?,
+                &PathBuf::from(format!("media/{}.wav", source.id)),
+            )?;
         }
-        for video in &p.videos {
-            fs::copy(
-                super::wave_video::path(app, &video.id)?,
-                work.join("media").join(format!("{}.mp4", video.id)),
-            )
-            .map_err(|e| CommandError::io("Cannot copy project video", e))?;
+        for video in p.videos.iter().filter(|_| include_video) {
+            copy_media(
+                &work,
+                &super::wave_video::original_path(app, &video.id)?,
+                &PathBuf::from(format!("media/{}.mp4", video.id)),
+            )?;
         }
+        audio_assets::atomic_json(&work.join("video-links.json"), &p.videos)?;
+        super::voice_store::export_portable(app, p, &work)?;
         audio_assets::atomic_json(&work.join("project.json"), p)?;
-        fs::rename(&work, destination)
-            .map_err(|e| CommandError::io("Cannot publish project copy", e))
+        if !existed {
+            fs::rename(&work, destination)
+                .map_err(|e| CommandError::io("Cannot publish project copy", e))?;
+        }
+        Ok(())
     })();
-    if result.is_err() {
+    if result.is_err() && !existed {
         let _ = fs::remove_dir_all(work);
     }
     result
@@ -533,22 +636,39 @@ fn open_copy_controlled(
                 "Project opening cancelled.",
             ));
         }
-        let imported = super::wave_video::import_controlled(
-            app,
-            &owned(&v.id, "mp4")?,
-            settings,
-            cancel.clone(),
+        let local_video = folder.join("media").join(format!("{}.mp4", v.id));
+        let imported = if !local_video.exists() {
+            // An archive may describe a missing link, but never authorize arbitrary external paths.
+            if super::wave_video::validate(app, v).is_ok()
+                && super::wave_video::path(app, &v.id)?.is_file()
             {
-                let report = report.clone();
-                let done = completed;
-                std::sync::Arc::new(move |value| {
-                    report((65 + (done * 30 + value as usize * 30 / 100) / total.max(1)) as u8)
-                })
-            },
-        )?;
-        imported_files
-            .0
-            .push(super::wave_video::path(app, &imported.id)?);
+                v.clone()
+            } else {
+                super::wave_video::missing(app, v)?
+            }
+        } else {
+            super::wave_video::import_controlled(
+                app,
+                &owned(&v.id, "mp4")?,
+                settings,
+                cancel.clone(),
+                {
+                    let report = report.clone();
+                    let done = completed;
+                    std::sync::Arc::new(move |value| {
+                        report((65 + (done * 30 + value as usize * 30 / 100) / total.max(1)) as u8)
+                    })
+                },
+            )?
+        };
+        if local_video.is_file() {
+            super::wave_video::retain_original(app, &imported.id, &owned(&v.id, "mp4")?)?;
+        }
+        if imported.id != v.id {
+            imported_files
+                .0
+                .push(super::wave_video::path(app, &imported.id)?);
+        }
         if (imported.duration_ms - v.duration_ms).abs() > 100. {
             return Err(CommandError::new(
                 "INVALID_MEDIA",
@@ -633,6 +753,30 @@ fn adopt_audio(app: &AppHandle, path: &Path, source: &Source) -> Result<Source, 
 #[cfg(all(test, feature = "server", not(feature = "desktop")))]
 mod adoption_tests {
     use super::*;
+    #[test]
+    fn incremental_media_is_atomic_and_rejects_redirects() {
+        let base = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir_all(&base).unwrap();
+        let source = base.join("source.wav");
+        let folder = base.join("project.wavehs");
+        fs::create_dir(&folder).unwrap();
+        fs::write(&source, b"original").unwrap();
+        copy_media(&folder, &source, Path::new("media/audio.wav")).unwrap();
+        let media = folder.join("media/audio.wav");
+        let modified = fs::metadata(&media).unwrap().modified().unwrap();
+        fs::write(&source, b"changed").unwrap();
+        copy_media(&folder, &source, Path::new("media/audio.wav")).unwrap();
+        assert_eq!(fs::read(&media).unwrap(), b"original");
+        assert_eq!(fs::metadata(&media).unwrap().modified().unwrap(), modified);
+        assert!(copy_media(&folder, &source, Path::new("../outside.wav")).is_err());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&base, folder.join("redirect")).unwrap();
+            assert!(copy_media(&folder, &source, Path::new("redirect/outside.wav")).is_err());
+            assert!(!base.join("outside.wav").exists());
+        }
+        fs::remove_dir_all(base).unwrap();
+    }
     #[test]
     fn owned_pcm_adoption_preserves_bytes_without_ffmpeg() {
         let directory = std::env::temp_dir().join(format!("wave-adopt-{}", uuid::Uuid::new_v4()));
