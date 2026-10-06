@@ -1,6 +1,6 @@
 # Implementation Plan: Wave reliability and Linux browser edition
 
-Status: Approved by user; implementation complete, release verification in progress. Date: 2026-10-06.
+Status: Approved by user; implementation complete; local verification passed, GitHub release in progress. Date: 2026-10-06.
 
 ## Goal
 
