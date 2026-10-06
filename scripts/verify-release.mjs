@@ -11,7 +11,6 @@ const packageVersion = JSON.parse(
   readFileSync(join(repositoryRoot, "package.json"), "utf8"),
 ).version;
 const dmgPath = join(bundleRoot, "dmg", `Homer Studio_${packageVersion}_aarch64.dmg`);
-const zipPath = join(bundleRoot, "macos", `Homer Studio_${packageVersion}_aarch64.zip`);
 const argumentsSet = new Set(process.argv.slice(2));
 
 function requireFile(path, label) {
@@ -91,23 +90,11 @@ if (!architecture.includes("arm64")) {
 
 run("/usr/bin/codesign", ["--verify", "--deep", "--strict", appPath]);
 
-if (argumentsSet.has("--create-zip")) {
-  run("/usr/bin/ditto", [
-    "-c",
-    "-k",
-    "--sequesterRsrc",
-    "--keepParent",
-    appPath,
-    zipPath,
-  ]);
-}
-
 if (argumentsSet.has("--package")) {
   requireFile(dmgPath, "Disk image");
-  requireFile(zipPath, "ZIP archive");
 }
 
 console.log(`Verified arm64 app and ad-hoc signature: ${appPath}`);
 if (argumentsSet.has("--package")) {
-  console.log(`Verified release packages: ${dmgPath} and ${zipPath}`);
+  console.log(`Verified release packages: ${dmgPath}`);
 }

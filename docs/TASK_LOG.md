@@ -195,3 +195,9 @@
 - Local verification: 38 renderer tests, typecheck/production assets, 55 optimized core tests, 2 HTTP unit tests, 3 desktop tests and 18 Python tests passed. Isolated real-FFmpeg HTTP integration covered auth/path/ranges, MP3 peaks/preview, exact-duration WAV/M4A exports, bundle restore, eleven SFX and streamed recording import.
 - Release is 0.2.6 as requested, with main/tag and macOS/Linux artifacts authorized for GitHub publication. Final arm64 DMG/ZIP, resource/signature verification and isolated packaged startup smoke passed; main was pushed as f001692. Linux CI/release status will be recorded after publication. The running installed app and user projects were preserved.
 - Exact user MP3, real CUDA inference/memory and comprehensive live browser microphone/listening checks remain manual; automated success is not a quality/performance guarantee.
+
+## 2026-10-06 · v0.2.7 release follow-up
+- User requested increasing release numbers, Linux application bundle, macOS aarch64 DMG only, platform-specific requirements and an audio-editor screenshot.
+- Updated owned version manifests/locks, removed ZIP creation/verification/publication, documented Linux bundle contents and dependencies.
+- README screenshot captured from the actual browser editor using disposable spoken fixtures and Narrator/Maya/Leo assignments; installed app and user projects were untouched.
+- v0.2.6 macOS release and CI succeeded; Linux CI was still running when this follow-up began. v0.2.7 renderer checks passed (38 tests), Apple Silicon DMG build/signature/resources passed and isolated packaged startup smoke passed. Publication and Linux CI follow.

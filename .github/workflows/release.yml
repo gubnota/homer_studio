@@ -38,7 +38,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --generate-notes || gh release view "$GITHUB_REF_NAME"
-          gh release upload "$GITHUB_REF_NAME" src-tauri/target/release/bundle/dmg/*.dmg src-tauri/target/release/bundle/macos/*.zip --clobber
+          gh release upload "$GITHUB_REF_NAME" src-tauri/target/release/bundle/dmg/*.dmg --clobber
 
   linux-server:
     runs-on: ubuntu-22.04
@@ -54,17 +54,21 @@ jobs:
           sudo apt-get install -y ffmpeg build-essential pkg-config libssl-dev
           rustup update stable
           rustup default stable
-      - name: Verify and package browser server
-        run: |
-          npm ci
-          npm run build
-          cargo test -p homer-core -p homer-server --features homer-core/server
-          python3 -m unittest discover -s workers/tests
-          python3 workers/audio/test_processor.py
-          cargo build --release -p homer-server
-          python3 scripts/test-server.py
-          HOMER_PACKAGE_PLATFORM=linux-x86_64 scripts/package-server.sh
-      - name: Publish Linux server artifact
+      - name: Verify browser editor
+        run: npm ci && npm run build
+      - name: Test shared services
+        timeout-minutes: 10
+        run: cargo test --release -p homer-core -p homer-server --features homer-core/server
+      - name: Test Python workers
+        run: python3 -m unittest discover -s workers/tests && python3 workers/audio/test_processor.py
+      - name: Build Linux server
+        run: cargo build --release -p homer-server
+      - name: Verify HTTP and media integration
+        timeout-minutes: 10
+        run: python3 scripts/test-server.py
+      - name: Package Linux application bundle
+        run: HOMER_PACKAGE_PLATFORM=linux-x86_64 scripts/package-server.sh
+      - name: Publish Linux application bundle
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}

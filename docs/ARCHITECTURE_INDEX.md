@@ -103,3 +103,7 @@
 - `server/{run.sh,Dockerfile,compose.yaml}`, `scripts/package-server.sh`: server operation, optional GPU container and release archive.
 - `scripts/test-server.py`, `tests/server-transport.test.ts`: isolated real-media HTTP flows and transport regressions.
 - `docs/LINUX_SERVER.md`: secure access, deployment, explicit model installation and GPU requirements.
+
+## Release documentation
+- `docs/images/wave-editor-voices.jpg`: actual isolated editor screenshot embedded in README.
+- Versioned releases publish macOS aarch64 DMG only and a runnable Linux x86_64 tar bundle.

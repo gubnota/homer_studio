@@ -9,6 +9,7 @@
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
+- Version 0.2.7: release policy is macOS Apple Silicon DMG only and Linux x86_64 application bundle; README shows the voice editor and separate platform requirements. Increment the patch number for every new release; never reuse published tags.
 - Version 0.2.6: bounded imports/playback, cancellable generation, overlapping SFX rows, multiple selection, shortcut help, neutral effect sliders, portable `.wavehs` bundles and an authenticated Linux browser edition. User authorized the version increase and GitHub artifacts.
 - Version 0.2.4 includes app-owned Chatterbox setup, narration recovery when a local worker stops, a two-job restart boundary for local Chatterbox memory, per-section narration and takes, batch chapter narration from Review, queue progress/cleanup, and recording-to-narrator conversion.
 - The Tauri app, durable project storage, drag-and-drop import, optional local text providers, local neural voice library, narration/import, review, export, and packaging are implemented.

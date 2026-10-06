@@ -156,3 +156,6 @@ Multi-user collaboration, billing, automatic model downloads, provisioning a clo
 - Isolated real-media server integration passed authentication/origin/path checks, MP3 import, peaks/preview/ranges, WAV/M4A export, project bundle restoration, all eleven SFX and streamed recording import.
 - Exact reported MP3, screenshots, comprehensive browser listening/microphone interaction and CUDA memory/performance measurements remain unavailable. Synthetic and boundary tests do not establish those hardware-specific outcomes.
 - User subsequently authorized increasing the release to v0.2.6 and publishing artifacts. v0.2.5 remains intact.
+
+## Approved release follow-up (2026-10-06)
+User requested v0.2.7, increasing versions for each release, macOS arm64 DMG only, Linux application bundle, separate platform requirements and a real voice editor README screenshot. Update version manifests/locks and DMG verification/upload; retain the runnable Linux tar bundle; capture an isolated demo and verify builds before publishing both artifacts.

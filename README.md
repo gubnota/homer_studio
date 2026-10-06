@@ -1,15 +1,39 @@
 # Homer Studio
 
-Homer Studio is a local audiobook and sound-clip production app for Apple Silicon Macs. It imports TXT and Markdown manuscripts, lets you edit and process chapters, generates English narration with local Chatterbox Turbo or Original voices or imported audio, reviews each chapter, and exports one M4A audiobook with measured chapter timestamps. Sound Studio creates independent prompt-based clips without a book.
+Homer Studio is a local-first audio editor and audiobook production studio for Apple Silicon Macs, with a Linux server edition you access through your browser. Record or import narration, mark character voices, generate speech, split and join fragments, mix sound effects, and export WAV or M4A. Manuscript projects support chapter narration, review and audiobook export.
 
-Manuscripts, model requests, narration, and exports stay on the Mac. The app has no account, analytics, or hosted backend.
+Your desktop files and processing stay on your Mac. In the optional Linux edition, projects, models and processing stay on your own server; browser recordings upload to that server. There are no hosted accounts or analytics.
 
-## Requirements
+![Wave Studio audio editor with colored Narrator, Maya and Leo voice tags, narration waveforms and fragment level, fade and speed controls](docs/images/wave-editor-voices.jpg)
 
-- Apple Silicon Mac running macOS 13 or later
-- Node.js 22 and npm
-- Stable Rust toolchain with the Apple Silicon target
+*Wave Studio with an isolated demo narration: colored voice assignments, selectable fragments and audio controls. Assigned tags identify the intended voice; generate a tagged voice to change its sound.*
+
+## Downloads and requirements
+
+Get the [latest release](https://github.com/gubnota/homer_studio/releases/latest). Each new release receives a higher version number.
+
+### macOS
+
+- Apple Silicon (aarch64) Mac running macOS 13 or later
+- Download the **aarch64 DMG**; macOS releases publish the DMG only
 - FFmpeg and FFprobe, for example `brew install ffmpeg`
+- For neural voices: explicitly install the Python runtime and model checkpoints in Settings
+- For microphone recording: allow Homer Studio under System Settings → Privacy & Security → Microphone
+
+### Linux browser server
+
+- Linux x86_64; Ubuntu 22.04 or newer
+- Download and extract the **Linux application bundle** (`homer-studio-<version>-linux-x86_64.tar.gz`): server executable, browser editor, workers, sound assets and launcher
+- FFmpeg, FFprobe, Python 3.10 and venv support: `sudo apt install ffmpeg python3.10 python3.10-venv`
+- A modern browser and the server access token; use localhost through SSH forwarding or HTTPS for microphone recording
+- Optional GPU acceleration: NVIDIA driver and compatible CUDA-enabled PyTorch; container users also need Docker, Compose and NVIDIA Container Toolkit
+- Install neural runtimes and model checkpoints explicitly in Settings; model weights are not bundled
+
+See [Linux installation, browser access and GPU setup](docs/LINUX_SERVER.md). The Linux edition runs on your server and serves the editor in your browser.
+
+### Building from source
+
+Node.js 22, npm and the stable Rust toolchain are required in addition to the platform requirements above. macOS builds require the Apple Silicon Rust target; Linux builds require `build-essential`, `pkg-config` and `libssl-dev`.
 
 ## Run from source
 
@@ -66,6 +90,6 @@ npm run test:smoke
 npm run package:mac
 ```
 
-The final command attempts an Apple Silicon `.app`, `.dmg`, and `.zip` below `src-tauri/target/release/bundle/`. Local packages are ad-hoc signed for development and direct testing. A public distribution can add an Apple Developer ID signature and notarization later.
+The final command builds an Apple Silicon `.app` and verifies the release `.dmg` below `src-tauri/target/release/bundle/`. Local packages are ad-hoc signed for development and direct testing. A public distribution can add an Apple Developer ID signature and notarization later.
 
-GitHub CI repeats the checks on an Apple Silicon macOS runner. Tags matching the package version, such as `v0.2.0`, run the release workflow and publish the DMG and ZIP.
+GitHub CI repeats the checks on an Apple Silicon macOS runner. Tags matching the package version publish the aarch64 DMG and Linux x86_64 application bundle. The Linux job verifies the shared services and HTTP/media integration before publication.

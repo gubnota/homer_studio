@@ -226,3 +226,13 @@ Context: Long imports and stale waveform/playback work exhausted process/file re
 Decision: Bound subprocess/decoder work, cancel obsolete requests, stream recording and `.wavehs` archives, and keep conversion chunks sequential. Package owned media and voice references with checked paths and checksums.
 Consequences: Large work uses disk staging and may require worker restart after cancellation. Model baseline memory and exact user MP3 failures still require hardware/file-specific validation.
 Related files: crates/homer-core/src/services, src/renderer/src/useWaveStudioPlayback.ts, workers/chatterbox/original.py.
+
+# ADR-0024: Platform release artifacts and version increments
+
+Date: 2026-10-06
+Status: Accepted
+
+Context: User requested Linux application artifacts, macOS Apple Silicon DMG only and increasing release numbers.
+Decision: Publish a runnable Linux x86_64 tar bundle and macOS aarch64 DMG, starting v0.2.7; increment the patch version for each new release. Linux remains the browser-server edition.
+Consequences: ZIP is no longer created or required for new macOS releases. Older release assets remain historical. README separates runtime and source-build requirements for each platform.
+Related files: `.github/workflows/release.yml`, `scripts/verify-release.mjs`, `scripts/package-server.sh`, `README.md`, `docs/LINUX_SERVER.md`.
