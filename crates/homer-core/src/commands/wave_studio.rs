@@ -633,8 +633,15 @@ pub fn wave_delete(
     wave_store::trash(&app, &id, restore)
 }
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn wave_purge(app: AppHandle, state: State<'_, AppState>, id: Option<String>) -> Result<usize, CommandError> {
-    let _guard = state.project_write_lock.lock().map_err(|_| CommandError::internal("Project lock unavailable"))?;
+pub fn wave_purge(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Option<String>,
+) -> Result<usize, CommandError> {
+    let _guard = state
+        .project_write_lock
+        .lock()
+        .map_err(|_| CommandError::internal("Project lock unavailable"))?;
     wave_store::purge(&app, id.as_deref())
 }
 #[cfg(feature = "desktop")]
@@ -676,12 +683,19 @@ pub async fn wave_export_bundle(
     .map_err(|e| CommandError::internal(e.to_string()))?
 }
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub async fn wave_import_bundle(app: AppHandle, path: String) -> Result<Project, CommandError> {
+pub async fn wave_import_bundle(
+    app: AppHandle,
+    path: String,
+    request_id: Option<String>,
+) -> Result<Project, CommandError> {
     crate::runtime::async_runtime::spawn_blocking(move || {
+        let operation = Operation::new(request_id, "Opening project")?;
         crate::services::wave_bundle::import(
             &app,
             std::path::Path::new(&path),
             &settings::load(&app)?,
+            operation.cancel.clone(),
+            operation.reporter(),
         )
     })
     .await

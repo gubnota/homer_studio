@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { JobRecord, Voice } from '../../../shared/contracts'
 import type { WaveProcessingResult } from '../../../shared/waveStudio'
 import { sourceClip, formatWaveTime, timelineDuration, voiceAudioKey, voiceComplete } from '../../../shared/waveStudio'
-import { assignVoice, insertMain, replaceRange } from '../../../shared/waveStudioEdits'
+import { assignVoice, insertMain, replaceRange, rememberVoiceVersions } from '../../../shared/waveStudioEdits'
 import { useWaveStudio } from '../WaveStudioProvider'
 import { waveApi } from '../waveStudioNative'
 import { errorMessage, systemApi } from '../native'
@@ -28,6 +28,7 @@ export function WaveProductionPanel({kind,voices,onClose,regionId}:{kind:'speech
    timeline=o.lane==='main'?insertMain(timeline,clip,o.at):{...timeline,sfx:[...timeline.sfx,clip]}
    timeline=assignVoice(timeline,o.at,o.at+source.durationMs,voice)
    timeline={...timeline,voices:timeline.voices.map(v=>v.startMs===o.at&&v.voiceId===voice.id?{...v,production:{status:'generated',voiceId:v.voiceId,audioKey:voiceAudioKey(timeline,v)}}:v)}
+   timeline=rememberVoiceVersions(timeline,timeline,new Set(timeline.voices.filter(v=>v.startMs===o.at&&v.voiceId===voice.id).map(v=>v.id)))
   } else {
    for(const r of result.replacements) {
     const source=result.sources.find(s=>s.id===r.sourceId)
@@ -37,6 +38,7 @@ export function WaveProductionPanel({kind,voices,onClose,regionId}:{kind:'speech
    }
    const completed=new Set(result.replacements.map(r=>r.regionId))
    timeline={...timeline,voices:timeline.voices.map(v=>completed.has(v.id)?{...v,production:{status:'converted',voiceId:v.voiceId,audioKey:voiceAudioKey(timeline,v)}}:v)}
+   timeline=rememberVoiceVersions(p.timeline,timeline,new Set(result.replacements.map(r=>r.regionId).filter((id):id is string=>!!id)))
    c.rememberOriginal()
   }
   c.edit(timeline,[...p.sources,...result.sources.filter(s=>!p.sources.some(old=>old.id===s.id))]);onClose()

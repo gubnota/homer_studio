@@ -136,7 +136,7 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 
 ## Platform transport and portable Wave projects (0.2.6)
 - `WaveView.selectedIds?: string[]` complements legacy `selectedId`; older saved views migrate automatically. Join uses explicit IDs and asks for a resulting voice when tags differ.
-- `.wavehs`: streamed `WAVEHS01` archive with SHA-256 per entry; project JSON, owned audio/video and referenced custom voice samples. Import remaps IDs, rejects traversal, duplicate entries, corrupt/trailing bytes and rolls back partial state. Limits: 20,000 entries, 100 GB total, 16 MB manifest.
+- `.wavehs`: new streamed `WAVEHS02` lossless gzip payload, with SHA-256 per entry; legacy `WAVEHS01` remains readable. Contains project JSON, owned audio/video and referenced custom voice samples. Opening accepts optional `requestId` for operation progress/cancel; one renderer import at a time. Canonical bundled 48 kHz stereo float WAV is adopted without redundant decoding. Import remaps IDs, rejects traversal, duplicate entries, corrupt/trailing bytes and rolls back partial state. Limits: 20,000 entries, 100 GB total, 16 MB manifest.
 - Desktop drag/Open/CLI paths enqueue `.wavehs` imports; original projects remain separate.
 - Server `POST /api/login`: owner token, at least 24 ASCII alphanumeric characters; HttpOnly SameSite=Strict cookie. Bearer token also supported. Mutation Origin must match Host.
 - `POST /api/command/{name}`: allowlisted command, camelCase JSON arguments; structured core errors. Binary previews are encoded for transport then restored to ArrayBuffer by platform adapter.
@@ -147,3 +147,5 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 
 - `wave_purge {id: string | null}` permanently removes one trash manifest or clears all deleted manifests for null, while retaining shared media. `wave_reveal {id, deleted}` is desktop-only Finder reveal. Project restore/open must drain current saves and load the restored manifest before exporting. No schema changes.
 - Renderer waveform cache keys include immutable source/take identity, window boundaries and peak count; failed/cancelled requests are never cached.
+
+- Wave voice regions optionally persist `audio: {original, versions, activeAudioKey}`. Snapshots use passage-local clip times; versions pair voice ID, clips and production metadata (up to 64 unique voices). Conversion always renders the original snapshot. Voice/source IDs and provenance keys remap on portable import, including inactive cached voices. Legacy regions without snapshots remain readable and can recover from the old pre-conversion timeline.

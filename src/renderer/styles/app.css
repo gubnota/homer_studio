@@ -16,7 +16,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .nav-dot { width: 7px; height: 7px; border: 1.5px solid currentColor; border-radius: 50%; }
 .local-badge { display: flex; align-items: center; gap: 8px; margin-top: auto; padding: 10px; color: #77766f; font-size: 11px; }
 .local-badge span { width: 7px; height: 7px; border-radius: 50%; background: #64a66c; box-shadow: 0 0 0 3px #e3f1e5; }
-.workspace { position: relative; min-width: 0; overflow: auto; padding-bottom: 74px; border-left:#e7e7e7 1px solid;}
+.workspace { position: relative; min-width: 0; overflow: auto; padding-bottom: 74px;}
 .page { max-width: 1140px; min-height: 100%; margin: 0 auto; padding: 54px 52px 70px; }
 .page-header { display: flex; justify-content: space-between; align-items: end; min-height: 100px; margin-bottom: 32px; gap: 1rem;}
 .page-header p { margin: 0 0 8px; color: #96958e; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }

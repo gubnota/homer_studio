@@ -256,7 +256,7 @@ pub fn supervised(
     })();
     // Terminate descendants even if the parent already exited.
     let _ = Command::new("/bin/kill")
-        .args(["-KILL", &format!("-{pid}")])
+        .args(["-KILL", "--", &format!("-{pid}")])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();

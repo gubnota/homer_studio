@@ -278,16 +278,33 @@ pub fn purge(app: &AppHandle, id: Option<&str>) -> Result<usize, CommandError> {
             .map_err(|e| CommandError::io("Cannot delete project permanently", e))?;
         return Ok(1);
     }
-    if !dir.exists() { return Ok(0); }
+    if !dir.exists() {
+        return Ok(0);
+    }
     let mut count = 0;
-    for entry in fs::read_dir(&dir).map_err(|e| CommandError::io("Cannot read deleted projects", e))? {
+    for entry in
+        fs::read_dir(&dir).map_err(|e| CommandError::io("Cannot read deleted projects", e))?
+    {
         let entry = entry.map_err(|e| CommandError::io("Cannot read deleted project", e))?;
         let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
-        let Some(id) = path.file_stem().and_then(|s| s.to_str()) else { continue; };
-        if audio_assets::id(id).is_err() { continue; }
-        if !entry.file_type().map_err(|e| CommandError::io("Cannot inspect deleted project", e))?.is_file() { continue; }
-        fs::remove_file(path).map_err(|e| CommandError::io("Cannot delete project permanently", e))?;
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(id) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if audio_assets::id(id).is_err() {
+            continue;
+        }
+        if !entry
+            .file_type()
+            .map_err(|e| CommandError::io("Cannot inspect deleted project", e))?
+            .is_file()
+        {
+            continue;
+        }
+        fs::remove_file(path)
+            .map_err(|e| CommandError::io("Cannot delete project permanently", e))?;
         count += 1;
     }
     Ok(count)
@@ -295,11 +312,28 @@ pub fn purge(app: &AppHandle, id: Option<&str>) -> Result<usize, CommandError> {
 #[cfg(feature = "desktop")]
 pub fn reveal(app: &AppHandle, id: &str, deleted: bool) -> Result<(), CommandError> {
     audio_assets::id(id)?;
-    let path = if deleted { root(app)?.join("trash").join(format!("{id}.json")) } else { project_path(app, id)? };
-    if !path.is_file() { return Err(CommandError::new("PROJECT_NOT_FOUND", "Project is no longer available.")); }
-    let status = std::process::Command::new("/usr/bin/open").arg("-R").arg(path).status()
+    let path = if deleted {
+        root(app)?.join("trash").join(format!("{id}.json"))
+    } else {
+        project_path(app, id)?
+    };
+    if !path.is_file() {
+        return Err(CommandError::new(
+            "PROJECT_NOT_FOUND",
+            "Project is no longer available.",
+        ));
+    }
+    let status = std::process::Command::new("/usr/bin/open")
+        .arg("-R")
+        .arg(path)
+        .status()
         .map_err(|e| CommandError::io("Cannot reveal project in Finder", e))?;
-    if !status.success() { return Err(CommandError::new("REVEAL_FAILED", "Finder could not reveal this project.")); }
+    if !status.success() {
+        return Err(CommandError::new(
+            "REVEAL_FAILED",
+            "Finder could not reveal this project.",
+        ));
+    }
     Ok(())
 }
 
@@ -347,6 +381,32 @@ pub fn open_copy(
     folder: &Path,
     settings: &Settings,
 ) -> Result<Project, CommandError> {
+    open_copy_controlled(
+        app,
+        folder,
+        settings,
+        false,
+        Default::default(),
+        std::sync::Arc::new(|_| {}),
+    )
+}
+pub fn open_bundle_copy(
+    app: &AppHandle,
+    folder: &Path,
+    settings: &Settings,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    report: std::sync::Arc<dyn Fn(u8) + Send + Sync>,
+) -> Result<Project, CommandError> {
+    open_copy_controlled(app, folder, settings, true, cancel, report)
+}
+fn open_copy_controlled(
+    app: &AppHandle,
+    folder: &Path,
+    settings: &Settings,
+    adopt: bool,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    report: std::sync::Arc<dyn Fn(u8) + Send + Sync>,
+) -> Result<Project, CommandError> {
     let folder = folder
         .canonicalize()
         .map_err(|e| CommandError::io("Cannot resolve project folder", e))?;
@@ -390,10 +450,37 @@ pub fn open_copy(
     }
     let mut imported_files = ImportedFiles(Vec::new());
     let mut mapping = std::collections::HashMap::new();
+    let total = p.sources.len() + p.videos.len();
+    let mut completed = 0;
     for s in &mut p.sources {
+        if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(CommandError::new(
+                "JOB_CANCELLED",
+                "Project opening cancelled.",
+            ));
+        }
         let old = s.id.clone();
-        let imported = import(app, &owned(&old, "wav")?, &s.name, settings)?;
+        let path = owned(&old, "wav")?;
+        let imported = if adopt {
+            adopt_audio(app, &path, s)?
+        } else {
+            import_controlled(
+                app,
+                &path,
+                &s.name,
+                settings,
+                cancel.clone(),
+                std::sync::Arc::new(|_| {}),
+            )?
+        };
+        completed += 1;
+        report((65 + completed * 30 / total.max(1)) as u8);
         imported_files.0.push(source_path(app, &imported.id)?);
+        imported_files.0.push(
+            root(app)?
+                .join("sources")
+                .join(format!("{}.json", imported.id)),
+        );
         if (imported.duration_ms - s.duration_ms).abs() > 2. {
             return Err(CommandError::new(
                 "INVALID_MEDIA",
@@ -412,6 +499,26 @@ pub fn open_copy(
             }
         }
         for r in &mut t.voices {
+            if let Some(audio) = &mut r.audio {
+                for clip in audio
+                    .original
+                    .iter_mut()
+                    .chain(audio.versions.iter_mut().flat_map(|v| v.clips.iter_mut()))
+                {
+                    if let Some(id) = &mut clip.source_id {
+                        if let Some(new) = mapping.get(id) {
+                            *id = new.clone();
+                        }
+                    }
+                }
+                for (old, new) in &mapping {
+                    audio.active_audio_key = audio.active_audio_key.replace(old, new);
+                    for version in &mut audio.versions {
+                        version.production.audio_key =
+                            version.production.audio_key.replace(old, new);
+                    }
+                }
+            }
             if let Some(production) = &mut r.production {
                 for (old, new) in &mapping {
                     production.audio_key = production.audio_key.replace(old, new)
@@ -420,7 +527,25 @@ pub fn open_copy(
         }
     }
     for v in &mut p.videos {
-        let imported = super::wave_video::import(app, &owned(&v.id, "mp4")?, settings)?;
+        if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(CommandError::new(
+                "JOB_CANCELLED",
+                "Project opening cancelled.",
+            ));
+        }
+        let imported = super::wave_video::import_controlled(
+            app,
+            &owned(&v.id, "mp4")?,
+            settings,
+            cancel.clone(),
+            {
+                let report = report.clone();
+                let done = completed;
+                std::sync::Arc::new(move |value| {
+                    report((65 + (done * 30 + value as usize * 30 / 100) / total.max(1)) as u8)
+                })
+            },
+        )?;
         imported_files
             .0
             .push(super::wave_video::path(app, &imported.id)?);
@@ -437,6 +562,14 @@ pub fn open_copy(
         }
         v.id = imported.id;
         v.duration_ms = imported.duration_ms;
+        completed += 1;
+        report((65 + completed * 30 / total.max(1)) as u8);
+    }
+    if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(CommandError::new(
+            "JOB_CANCELLED",
+            "Project opening cancelled.",
+        ));
     }
     p.id = uuid::Uuid::new_v4().to_string();
     p.revision = 0;
@@ -444,5 +577,96 @@ pub fn open_copy(
     validate_sources(app, &p)?;
     audio_assets::atomic_json(&project_path(app, &p.id)?, &p)?;
     imported_files.0.clear();
+    report(100);
     Ok(p)
+}
+// Bundle audio is already canonical float PCM. Reuse bytes rather than launching a decoder.
+fn adopt_audio(app: &AppHandle, path: &Path, source: &Source) -> Result<Source, CommandError> {
+    let reader = hound::WavReader::open(path)
+        .map_err(|_| CommandError::new("INVALID_MEDIA", "Bundled audio is not a readable WAV."))?;
+    let spec = reader.spec();
+    let duration = reader.duration() as f64 * 1000. / spec.sample_rate.max(1) as f64;
+    if spec.channels != 2
+        || spec.sample_rate != 48000
+        || spec.bits_per_sample != 32
+        || spec.sample_format != hound::SampleFormat::Float
+        || (duration - source.duration_ms).abs() > 2.
+    {
+        return Err(CommandError::new(
+            "INVALID_MEDIA",
+            "Bundled audio format or duration changed.",
+        ));
+    }
+    let samples = reader.len() as u64;
+    if fs::metadata(path)
+        .map_err(|e| CommandError::io("Cannot inspect bundled audio", e))?
+        .len()
+        < samples * 4 + 44
+    {
+        return Err(CommandError::new(
+            "INVALID_MEDIA",
+            "Bundled audio is truncated.",
+        ));
+    }
+    drop(reader);
+    let mut imported = source.clone();
+    imported.id = uuid::Uuid::new_v4().to_string();
+    let output = source_path(app, &imported.id)?;
+    fs::create_dir_all(output.parent().unwrap())
+        .map_err(|e| CommandError::io("Cannot create audio library", e))?;
+    // A hard link avoids a second large disk copy; scratch removal leaves the owned link intact.
+    if fs::hard_link(path, &output).is_err() {
+        fs::copy(path, &output).map_err(|e| CommandError::io("Cannot restore project audio", e))?;
+    }
+    if let Err(e) = audio_assets::atomic_json(
+        &root(app)?
+            .join("sources")
+            .join(format!("{}.json", imported.id)),
+        &imported,
+    ) {
+        let _ = fs::remove_file(output);
+        return Err(e);
+    }
+    Ok(imported)
+}
+
+#[cfg(all(test, feature = "server", not(feature = "desktop")))]
+mod adoption_tests {
+    use super::*;
+    #[test]
+    fn owned_pcm_adoption_preserves_bytes_without_ffmpeg() {
+        let directory = std::env::temp_dir().join(format!("wave-adopt-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let app = AppHandle::new(directory.join("data"), directory.clone());
+        let input = directory.join("source.wav");
+        let mut writer = hound::WavWriter::create(
+            &input,
+            hound::WavSpec {
+                channels: 2,
+                sample_rate: 48000,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
+        .unwrap();
+        for n in 0..9600 {
+            writer.write_sample((n as f32 / 9600.).sin()).unwrap();
+        }
+        writer.finalize().unwrap();
+        let source = Source {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "Original".into(),
+            duration_ms: 100.,
+            channels: 2,
+        };
+        let imported = adopt_audio(&app, &input, &source).unwrap();
+        let output = source_path(&app, &imported.id).unwrap();
+        assert_eq!(fs::read(&input).unwrap(), fs::read(&output).unwrap());
+        fs::remove_file(input).unwrap();
+        assert!(output.is_file());
+        let mut invalid = source;
+        invalid.duration_ms = 500.;
+        assert!(adopt_audio(&app, &output, &invalid).is_err());
+        fs::remove_dir_all(directory).unwrap();
+    }
 }

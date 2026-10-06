@@ -13,7 +13,7 @@ export function WaveProjectsPanel({onClose}:{onClose:()=>void}):JSX.Element {
  useEffect(()=>{void task(async()=>{await w.flush()})},[])
  async function exportBundle(project:WaveProject,fromTrash=false):Promise<void>{await w.flush();const p=fromTrash?project:await waveApi.get(project.id);const path=await save({title:'Export project bundle',defaultPath:`${p.name.replace(/[/:]/g,'-')}.wavehs`,filters:[{name:'Homer Wave bundle',extensions:['wavehs']}]});if(path){await waveApi.exportBundle(p,path);notify('Project, media and voice references exported.')}}
  async function openProject(id:string):Promise<void>{if(await w.open(id))onClose();else throw new Error('Could not open this project. Your previous project remains available.')}
- async function openBundle():Promise<void>{const path=await open({title:'Open project bundle',multiple:false,filters:[{name:'Homer Wave bundle',extensions:['wavehs']}]});if(typeof path==='string'){await w.flush();const p=await waveApi.importBundle(path);await openProject(p.id)}}
+ async function openBundle():Promise<void>{const path=await open({title:'Open project bundle',multiple:false,filters:[{name:'Homer Wave bundle',extensions:['wavehs']}]});if(typeof path==='string'){if(await w.openBundle(path))onClose();else throw new Error('Could not open the project bundle.')}}
  const shown=(trash?deleted:projects).filter(p=>p.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()))
  return <StudioModal title="Wave projects" onClose={onClose} className="wave-projects-panel">
   <header><div><small>YOUR WORKSPACE</small><h2>Wave projects</h2></div></header>

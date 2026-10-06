@@ -61,7 +61,7 @@ jobs:
         run: cargo test --release --no-run -p homer-core -p homer-server --features homer-core/server
       - name: Test shared services
         timeout-minutes: 10
-        run: cargo test --release -p homer-core -p homer-server --features homer-core/server
+        run: cargo test --release -p homer-core -p homer-server --features homer-core/server -- --nocapture
       - name: Test Python workers
         run: python3 -m unittest discover -s workers/tests && python3 workers/audio/test_processor.py
       - name: Build Linux server

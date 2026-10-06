@@ -19,7 +19,7 @@ export const waveApi = {
  convertRegions: (project: WaveProject, regionIds: string[], regenerate = false) => invoke<string>('wave_convert_regions', { project, regionIds, regenerate }),
  processingResult: (jobId: string) => invoke<WaveProcessingResult>('wave_processing_result', { jobId }),
  exportBundle:(project:WaveProject,path:string)=>invoke<void>("wave_export_bundle",{project,path}),
- importBundle:(path:string)=>invoke<WaveProject>("wave_import_bundle",{path}),
+ importBundle:(path:string,requestId?:string)=>invoke<WaveProject>("wave_import_bundle",{path,requestId}),
  list: () => invoke<WaveProject[]>('wave_list'),
  get: (id: string) => invoke<WaveProject>('wave_get', { id }),
  create: (name: string) => invoke<WaveProject>('wave_create', { name }),

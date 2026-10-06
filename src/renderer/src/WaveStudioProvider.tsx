@@ -1,8 +1,11 @@
-import { isDesktop, invoke, open as chooseFile } from './platform'
+import { isDesktop, invoke, uploadFile, open as chooseFile } from './platform'
+import {getCurrentWebview} from '@tauri-apps/api/webview'
+import {StudioModal} from './components/StudioModal'
+import {notify} from './components/StudioToast'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { createContext, useContext, useEffect, useReducer, useRef, useState, type PropsWithChildren } from 'react'
 import { blankTimeline, reconcileVoiceProduction, sourceClip, timelineDuration, type WaveProject, type WaveSource, type WaveTimeline, type WaveView, type WaveVideo } from '../../shared/waveStudio'
-import { historyEdit, historyRedo, historyUndo, insertMain, type TimelineHistory } from '../../shared/waveStudioEdits'
+import { recoverVoiceVersions, historyEdit, historyRedo, historyUndo, insertMain, type TimelineHistory } from '../../shared/waveStudioEdits'
 import { errorMessage, hasBackend } from './native'
 import { waveApi } from './waveStudioNative'
 interface State { project: WaveProject | null; history: TimelineHistory; change: number }
@@ -26,7 +29,7 @@ interface Context {
  operation:{id:string;label:string;progress:number}|null;cancelOperation:()=>void;project: WaveProject | null; history: TimelineHistory; view: WaveView; setView: React.Dispatch<React.SetStateAction<WaveView>>
  edit: (timeline: WaveTimeline, sources?: WaveSource[]) => void; undo: () => void; redo: () => void; rename: (name: string) => void
  busy: boolean; error: string; setError: (error: string) => void; saveStatus: string; flush: () => Promise<void>
- deleteProject:(id:string)=>Promise<void>; setVideos:(videos:WaveVideo[])=>void; importVideo:(path:string,at:number)=>Promise<void>; create: () => Promise<boolean>; open: (id: string) => Promise<boolean>; importAudio: (kind: 'file' | 'memo' | 'sound', value: string, mode?: 'insert' | 'append' | 'replace' | 'sfx', at?: number) => Promise<void>; addSource: (source: WaveSource, at?: number, lane?: 'main' | 'sfx') => void; rememberOriginal: () => void; restoreOriginal: () => void
+ openBundle:(path:string|File)=>Promise<boolean>; deleteProject:(id:string)=>Promise<void>; setVideos:(videos:WaveVideo[])=>void; importVideo:(path:string,at:number)=>Promise<void>; create: () => Promise<boolean>; open: (id: string) => Promise<boolean>; importAudio: (kind: 'file' | 'memo' | 'sound', value: string, mode?: 'insert' | 'append' | 'replace' | 'sfx', at?: number) => Promise<void>; addSource: (source: WaveSource, at?: number, lane?: 'main' | 'sfx') => void; rememberOriginal: () => void; restoreOriginal: () => void
 }
 const WaveContext = createContext<Context | null>(null)
 export function useOptionalWaveStudio(): Context | null { return useContext(WaveContext) }
@@ -37,8 +40,10 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
  const [operation,setOperation]=useState<{id:string;label:string;progress:number}|null>(null)
  const restoring=useRef(true)
  const activeImport=useRef<string|null>(null)
+ const busyRef=useRef(false), uploadAbort=useRef<AbortController|null>(null)
+ const [openingBundle,setOpeningBundle]=useState(false)
  async function importing<T>(label:string,fn:(id:string)=>Promise<T>):Promise<T>{if(activeImport.current)throw new Error("Finish or cancel the active import first.");const id=crypto.randomUUID();activeImport.current=id;setOperation({id,label,progress:0});let polling=false;const timer=window.setInterval(()=>{if(polling)return;polling=true;void waveApi.operationStatus(id).then(s=>{if(s&&activeImport.current===id)setOperation(s)}).catch(()=>{}).finally(()=>{polling=false})},500);try{return await fn(id)}finally{window.clearInterval(timer);if(activeImport.current===id){activeImport.current=null;setOperation(null)}}}
- function cancelOperation():void{if(activeImport.current)void waveApi.cancelOperation(activeImport.current).catch(e=>setError(errorMessage(e)))}
+ function cancelOperation():void{uploadAbort.current?.abort();if(activeImport.current)void waveApi.cancelOperation(activeImport.current).catch(e=>setError(errorMessage(e)))}
  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [saveStatus, setSaveStatus] = useState('Saved')
  const current = useRef(state)
  function dispatch(action: Action): void { current.current = reducer(current.current, action); rawDispatch(action) }
@@ -56,7 +61,7 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
    saving.current = work
    try { await work } finally { if (saving.current === work) saving.current = null }
  }
- function load(p: WaveProject): void { p = { ...p, timeline: reconcileVoiceProduction(p.timeline) }; const previous = p.view || readView(p.id); const restored = {...previous, selectedIds: previous.selectedIds || (previous.selectedId ? [previous.selectedId] : [])}; current.current = { project: p, history: { past: [], present: p.timeline, future: [] }, change: 0 }; viewRef.current = restored; savedView.current = JSON.stringify(restored); revision.current = p.revision; savedChange.current = 0; dispatch({ kind: 'load', project: p }); setView(restored); localStorage.setItem('homer.wave.lastProject', p.id); setSaveStatus('Saved') }
+ function load(p: WaveProject): void { p = { ...p, timeline: recoverVoiceVersions(reconcileVoiceProduction(p.timeline),p.voiceOriginal) }; const previous = p.view || readView(p.id); const restored = {...previous, selectedIds: previous.selectedIds || (previous.selectedId ? [previous.selectedId] : [])}; current.current = { project: p, history: { past: [], present: p.timeline, future: [] }, change: 0 }; viewRef.current = restored; savedView.current = JSON.stringify(restored); revision.current = p.revision; savedChange.current = 0; dispatch({ kind: 'load', project: p }); setView(restored); localStorage.setItem('homer.wave.lastProject', p.id); setSaveStatus('Saved') }
  useEffect(() => {
    if (!hasBackend()) { restoring.current=false; return }
    let alive = true
@@ -69,9 +74,36 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
  useEffect(() => { const handler = (e: BeforeUnloadEvent) => { if (current.current.project && (savedChange.current !== current.current.change || savedView.current !== JSON.stringify(viewRef.current))) { e.preventDefault(); e.returnValue = ''; void flush().catch(() => {}) } }; window.addEventListener('beforeunload', handler); return () => window.removeEventListener('beforeunload', handler) }, [])
  useEffect(() => { const handler=(event:Event)=>setError(String((event as CustomEvent).detail));window.addEventListener('homer-download-error',handler);return()=>window.removeEventListener('homer-download-error',handler) }, [])
  useEffect(() => { if (!isDesktop()) return; let alive = true, unlisten: (()=>void) | undefined; const win=getCurrentWindow(); void win.onCloseRequested(async event => { event.preventDefault(); try { await drain(); if (current.current.project) localStorage.setItem(`homer.wave.view.${current.current.project.id}`,JSON.stringify(viewRef.current)); await win.destroy() } catch { setError('Save failed. Keep the window open and retry after resolving the error.') } }).then(fn=>{if(alive) unlisten=fn;else fn()}); return ()=>{alive=false;unlisten?.()} }, [])
- useEffect(() => { if(!isDesktop())return;let alive=true,checking=false;const timer=window.setInterval(()=>{if(checking||restoring.current||activeImport.current||saving.current)return;checking=true;void (async()=>{const paths=await invoke<string[]>('take_open_wave_files');for(let path of paths){if(!alive)break;if(path===':open-dialog:'){const chosen=await chooseFile({title:'Open Wave project',multiple:false,filters:[{name:'Homer Studio project',extensions:['wavehs']}]});if(typeof chosen!=='string')continue;path=chosen}await drain();const project=await waveApi.importBundle(path);if(alive){load(project);window.location.hash='wave-studio'}}})().catch(e=>{if(alive)setError(errorMessage(e))}).finally(()=>{checking=false})},750);return()=>{alive=false;window.clearInterval(timer)} }, [])
- async function task(fn: () => Promise<void>): Promise<boolean> { setBusy(true); setError(''); try { await fn(); return true } catch (cause) { setError(errorMessage(cause)); return false } finally { setBusy(false) } }
+ useEffect(() => { if(!isDesktop())return;let alive=true,checking=false;const timer=window.setInterval(()=>{if(checking||restoring.current||busyRef.current||activeImport.current||saving.current)return;checking=true;void (async()=>{const paths=await invoke<string[]>('take_open_wave_files');for(let path of paths){if(!alive)break;if(path===':open-dialog:'){const chosen=await chooseFile({title:'Open Wave project',multiple:false,filters:[{name:'Homer Studio project',extensions:['wavehs']}]});if(typeof chosen!=='string')continue;path=chosen}if(alive)await openBundle(path)}})().catch(e=>{if(alive)setError(errorMessage(e))}).finally(()=>{checking=false})},750);return()=>{alive=false;window.clearInterval(timer)} }, [])
+ async function task(fn: () => Promise<void>): Promise<boolean> { if(busyRef.current||restoring.current){notify('Finish or cancel the current operation first.');return false}busyRef.current=true;setBusy(true); setError(''); try { await fn(); return true } catch (cause) { setError(errorMessage(cause)); return false } finally { busyRef.current=false;setBusy(false) } }
  async function drain(): Promise<void> { if(!hasBackend())return; do { await flush() } while (current.current.project && (savedChange.current !== current.current.change || savedView.current !== JSON.stringify(viewRef.current))) }
+ async function openBundle(path:string|File):Promise<boolean> {
+  return task(async()=>{
+   await drain();setOpeningBundle(true)
+   const controller=new AbortController();uploadAbort.current=controller
+   try {
+    const project=await importing(typeof path==='string'?'Opening project':'Uploading project',async id=>{
+     const source=typeof path==='string'?path:await uploadFile(path,path.name,controller.signal)
+     if(controller.signal.aborted)throw new Error('Project opening cancelled.')
+     setOperation({id,label:'Opening project',progress:0})
+     return waveApi.importBundle(source,id)
+    })
+    load(project);window.location.hash='wave-studio';notify('Project opened with its media and voice versions.')
+   }catch(cause){notify(errorMessage(cause),'error');throw cause}
+   finally{uploadAbort.current=null;setOpeningBundle(false)}
+  })
+ }
+ useEffect(()=>{
+  if(isDesktop()){
+   let alive=true,unlisten:(()=>void)|undefined
+   void getCurrentWebview().onDragDropEvent(event=>{if(alive&&event.payload.type==='drop'&&event.payload.paths.some(p=>/\.wavehs$/i.test(p))){if(event.payload.paths.length!==1)notify('Drop one project at a time.','error');else void openBundle(event.payload.paths[0]!)}}).then(fn=>{if(alive)unlisten=fn;else fn()}).catch(e=>{if(alive)notify(errorMessage(e),'error')})
+   return()=>{alive=false;unlisten?.()}
+  }
+  const drag=(event:DragEvent)=>{if(event.dataTransfer?.types.includes('Files'))event.preventDefault()}
+  const drop=(event:DragEvent)=>{const files=Array.from(event.dataTransfer?.files||[]);if(!files.some(f=>/\.wavehs$/i.test(f.name)))return;event.preventDefault();event.stopImmediatePropagation();if(files.length!==1)notify('Drop one project at a time.','error');else void openBundle(files[0]!)}
+  window.addEventListener('dragover',drag);window.addEventListener('drop',drop,true)
+  return()=>{window.removeEventListener('dragover',drag);window.removeEventListener('drop',drop,true)}
+ },[])
  async function create(): Promise<boolean> { return task(async () => { await drain(); load(await waveApi.create('Untitled narration')) }) }
  async function open(id: string): Promise<boolean> { return task(async () => { await drain(); load(await waveApi.get(id)); window.location.hash = 'wave-studio' }) }
  async function deleteProject(id:string):Promise<void>{await drain();await waveApi.delete(id);if(current.current.project?.id===id){current.current=initial;dispatch({kind:'clear'});setView(defaultView);savedView.current=JSON.stringify(defaultView);savedChange.current=0;revision.current=0;localStorage.removeItem('homer.wave.lastProject')}}
@@ -99,6 +131,6 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
  }
  function rememberOriginal(): void { if (current.current.project && !current.current.project.voiceOriginal) dispatch({ kind: 'original', timeline: current.current.project.timeline }) }
  function restoreOriginal(): void { const p = current.current.project; if (p?.voiceOriginal) { edit(p.voiceOriginal); dispatch({ kind: 'original', timeline: null }) } }
- const value: Context = { operation,cancelOperation,project: state.project, history: state.history, view, setView, edit, undo: () => dispatch({ kind: 'undo' }), redo: () => dispatch({ kind: 'redo' }), rename: name => dispatch({ kind: 'name', name }), busy, error, setError, saveStatus, flush: drain, deleteProject, setVideos, importVideo, create, open, importAudio, addSource, rememberOriginal, restoreOriginal }
- return <WaveContext.Provider value={value}>{children}</WaveContext.Provider>
+ const value: Context = { operation,cancelOperation,project: state.project, history: state.history, view, setView, edit, undo: () => dispatch({ kind: 'undo' }), redo: () => dispatch({ kind: 'redo' }), rename: name => dispatch({ kind: 'name', name }), busy, error, setError, saveStatus, flush: drain, deleteProject, setVideos, importVideo, create, open, openBundle, importAudio, addSource, rememberOriginal, restoreOriginal }
+ return <WaveContext.Provider value={value}>{children}{openingBundle&&<div className="wave-modal-backdrop"><StudioModal title="Opening project" onClose={cancelOperation}><h2>{operation?.label||'Opening project'}</h2><p>Restoring audio, video references and voice versions.</p><progress max={100} value={operation?.progress||0}/><p>{operation?.progress||0}%</p><button onClick={cancelOperation}>Cancel</button></StudioModal></div>}</WaveContext.Provider>
 }

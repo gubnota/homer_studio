@@ -246,3 +246,13 @@ Context: Restored projects could export stale/empty state and custom dialogs/con
 Decision: Drain serialized saves before project changes, synchronously maintain current project refs, and load restored manifests before closing the project picker. Purge only validated trash manifests, retaining shared media. Use shared icon/modal/toast components and bounded completed waveform-window reuse over native disk caches. Preserve manual CSS edits.
 Consequences: Dialog close waits for recording stop when necessary; errors remain retryable. Memory cache evicts old windows without loading full audio. Linux has no Finder action.
 Related files: WaveStudioProvider.tsx, WaveProjectsPanel.tsx, StudioModal.tsx, StudioToast.tsx, waveformCache.ts, wave_store.rs.
+
+# ADR-0026: Reversible voices and compressed project documents
+
+Date: 2026-10-06
+Status: Accepted
+
+Context: Retagging converted audio lost earlier accepted results; large binary project files were slow to open and lacked visible progress.
+Decision: Persist passage-local original clips and accepted versions by voice. Convert from original, restore cached versions when retagging, and invalidate incompatible snapshots after content edits. Export streaming gzip WAVEHS02 documents and continue reading WAVEHS01. Serialize opening, expose cancellation and adopt validated canonical WAV without decoding again.
+Consequences: Projects retain original and alternate media; compression is lossless but size depends on media. Finder/CLI/menu/global drops share the opening workflow. Linux process-group termination uses an explicit option boundary so descendants release output pipes.
+Related files: waveStudioEdits.ts, WaveStudioProvider.tsx, wave_studio.rs, wave_processing.rs, wave_bundle.rs, wave_store.rs, process_runner.rs, audio_processors.rs.

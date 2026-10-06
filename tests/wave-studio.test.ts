@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { voiceAudioKey, voiceComplete, reconcileVoiceProduction, projectDuration, blankTimeline, clipDuration, clipEnd, formatWaveTime, sourceClip, timelineDuration } from '../src/shared/waveStudio'
-import { packSfxRows, insertMain, transferClip, replaceRange, joinCandidateIds, assignVoice, changeSpeed, historyEdit, historyRedo, historyUndo, insertSilence, moveClip, removeRange, splitAt } from '../src/shared/waveStudioEdits'
+import { rememberVoiceVersions, restoreVoiceOriginal, recoverVoiceVersions, packSfxRows, insertMain, transferClip, replaceRange, joinCandidateIds, assignVoice, changeSpeed, historyEdit, historyRedo, historyUndo, insertSilence, moveClip, removeRange, splitAt } from '../src/shared/waveStudioEdits'
 const source = { id: crypto.randomUUID(), name: 'Narration', durationMs: 10000, channels: 2 }
 const original = () => ({ ...blankTimeline(), clips: [sourceClip(source)] })
 describe('Wave Studio reversible editing', () => {
@@ -36,4 +36,61 @@ describe('Voice production completion', () => {
 describe('overlapping effects and multi-fragment selection',()=>{
  it('keeps coincident effects visible and reuses a free row',()=>{const a=sourceClip({...source,durationMs:500},0,true),b=sourceClip({...source,durationMs:1000},0,true),c=sourceClip({...source,durationMs:200},500,true);expect(packSfxRows([c,b,a]).map(row=>row.map(clip=>clip.id))).toEqual([[b.id],[a.id,c.id]]);expect(packSfxRows([a,b,c]).flat()).toHaveLength(3)})
  it('joins only explicitly selected fragments rather than everything in the time range',()=>{const t=splitAt(splitAt(original(),2000),4000),ids=[t.clips[0]!.id,t.clips[2]!.id];expect(joinCandidateIds(t,[0,10000],0,null,ids)).toEqual(ids)})
+})
+
+describe('saved voice versions',()=>{
+ const alex={id:'alex',name:'Alex'},john={id:'john',name:'John'}
+ function accept(before:ReturnType<typeof original>,voiceSource:string) {
+  const v=before.voices[0]!
+  let after=replaceRange(before,v.startMs,v.endMs,sourceClip({...source,id:voiceSource,durationMs:v.endMs-v.startMs}))
+  after={...after,voices:after.voices.map(r=>({...r,production:{status:'converted' as const,voiceId:r.voiceId,audioKey:voiceAudioKey(after,r)}}))}
+  return rememberVoiceVersions(before,after,new Set([v.id]))
+ }
+ it('restores the first Alex result after John, including its original effect settings',()=>{
+  const baseline=assignVoice(original(),0,10000,alex),a=accept(baseline,'alex-first')
+  a.clips[0]!.gainDb=12 // Later changes do not modify the accepted snapshot.
+  const pending=assignVoice(a,0,10000,john)
+  expect(pending.clips[0]!.sourceId).toBe(source.id)
+  const j=accept(pending,'john-first'),back=assignVoice(j,0,10000,alex)
+  expect(back.clips[0]!.sourceId).toBe('alex-first');expect(back.clips[0]!.gainDb).toBe(0)
+  expect(back.voices[0]!.audio!.original[0]!.sourceId).toBe(source.id)
+  expect(voiceComplete(back,back.voices[0]!)).toBe(true)
+  const restored=restoreVoiceOriginal(back,back.voices[0]!.id)
+  expect(restored.clips[0]!.sourceId).toBe(source.id);expect(restored.voices[0]!.production).toBeUndefined()
+  expect(assignVoice(restored,0,10000,alex).clips[0]!.sourceId).toBe('alex-first')
+ })
+ it('persists versions through serialization and Undo/Redo',()=>{
+  const a=accept(assignVoice(original(),0,10000,alex),'alex-first'),j=accept(assignVoice(a,0,10000,john),'john-first')
+  const reloaded=JSON.parse(JSON.stringify(j)),back=assignVoice(reloaded,0,10000,alex)
+  const h=historyEdit({past:[],present:reloaded,future:[]},back)
+  expect(historyUndo(h).present).toEqual(reloaded);expect(historyRedo(historyUndo(h)).present).toEqual(back)
+  expect(back.clips[0]!.sourceId).toBe('alex-first')
+ })
+ it('starts a partial retag from original audio and preserves adjacent versions',()=>{
+  const a=accept(assignVoice(original(),0,10000,alex),'alex-first'),j=assignVoice(a,2000,4000,john)
+  expect(j.clips.find(c=>c.startMs===2000)!.sourceId).toBe(source.id)
+  const back=assignVoice(j,2000,4000,alex)
+  expect(back.clips.filter(c=>c.sourceId===source.id)).toHaveLength(0)
+  expect(back.clips.find(c=>c.startMs===2000)!.sourceId).toBe('alex-first')
+  expect(back.voices.every(v=>v.audio)).toBe(true)
+ })
+ it('invalidates snapshots after changing source content but preserves them after a split',()=>{
+  const a=accept(assignVoice(original(),0,10000,alex),'alex-first')
+  expect(reconcileVoiceProduction(splitAt(a,3000)).voices[0]!.audio).toBeDefined()
+  a.clips[0]!.sourceId='replacement'
+  expect(reconcileVoiceProduction(a).voices[0]!.audio).toBeUndefined()
+ })
+ it('recovers legacy converted projects from their saved original timeline',()=>{
+  const baseline=assignVoice(original(),0,10000,alex),a=accept(baseline,'alex-first')
+  delete a.voices[0]!.audio
+  const recovered=recoverVoiceVersions(a,baseline)
+  expect(assignVoice(recovered,0,10000,john).clips[0]!.sourceId).toBe(source.id)
+ })
+ it('retains the initial generated voice when reassigned',()=>{
+  const speech=assignVoice(original(),0,10000,alex),v=speech.voices[0]!
+  v.production={status:'generated',voiceId:v.voiceId,audioKey:voiceAudioKey(speech,v)}
+  const saved=rememberVoiceVersions(speech,speech,new Set([v.id])),j=accept(assignVoice(saved,0,10000,john),'john')
+  const back=assignVoice(j,0,10000,alex)
+  expect(back.clips[0]!.sourceId).toBe(source.id);expect(back.voices[0]!.production!.status).toBe('generated')
+ })
 })

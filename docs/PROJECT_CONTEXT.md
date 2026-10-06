@@ -9,6 +9,7 @@
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
+- Version 0.3.1: reversible per-passage voice versions using original audio, compressed backward-readable `.wavehs` documents, global cancellable opening and Linux process-group cleanup fix. Preserve manual CSS/icons and waveform caches.
 - Version 0.3.0: approved prototype UI refresh, unified modal/toast behavior, live memo levels, reliable project restore/export/purge, bounded waveform reuse and refreshed bilingual screenshots. Preserve user CSS changes. Release DMG and Linux bundle.
 - Version 0.2.9: user requested plain Mute and Normalize button labels after publication of preceding tags; package policy remains DMG only on macOS and Linux application bundle.
 - Version 0.2.7: release policy is macOS Apple Silicon DMG only and Linux x86_64 application bundle; README shows the voice editor and separate platform requirements. Increment the patch number for every new release; never reuse published tags.

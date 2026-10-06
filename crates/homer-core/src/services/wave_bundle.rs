@@ -1,13 +1,18 @@
-// Streaming single-file project container. Media never enters a whole-file buffer.
+// Version 2 losslessly compresses the streamed container; version 1 remains readable.
 use super::{project_store::CommandError, settings::Settings, wave_studio::Project};
 use crate::runtime::AppHandle;
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
-    io::{Read, Write},
+    io::{BufReader, Read, Write},
     path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 const MAGIC: &[u8; 8] = b"WAVEHS01";
+const COMPRESSED_MAGIC: &[u8; 8] = b"WAVEHS02";
 const MAX_TOTAL: u64 = 100 * 1024 * 1024 * 1024;
 struct Scratch(PathBuf);
 impl Drop for Scratch {
@@ -59,6 +64,9 @@ fn files(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), CommandEr
     Ok(())
 }
 fn pack(root: &Path, destination: &Path) -> Result<(), CommandError> {
+    pack_version(root, destination, true)
+}
+fn pack_version(root: &Path, destination: &Path, compressed: bool) -> Result<(), CommandError> {
     let mut names = vec![];
     files(root, root, &mut names)?;
     names.sort();
@@ -66,7 +74,22 @@ fn pack(root: &Path, destination: &Path) -> Result<(), CommandError> {
         return Err(invalid());
     }
     let mut output = File::create(destination).map_err(io)?;
-    output.write_all(MAGIC).map_err(io)?;
+    output
+        .write_all(if compressed { COMPRESSED_MAGIC } else { MAGIC })
+        .map_err(io)?;
+    if compressed {
+        let mut encoder = flate2::write::GzEncoder::new(output, flate2::Compression::fast());
+        pack_entries(root, names, &mut encoder)?;
+        return encoder.finish().map_err(io)?.sync_all().map_err(io);
+    }
+    pack_entries(root, names, &mut output)?;
+    output.sync_all().map_err(io)
+}
+fn pack_entries(
+    root: &Path,
+    names: Vec<String>,
+    output: &mut dyn Write,
+) -> Result<(), CommandError> {
     output
         .write_all(&(names.len() as u32).to_le_bytes())
         .map_err(io)?;
@@ -88,19 +111,71 @@ fn pack(root: &Path, destination: &Path) -> Result<(), CommandError> {
         output.write_all(bytes).map_err(io)?;
         output.write_all(&size.to_le_bytes()).map_err(io)?;
         output.write_all(&digest(&path)?).map_err(io)?;
-        if std::io::copy(&mut File::open(path).map_err(io)?, &mut output).map_err(io)? != size {
+        if std::io::copy(&mut File::open(path).map_err(io)?, &mut *output).map_err(io)? != size {
             return Err(invalid());
         }
     }
-    output.sync_all().map_err(io)
+    Ok(())
 }
+#[cfg(test)]
 fn unpack(source: &Path, root: &Path) -> Result<(), CommandError> {
-    let mut input = File::open(source).map_err(io)?;
+    unpack_controlled(source, root, &AtomicBool::new(false), &|_| {})
+}
+struct ProgressReader<'a> {
+    file: File,
+    size: u64,
+    read: u64,
+    cancel: &'a AtomicBool,
+    report: &'a dyn Fn(u8),
+}
+impl Read for ProgressReader<'_> {
+    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+        if self.cancel.load(Ordering::SeqCst) {
+            return Err(std::io::Error::other("Project opening cancelled."));
+        }
+        let n = self.file.read(bytes)?;
+        self.read += n as u64;
+        (self.report)((self.read.saturating_mul(65) / self.size.max(1)).min(65) as u8);
+        Ok(n)
+    }
+}
+fn unpack_controlled(
+    source: &Path,
+    root: &Path,
+    cancel: &AtomicBool,
+    report: &dyn Fn(u8),
+) -> Result<(), CommandError> {
+    let file = File::open(source).map_err(io)?;
+    let size = file.metadata().map_err(io)?.len();
+    let mut input = ProgressReader {
+        file,
+        size,
+        read: 0,
+        cancel,
+        report,
+    };
     let mut magic = [0; 8];
     input.read_exact(&mut magic).map_err(io)?;
+    if &magic == COMPRESSED_MAGIC {
+        let mut decoder = flate2::bufread::GzDecoder::new(BufReader::new(input));
+        unpack_entries(&mut decoder, root, cancel)?;
+        let mut input = decoder.into_inner();
+        let mut trailing = [0];
+        if input.read(&mut trailing).map_err(io)? != 0 {
+            return Err(invalid());
+        }
+        return Ok(());
+    }
     if &magic != MAGIC {
         return Err(invalid());
     }
+    unpack_entries(&mut input, root, cancel)
+}
+fn unpack_entries(
+    input: &mut dyn Read,
+    root: &Path,
+    cancel: &AtomicBool,
+) -> Result<(), CommandError> {
     let mut n = [0; 4];
     input.read_exact(&mut n).map_err(io)?;
     let count = u32::from_le_bytes(n);
@@ -146,11 +221,27 @@ fn unpack(source: &Path, root: &Path) -> Result<(), CommandError> {
             .create_new(true)
             .open(&path)
             .map_err(io)?;
-        if std::io::copy(&mut (&mut input).take(size), &mut out).map_err(io)? != size {
-            return Err(invalid());
+        let mut remaining = size;
+        let mut actual = Sha256::new();
+        let mut buffer = [0u8; 65536];
+        while remaining > 0 {
+            if cancel.load(Ordering::SeqCst) {
+                return Err(CommandError::new(
+                    "JOB_CANCELLED",
+                    "Project opening cancelled.",
+                ));
+            }
+            let length = remaining.min(buffer.len() as u64) as usize;
+            let n = input.read(&mut buffer[..length]).map_err(io)?;
+            if n == 0 {
+                return Err(invalid());
+            }
+            out.write_all(&buffer[..n]).map_err(io)?;
+            actual.update(&buffer[..n]);
+            remaining -= n as u64;
         }
         out.sync_all().map_err(io)?;
-        if digest(&path)? != hash {
+        if actual.finalize().as_slice() != hash {
             return Err(invalid());
         }
     }
@@ -183,15 +274,27 @@ pub fn export(app: &AppHandle, p: &Project, destination: &Path) -> Result<(), Co
     pack(&media, &temporary)?;
     fs::rename(temporary, destination).map_err(io)
 }
-pub fn import(app: &AppHandle, path: &Path, settings: &Settings) -> Result<Project, CommandError> {
+pub fn import(
+    app: &AppHandle,
+    path: &Path,
+    settings: &Settings,
+    cancel: Arc<AtomicBool>,
+    report: Arc<dyn Fn(u8) + Send + Sync>,
+) -> Result<Project, CommandError> {
     let scratch = Scratch(std::env::temp_dir().join(format!("wavehs-{}", uuid::Uuid::new_v4())));
     fs::create_dir(&scratch.0).map_err(io)?;
-    unpack(path, &scratch.0)?;
+    unpack_controlled(path, &scratch.0, &cancel, &*report)?;
+    if cancel.load(Ordering::SeqCst) {
+        return Err(CommandError::new(
+            "JOB_CANCELLED",
+            "Project opening cancelled.",
+        ));
+    }
     let bytes = fs::read(scratch.0.join("project.json")).map_err(io)?;
     let p: Project = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
     super::wave_studio::validate(&p)?;
     let mapping = super::voice_store::import_portable(app, &scratch.0, settings)?;
-    let imported = super::wave_store::open_copy(app, &scratch.0, settings);
+    let imported = super::wave_store::open_bundle_copy(app, &scratch.0, settings, cancel, report);
     let mut p = match imported {
         Ok(p) => p,
         Err(error) => {
@@ -203,9 +306,22 @@ pub fn import(app: &AppHandle, path: &Path, settings: &Settings) -> Result<Proje
     };
     for timeline in std::iter::once(&mut p.timeline).chain(p.voice_original.iter_mut()) {
         for r in &mut timeline.voices {
+            if let Some(audio) = &mut r.audio {
+                for version in &mut audio.versions {
+                    if let Some(id) = mapping.get(&version.voice_id) {
+                        version.production.audio_key =
+                            version.production.audio_key.replace(&version.voice_id, id);
+                        version.voice_id = id.clone();
+                        version.production.voice_id = id.clone();
+                    }
+                }
+            }
             if let Some(id) = mapping.get(&r.voice_id) {
                 if let Some(production) = &mut r.production {
                     production.audio_key = production.audio_key.replace(&r.voice_id, id);
+                }
+                if let Some(production) = &mut r.production {
+                    production.voice_id = id.clone();
                 }
                 r.voice_id = id.clone();
             }
@@ -251,7 +367,29 @@ mod tests {
         let target = work.0.join("target");
         fs::create_dir(&target).unwrap();
         unpack(&bundle, &target).unwrap();
-        assert_eq!(fs::read(target.join("audio.wav")).unwrap().len(), 200000);
+        assert_eq!(fs::read(target.join("audio.wav")).unwrap(), vec![7; 200000]);
+        assert!(fs::metadata(&bundle).unwrap().len() < 5000);
+        assert_eq!(&fs::read(&bundle).unwrap()[..8], COMPRESSED_MAGIC);
+        let legacy = work.0.join("legacy.wavehs");
+        pack_version(&source, &legacy, false).unwrap();
+        let old_target = work.0.join("legacy-restored");
+        fs::create_dir(&old_target).unwrap();
+        unpack(&legacy, &old_target).unwrap();
+        assert_eq!(
+            fs::read(old_target.join("audio.wav")).unwrap(),
+            vec![7; 200000]
+        );
+        let cancelled = work.0.join("cancelled");
+        fs::create_dir(&cancelled).unwrap();
+        assert!(unpack_controlled(&bundle, &cancelled, &AtomicBool::new(true), &|_| {}).is_err());
+        assert_eq!(fs::read_dir(&cancelled).unwrap().count(), 0);
+        let trailing = work.0.join("trailing.wavehs");
+        let mut bytes = fs::read(&bundle).unwrap();
+        bytes.push(0);
+        fs::write(&trailing, bytes).unwrap();
+        let extra = work.0.join("extra");
+        fs::create_dir(&extra).unwrap();
+        assert!(unpack(&trailing, &extra).is_err());
         let mut data = fs::read(&bundle).unwrap();
         let last = data.len() - 1;
         data[last] ^= 1;

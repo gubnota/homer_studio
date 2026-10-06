@@ -56,7 +56,7 @@ export async function invoke<T>(command:string,args:Record<string,unknown>={}):P
  if(command==='list_jobs'&&Array.isArray(result))for(const job of result){if(['failed','cancelled'].includes(job.status))pendingDownloads.delete(job.id);if(job.status==='completed'){const path=pendingDownloads.get(job.id); if(path){pendingDownloads.delete(job.id);void downloadFile(path).catch(error=>window.dispatchEvent(new CustomEvent('homer-download-error',{detail:String(error instanceof Error?error.message:error)})))}}}
  return result as T
 }
-export async function uploadFile(file:File|Blob,name:string):Promise<string>{const response=await serverRequest(`/api/upload?name=${encodeURIComponent(name)}`,{method:'POST',body:file});return (await response.json()).path}
+export async function uploadFile(file:File|Blob,name:string,signal?:AbortSignal):Promise<string>{const response=await serverRequest(`/api/upload?name=${encodeURIComponent(name)}`,{method:'POST',body:file,signal});return (await response.json()).path}
 export async function open(options:Parameters<typeof nativeOpen>[0]={}):Promise<string|string[]|null>{
  if(isDesktop())return nativeOpen(options)
  if(options.directory){

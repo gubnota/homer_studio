@@ -1,6 +1,9 @@
 export interface WaveSource { id: string; name: string; durationMs: number; channels: number }
 export interface WaveClip { id: string; sourceId: string | null; name: string; startMs: number; sourceStartMs: number; sourceEndMs: number; speed: number; gainDb: number; fadeInMs: number; fadeOutMs: number }
-export interface VoiceRegion { id: string; voiceId: string; name: string; color: string; startMs: number; endMs: number; production?: { status: 'generated' | 'converted'; voiceId: string; audioKey: string } }
+export interface VoiceProduction { status: 'generated' | 'converted'; voiceId: string; audioKey: string }
+export interface VoiceVersion { voiceId: string; clips: WaveClip[]; production: VoiceProduction }
+export interface VoiceAudio { original: WaveClip[]; versions: VoiceVersion[]; activeAudioKey: string }
+export interface VoiceRegion { id: string; voiceId: string; name: string; color: string; startMs: number; endMs: number; production?: VoiceProduction; audio?: VoiceAudio }
 export interface WaveTimeline { clips: WaveClip[]; sfx: WaveClip[]; voices: VoiceRegion[] }
 export interface WaveVideo { id:string; name:string; durationMs:number; startMs:number }
 export interface WaveProject { schemaVersion: 1; id: string; name: string; revision: number; updatedAtMs: number; sources: WaveSource[]; timeline: WaveTimeline; view?: WaveView; voiceOriginal?: WaveTimeline | null; videos?: WaveVideo[] }
@@ -45,6 +48,11 @@ export function voiceAudioKey(t: WaveTimeline, v: VoiceRegion): string {
  return JSON.stringify(parts)
 }
 export function voiceComplete(t: WaveTimeline,v: VoiceRegion): boolean { return !!v.production && v.production.voiceId===v.voiceId && v.production.audioKey===voiceAudioKey(t,v) }
-export function reconcileVoiceProduction(t: WaveTimeline): WaveTimeline { return {...t,voices:t.voices.map(v=>v.production&&!voiceComplete(t,v)?{...v,production:undefined}:v)} }
+export function reconcileVoiceProduction(t: WaveTimeline): WaveTimeline {
+ return {...t,voices:t.voices.map(v=>({...v,
+  production: voiceComplete(t,v)?v.production:undefined,
+  audio: v.audio?.activeAudioKey===voiceAudioKey(t,v)?v.audio:undefined
+ }))}
+}
 
 export const projectDuration = (p: WaveProject) => Math.max(timelineDuration(p.timeline),...(p.videos || []).map(v=>v.startMs+v.durationMs))

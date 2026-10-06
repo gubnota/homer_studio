@@ -367,7 +367,15 @@ pub fn export_portable(
 ) -> Result<(), CommandError> {
     let ids: std::collections::HashSet<_> = std::iter::once(&p.timeline)
         .chain(p.voice_original.iter())
-        .flat_map(|t| t.voices.iter().map(|r| r.voice_id.as_str()))
+        .flat_map(|t| {
+            t.voices.iter().flat_map(|r| {
+                std::iter::once(r.voice_id.as_str()).chain(
+                    r.audio
+                        .iter()
+                        .flat_map(|a| a.versions.iter().map(|v| v.voice_id.as_str())),
+                )
+            })
+        })
         .collect();
     let voices: Vec<_> = list(app)?
         .into_iter()

@@ -21,7 +21,9 @@ fn take_open_wave_files() -> Vec<String> {
 fn queue_wave_file(path: String) {
     if path == ":open-dialog:" || path.to_lowercase().ends_with(".wavehs") {
         if let Ok(mut q) = OPEN_FILES.lock() {
-            q.push(path)
+            if !q.contains(&path) {
+                q.push(path)
+            }
         }
     }
 }
@@ -237,6 +239,26 @@ pub fn run() {
         .build(context)
         .expect("failed to build Homer Studio")
         .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                for url in urls {
+                    if let Ok(path) = url.to_file_path() {
+                        queue_wave_file(path.to_string_lossy().into_owned());
+                    }
+                }
+                let window = app.get_webview_window("main").or_else(|| {
+                    app.config().app.windows.first().and_then(|config| {
+                        tauri::WebviewWindowBuilder::from_config(app, config)
+                            .ok()?
+                            .build()
+                            .ok()
+                    })
+                });
+                if let Some(window) = window {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
             if let tauri::RunEvent::ExitRequested {
                 api, code: None, ..
             } = &event

@@ -1,5 +1,6 @@
 """Exercise the packaged HTTP backend with isolated data and real FFmpeg media."""
 import json
+import gzip
 import os
 from pathlib import Path
 import secrets
@@ -108,12 +109,39 @@ def main():
                         assert media["streams"][0]["codec_name"] == "aac"
                     downloaded, h = request("/api/download?path=" + urllib.parse.quote(output))
                     assert len(downloaded) > 1000 and "attachment" in h["Content-Disposition"]
+                # Keep an inactive accepted voice too; every cached source/voice must remap.
+                alex = command("create_voice", name="Alex cache fixture")
+                john = command("create_voice", name="John active fixture")
+                production = {"status": "converted", "voiceId": john["id"], "audioKey": json.dumps([audio["id"]])}
+                region = {"id": str(uuid.uuid4()), "voiceId": john["id"], "name": "John", "color": "#112233", "startMs": 0, "endMs": 2000, "production": production,
+                          "audio": {"original": [clip], "activeAudioKey": json.dumps([audio["id"]]), "versions": [
+                              {"voiceId": alex["id"], "clips": [clip], "production": {**production, "voiceId": alex["id"]}},
+                              {"voiceId": john["id"], "clips": [clip], "production": production}]}}
+                project["timeline"]["voices"] = [region]
+                project = command("wave_save", project=project, expectedRevision=project["revision"])
                 bundle = json.loads(request("/api/destination", {"name": "project.wavehs"})[0])["path"]
                 command("wave_export_bundle", project=project, path=bundle)
                 restored = command("wave_import_bundle", path=bundle)
                 assert restored["id"] != project["id"]
                 assert restored["sources"][0]["id"] != audio["id"]
                 assert restored["timeline"]["clips"][0]["sourceId"] == restored["sources"][0]["id"]
+                document = Path(bundle).read_bytes()
+                assert document.startswith(b"WAVEHS02")
+                copied = restored["timeline"]["voices"][0]
+                assert copied["voiceId"] != john["id"]
+                assert copied["audio"]["versions"][0]["voiceId"] != alex["id"]
+                assert copied["production"]["voiceId"] == copied["voiceId"]
+                for snapshot in [copied["audio"]["original"], *[v["clips"] for v in copied["audio"]["versions"]]]:
+                    assert snapshot[0]["sourceId"] == restored["sources"][0]["id"]
+                copied_url = command("wave_source_url", sourceId=restored["sources"][0]["id"])
+                assert request(url)[0] == request(copied_url)[0], "Bundle import must preserve exact WAV bytes"
+                assert audio["id"] not in copied["audio"]["activeAudioKey"]
+                # An old uncompressed binary document remains readable.
+                legacy = temp / "data/uploads/legacy.wavehs"
+                legacy.parent.mkdir(parents=True, exist_ok=True)
+                legacy.write_bytes(b"WAVEHS01" + gzip.decompress(document[8:]))
+                old = command("wave_import_bundle", path=str(legacy), requestId=str(uuid.uuid4()))
+                assert len(old["timeline"]["voices"][0]["audio"]["versions"]) == 2
                 assert len(command("wave_sfx_list")) == 11
                 recording = temp / "recording.webm"
                 subprocess.run(["ffmpeg", "-v", "error", "-i", str(source), "-c:a", "libopus", str(recording)], check=True)
@@ -142,7 +170,7 @@ def main():
                 assert command("wave_purge") == 1
                 assert command("wave_deleted") == []
                 assert request(url, headers={"Range": "bytes=0-3"}, status=206)[0] == b"RIFF"
-                print("HTTP integration passed: authentication, paths, MP3/peaks, ranged playback, WAV/M4A, bundle restoration, SFX and streamed recording.")
+                print("HTTP integration passed: authentication, paths, MP3/peaks, ranged playback, WAV/M4A, compressed/legacy bundles with voice versions, SFX and streamed recording.")
             finally:
                 server.terminate()
                 try:

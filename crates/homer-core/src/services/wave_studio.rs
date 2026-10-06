@@ -39,6 +39,20 @@ pub struct VoiceProduction {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct VoiceVersion {
+    pub voice_id: String,
+    pub clips: Vec<Clip>,
+    pub production: VoiceProduction,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceAudio {
+    pub original: Vec<Clip>,
+    pub versions: Vec<VoiceVersion>,
+    pub active_audio_key: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VoiceRegion {
     pub id: String,
     pub voice_id: String,
@@ -48,6 +62,8 @@ pub struct VoiceRegion {
     pub end_ms: f64,
     #[serde(default)]
     pub production: Option<VoiceProduction>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<VoiceAudio>,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Timeline {
@@ -210,6 +226,46 @@ pub fn validate(p: &Project) -> Result<(), CommandError> {
             return Err(bad());
         }
     }
+    for region in &p.timeline.voices {
+        if let Some(audio) = &region.audio {
+            if audio.versions.len() > 64 || audio.active_audio_key.len() > 1024 * 1024 {
+                return Err(bad());
+            }
+            let mut voices = std::collections::HashSet::new();
+            for version in &audio.versions {
+                if !voices.insert(&version.voice_id)
+                    || version.production.voice_id != version.voice_id
+                    || !matches!(
+                        version.production.status.as_str(),
+                        "generated" | "converted"
+                    )
+                    || version.production.audio_key.len() > 1024 * 1024
+                {
+                    return Err(bad());
+                }
+            }
+            for clips in
+                std::iter::once(&audio.original).chain(audio.versions.iter().map(|v| &v.clips))
+            {
+                if clips.len() > 16384
+                    || clips
+                        .iter()
+                        .any(|c| c.end() > region.end_ms - region.start_ms + 1.)
+                {
+                    return Err(bad());
+                }
+                let mut snapshot = p.clone();
+                snapshot.timeline = Timeline {
+                    clips: clips.clone(),
+                    sfx: vec![],
+                    voices: vec![],
+                };
+                snapshot.voice_original = None;
+                snapshot.view = None;
+                validate(&snapshot)?;
+            }
+        }
+    }
     if let Some(v) = &p.view {
         if v.selected_ids.len() > 16384
             || v.selected_ids
@@ -289,6 +345,7 @@ mod tests {
             color: "#718392".into(),
             start_ms: 0.,
             end_ms: 600.,
+            audio: None,
             production: None,
         });
         assert!(validate(&p).is_err());
@@ -301,6 +358,47 @@ mod tests {
         p.timeline.clips[0].speed = 1.;
         p.timeline.clips[0].source_id = Some(uuid::Uuid::new_v4().to_string());
         assert!(validate(&p).is_err());
+    }
+    #[test]
+    fn voice_versions_validate_sources_span_and_unique_voices() {
+        let mut p = project();
+        let clip = p.timeline.clips[0].clone();
+        let production = VoiceProduction {
+            status: "converted".into(),
+            voice_id: "alex".into(),
+            audio_key: "[]".into(),
+        };
+        p.timeline.voices.push(VoiceRegion {
+            id: uuid::Uuid::new_v4().to_string(),
+            voice_id: "alex".into(),
+            name: "Alex".into(),
+            color: "#112233".into(),
+            start_ms: 0.,
+            end_ms: 500.,
+            production: Some(production.clone()),
+            audio: Some(VoiceAudio {
+                original: vec![clip.clone()],
+                versions: vec![VoiceVersion {
+                    voice_id: "alex".into(),
+                    clips: vec![clip],
+                    production,
+                }],
+                active_audio_key: "[]".into(),
+            }),
+        });
+        let p: Project = serde_json::from_slice(&serde_json::to_vec(&p).unwrap()).unwrap();
+        assert!(validate(&p).is_ok());
+        let mut bad = p.clone();
+        bad.timeline.voices[0].audio.as_mut().unwrap().original[0].source_id =
+            Some(uuid::Uuid::new_v4().to_string());
+        assert!(validate(&bad).is_err());
+        let mut bad = p.clone();
+        let audio = bad.timeline.voices[0].audio.as_mut().unwrap();
+        audio.versions.push(audio.versions[0].clone());
+        assert!(validate(&bad).is_err());
+        let mut bad = p;
+        bad.timeline.voices[0].audio.as_mut().unwrap().versions[0].clips[0].start_ms = 100.;
+        assert!(validate(&bad).is_err());
     }
     #[test]
     fn legacy_projects_and_saved_view_and_original_roundtrip() {
@@ -344,6 +442,7 @@ mod tests {
             color: "#8d79b8".into(),
             start_ms: 0.,
             end_ms: 500.,
+            audio: None,
             production: Some(VoiceProduction {
                 status: "converted".into(),
                 voice_id: "narrator".into(),

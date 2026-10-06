@@ -192,6 +192,24 @@ pub fn generate(
         })
     })
 }
+fn conversion_clips(
+    p: &Project,
+    region: &super::wave_studio::VoiceRegion,
+) -> Vec<super::wave_studio::Clip> {
+    if let Some(audio) = &region.audio {
+        audio
+            .original
+            .iter()
+            .map(|clip| {
+                let mut clip = clip.clone();
+                clip.start_ms += region.start_ms;
+                clip
+            })
+            .collect()
+    } else {
+        p.timeline.clips.clone()
+    }
+}
 fn convert_chunk(
     app: &AppHandle,
     worker: &str,
@@ -303,6 +321,8 @@ pub fn convert(
         isolated.timeline.voices.clear();
         isolated.voice_original = None;
         for (region, reference) in regions.iter().zip(&references) {
+            // Every conversion starts from immutable passage audio, never an accepted conversion.
+            isolated.timeline.clips = conversion_clips(p, region);
             let span = region.end_ms - region.start_ms;
             let chunks = (span / 15000.).ceil().max(1.) as usize;
             let chunk_ms = span / chunks as f64;
@@ -382,6 +402,62 @@ pub fn convert(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn conversion_uses_passage_original_instead_of_active_conversion() {
+        use super::super::wave_studio::{Clip, Timeline, VoiceAudio, VoiceRegion};
+        let original = Clip {
+            id: uuid::Uuid::new_v4().to_string(),
+            source_id: Some("original".into()),
+            name: "Original".into(),
+            start_ms: 0.,
+            source_start_ms: 0.,
+            source_end_ms: 1000.,
+            speed: 1.,
+            gain_db: 0.,
+            fade_in_ms: 0.,
+            fade_out_ms: 0.,
+        };
+        let mut converted = original.clone();
+        converted.source_id = Some("converted".into());
+        converted.start_ms = 2000.;
+        let project = Project {
+            schema_version: 1,
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "Fixture".into(),
+            revision: 0,
+            updated_at_ms: 0,
+            sources: vec![],
+            videos: vec![],
+            view: None,
+            voice_original: None,
+            timeline: Timeline {
+                clips: vec![converted],
+                ..Default::default()
+            },
+        };
+        let mut region = VoiceRegion {
+            id: uuid::Uuid::new_v4().to_string(),
+            voice_id: "john".into(),
+            name: "John".into(),
+            color: "#112233".into(),
+            start_ms: 2000.,
+            end_ms: 3000.,
+            production: None,
+            audio: Some(VoiceAudio {
+                original: vec![original],
+                versions: vec![],
+                active_audio_key: "[]".into(),
+            }),
+        };
+        let clips = conversion_clips(&project, &region);
+        assert_eq!(clips[0].source_id.as_deref(), Some("original"));
+        assert_eq!(clips[0].start_ms, 2000.);
+        region.audio = None;
+        assert_eq!(
+            conversion_clips(&project, &region)[0].source_id.as_deref(),
+            Some("converted")
+        );
+    }
     #[test]
     fn normalization_and_duration_guards() {
         assert!((normalization_gain(0.5).unwrap() - 5.0206).abs() < 0.001);

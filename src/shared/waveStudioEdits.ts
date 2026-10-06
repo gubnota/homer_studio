@@ -1,4 +1,4 @@
-import { clipDuration, clipEnd, newId, voiceColor, type WaveClip, type WaveTimeline } from './waveStudio'
+import { clipDuration, clipEnd, newId, voiceColor, voiceAudioKey, type VoiceRegion, type WaveClip, type WaveTimeline } from './waveStudio'
 const copy = (t: WaveTimeline): WaveTimeline => structuredClone(t)
 export function splitClip(c: WaveClip, at: number): WaveClip[] {
   if (at <= c.startMs || at >= clipEnd(c)) return [c]
@@ -37,8 +37,33 @@ export function changeSpeed(t: WaveTimeline, a: number, b: number, speed: number
   return next
 }
 export function assignVoice(t: WaveTimeline, a: number, b: number, voice: { id: string; name: string; color?: string }): WaveTimeline {
-  const remaining = t.voices.flatMap(v => v.endMs <= a || v.startMs >= b ? [v] : [ ...(v.startMs < a ? [{ ...v, endMs: a }] : []), ...(v.endMs > b ? [{ ...v, id: newId(), startMs: b }] : []) ])
-  return { ...t, voices: [...remaining, { id: newId(), voiceId: voice.id, name: voice.name, color: voiceColor(voice), startMs: a, endMs: b }] }
+  const containing=t.voices.find(v=>v.startMs<=a && v.endMs>=b && v.audio && v.audio.activeAudioKey===voiceAudioKey(t,v))
+  if(containing && (containing.startMs!==a || containing.endMs!==b)) {
+    const selected=sliceVoice(t,containing,a,b)
+    const remaining=t.voices.flatMap(v=>v.id!==containing.id?[v]:[
+      ...(v.startMs<a?[sliceVoice(t,v,v.startMs,a)]:[]),
+      ...(v.endMs>b?[sliceVoice(t,v,b,v.endMs)]:[])])
+    return assignVoice({...t,voices:[...remaining,selected]},a,b,voice)
+  }
+  const previous=t.voices.find(v=>v.startMs===a && v.endMs===b)
+  if(previous?.voiceId===voice.id && (!previous.audio || previous.production))return {...t,voices:t.voices.map(v=>v.id===previous.id?{...v,name:voice.name,color:voiceColor(voice)}:v)}
+  if(previous?.audio && previous.audio.activeAudioKey===voiceAudioKey(t,previous)) {
+    const version=previous.audio.versions.find(v=>v.voiceId===voice.id)
+    let next=replaceClips(t,a,b,version?.clips || previous.audio.original)
+    const region={...previous,voiceId:voice.id,name:voice.name,color:voiceColor(voice),production:version?.production}
+    region.audio={...previous.audio,activeAudioKey:voiceAudioKey(next,region)}
+    if(region.production)region.production={...region.production,audioKey:region.audio.activeAudioKey}
+    next={...next,voices:next.voices.map(v=>v.id===previous.id?region:v)}
+    return next
+  }
+  let baseline=t
+  for(const v of t.voices)if(v.audio && v.endMs>a && v.startMs<b && v.audio.activeAudioKey===voiceAudioKey(t,v)) {
+    const start=Math.max(a,v.startMs),end=Math.min(b,v.endMs)
+    const original={...t,clips:v.audio.original.map(c=>({...c,startMs:c.startMs+v.startMs}))}
+    baseline=replaceClips(baseline,start,end,passageClips(original,{startMs:start,endMs:end}))
+  }
+  const remaining = t.voices.flatMap(v => v.endMs <= a || v.startMs >= b ? [v] : [ ...(v.startMs < a ? [sliceVoice(t,v,v.startMs,a)] : []), ...(v.endMs > b ? [sliceVoice(t,v,b,v.endMs)] : []) ])
+  return { ...baseline, voices: [...remaining, { id: newId(), voiceId: voice.id, name: voice.name, color: voiceColor(voice), startMs: a, endMs: b }] }
 }
 export function moveClip(t: WaveTimeline, id: string, startMs: number, swapId?: string): WaveTimeline {
   const next = copy(t), moving = next.clips.find(c => c.id === id)
@@ -114,4 +139,51 @@ export function packSfxRows(clips: WaveClip[]): WaveClip[][] {
  const rows: WaveClip[][] = []
  for (const clip of [...clips].sort((a,b)=>a.startMs-b.startMs)) { let row=rows.find(r=>clipEnd(r[r.length-1]!)<=clip.startMs); if(!row){row=[];rows.push(row)} row.push(clip) }
  return rows.length ? rows : [[]]
+}
+
+/** Snapshots use local passage time so they remain valid when the passage moves. */
+export function passageClips(t:WaveTimeline,v:Pick<VoiceRegion,'startMs'|'endMs'>):WaveClip[] {
+ return t.clips.flatMap(c=>splitClip(c,v.startMs).flatMap(c=>splitClip(c,v.endMs)))
+  .filter(c=>c.startMs>=v.startMs && clipEnd(c)<=v.endMs+.01)
+  .map(c=>({...c,startMs:c.startMs-v.startMs}))
+}
+function replaceClips(t:WaveTimeline,a:number,b:number,clips:WaveClip[]):WaveTimeline {
+ const next=isolate(t,a,b)
+ return {...next,clips:[...next.clips.filter(c=>c.startMs<a || c.startMs>=b),...clips.map(c=>({...c,id:newId(),startMs:a+c.startMs}))].sort((x,y)=>x.startMs-y.startMs)}
+}
+export function rememberVoiceVersions(before:WaveTimeline,after:WaveTimeline,completed:Set<string>):WaveTimeline {
+ return {...after,voices:after.voices.map(v=>{
+  if(!completed.has(v.id) || !v.production)return v
+  const old=before.voices.find(r=>r.id===v.id)
+  const previous=old?.audio && old.audio.activeAudioKey===voiceAudioKey(before,old)?old.audio:undefined
+  const retained=previous?.versions || (old?.production?[{voiceId:old.voiceId,clips:passageClips(before,old),production:{...old.production}}]:[])
+  const version={voiceId:v.voiceId,clips:passageClips(after,v),production:{...v.production}}
+  return {...v,audio:{original:previous?.original || passageClips(before,v),
+   versions:[...retained.filter(r=>r.voiceId!==v.voiceId),version],activeAudioKey:voiceAudioKey(after,v)}}
+ })}
+}
+export function restoreVoiceOriginal(t:WaveTimeline,id:string):WaveTimeline {
+ const v=t.voices.find(r=>r.id===id)
+ if(!v?.audio || v.audio.activeAudioKey!==voiceAudioKey(t,v))return t
+ const next=replaceClips(t,v.startMs,v.endMs,v.audio.original)
+ return {...next,voices:next.voices.map(r=>r.id===id?{...r,production:undefined,audio:{...v.audio!,activeAudioKey:voiceAudioKey(next,r)}}:r)}
+}
+
+function sliceVoice(t:WaveTimeline,v:VoiceRegion,a:number,b:number):VoiceRegion {
+ const region={...v,id:newId(),startMs:a,endMs:b}
+ const slice=(clips:WaveClip[])=>passageClips({...t,clips}, {startMs:a-v.startMs,endMs:b-v.startMs})
+ if(v.audio && v.audio.activeAudioKey===voiceAudioKey(t,v))region.audio={
+  original:slice(v.audio.original),versions:v.audio.versions.map(version=>({...version,clips:slice(version.clips)})),activeAudioKey:voiceAudioKey(t,region)}
+ else region.audio=undefined
+ if(region.production)region.production={...region.production,audioKey:voiceAudioKey(t,region)}
+ return region
+}
+
+/** Recover originals saved by older releases before per-passage versions existed. */
+export function recoverVoiceVersions(t:WaveTimeline,original:WaveTimeline|null|undefined):WaveTimeline {
+ if(!original)return t
+ return {...t,voices:t.voices.map(v=>{
+  if(v.audio || !original.voices.some(r=>r.startMs===v.startMs && r.endMs===v.endMs))return v
+  return {...v,audio:{original:passageClips(original,v),versions:v.production?[{voiceId:v.voiceId,clips:passageClips(t,v),production:{...v.production}}]:[],activeAudioKey:voiceAudioKey(t,v)}}
+ })}
 }

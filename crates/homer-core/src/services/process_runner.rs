@@ -24,11 +24,11 @@ impl ProcessPermit {
             if cancelled.load(Ordering::SeqCst) {
                 return Err(CommandError::new("JOB_CANCELLED", "Operation cancelled."));
             }
-            if ACTIVE_PROCESSES
-                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
-                    if n < 4 { Some(n + 1) } else { None }
-                })
-                .is_ok()
+            let active = ACTIVE_PROCESSES.load(Ordering::SeqCst);
+            if active < 4
+                && ACTIVE_PROCESSES
+                    .compare_exchange(active, active + 1, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok()
             {
                 return Ok(Self);
             }
@@ -175,7 +175,7 @@ pub fn run_observed(
         }
     })();
     let _ = Command::new("/bin/kill")
-        .args(["-KILL", &format!("-{pid}")])
+        .args(["-KILL", "--", &format!("-{pid}")])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
