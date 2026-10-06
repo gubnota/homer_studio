@@ -4,6 +4,15 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>Record voice memos, narration takes, and voice references locally in Homer Studio.</string>
+  <key>CFBundleDocumentTypes</key>
+  <array><dict>
+    <key>CFBundleTypeExtensions</key><array><string>wavehs</string></array>
+    <key>CFBundleTypeName</key><string>Homer Studio Wave Project</string>
+    <key>CFBundleTypeRole</key><string>Editor</string>
+    <key>LSHandlerRank</key><string>Default</string>
+    <key>LSItemContentTypes</key><array><string>com.homer-studio.wave-project</string></array>
+    <key>LSTypeIsPackage</key><true/>
+  </dict></array>
   <key>UTExportedTypeDeclarations</key>
   <array><dict>
     <key>UTTypeIdentifier</key><string>com.homer-studio.wave-project</string>
