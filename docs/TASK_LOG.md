@@ -206,3 +206,11 @@
 - Renamed the Wave fragment button to Mute; Unmute and behavior remain intact.
 - v0.2.7 tag and DMG were already published, so incremented to v0.2.8 rather than modifying a published tag.
 - Refreshed the real editor screenshot with the plain Mute label. Production web build, verified arm64 DMG/signature/resources and isolated packaged startup smoke passed. Main/tag publication follows; Linux bundle is built by the release workflow.
+
+## 2026-10-06 · v0.2.9 Normalize label follow-up
+- Shortened the peak-normalization button to Normalize as requested; the measurement progress and applied-gain feedback remain available.
+- Incremented version after v0.2.8 tag publication; refreshing screenshot and verifying the new package.
+- Included user-requested video sync layout fix: the placement field occupies a fixed-width right column; frame timestamps use tabular digits, with actions on a separate row.
+- Added linked Russian README with matching platform requirements and workflows; demo screenshot will include an imported muted video.
+- Browser verification confirmed Mute/Normalize labels, visible imported video and video lane, and a 176-pixel right-aligned timeline-start field. Updated shared README screenshot; 38 renderer tests and typecheck/production build passed.
+- Final v0.2.9 arm64 DMG build, bundled resources and ad-hoc signature checks passed. README language links and local documentation/image links passed validation. Linux release validation remains in CI.

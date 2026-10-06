@@ -33,3 +33,12 @@ input.studio-slider:focus-visible { outline:2px solid #8b7960; outline-offset:5p
 .wave-timeline-column{flex:1;min-width:0;display:flex;flex-direction:column}.wave-timeline-column .wave-video-reference{margin:18px 18px 0;flex-shrink:0}.wave-video-reference>div{min-width:0}.wave-video-reference strong{overflow-wrap:anywhere}@media(max-width:1000px){.wave-video-reference video{width:180px}}
 
 .wave-zoom{display:flex;align-items:center;gap:12px;font-size:11px;color:#87959e}.wave-zoom input{flex:1}.sidebar-collapsed .nav-group button{width:40px;height:40px;margin:4px auto;border-radius:10px;display:flex;align-items:center}.sidebar-collapsed .sidebar-toggle{width:40px;height:34px;margin:8px auto 16px}.sidebar-collapsed .nav-icon{width:24px;height:24px;align-items:center;font-size:20px;line-height:1}.wave-sfx-lane{flex-shrink:0}
+
+/* Keep video placement independent of the changing frame timestamp. */
+.wave-video-reference>div{flex:1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px}
+.wave-video-reference strong,.wave-video-reference small{grid-column:1/-1}
+.wave-video-frame-time{margin:0;font-variant-numeric:tabular-nums;white-space:nowrap}
+.wave-video-start{grid-column:2;justify-self:end;display:flex;flex-direction:column;gap:4px;width:176px}
+.wave-video-start input{width:100%;box-sizing:border-box;font-variant-numeric:tabular-nums}
+.wave-video-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
+@media(max-width:700px){.wave-video-reference{flex-wrap:wrap}.wave-video-reference>div{flex-basis:100%}}

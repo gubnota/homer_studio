@@ -43,10 +43,10 @@
 - `tests/standalone-audio.test.tsx`: no-project and sound request UI checks.
 - `tests/manuscript-drop.test.ts` and `tests/standalone-audio.test.tsx`: focused renderer behavior tests.
 - `tests/DESKTOP_SMOKE.md`: automated and manual packaged-app smoke procedure.
-- `scripts/verify-release.mjs`: version, architecture, signature, microphone usage/entitlement, bundled worker resources, and package verification plus ZIP creation.
+- `scripts/verify-release.mjs`: version, architecture, signature, microphone usage/entitlement, bundled worker resources, and DMG package verification.
 - `scripts/smoke-app.mjs`: isolated packaged-app startup check.
 - `.github/workflows/ci.yml`: push/PR checks and Apple Silicon app build.
-- `.github/workflows/release.yml`: version-tagged DMG/ZIP release publishing.
+- `.github/workflows/release.yml`: version-tagged arm64 DMG and Linux x86_64 bundle publishing.
 - `README.md`: user setup, local engine configuration, workflow, checks, and packaging.
 - Root npm/Vite/TypeScript configuration: renderer development, checks, and Tauri arm64 packaging.
 - `docs/IMPLEMENTATION_PLAN.md`: exact planned filenames and verification commands.
@@ -107,3 +107,5 @@
 ## Release documentation
 - `docs/images/wave-editor-voices.jpg`: actual isolated editor screenshot embedded in README.
 - Versioned releases publish macOS aarch64 DMG only and a runnable Linux x86_64 tar bundle.
+
+- `README.ru.md`: Russian setup and workflows, kept aligned with the English README.

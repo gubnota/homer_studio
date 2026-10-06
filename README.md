@@ -1,12 +1,14 @@
 # Homer Studio
 
+English · [Русский](README.ru.md)
+
 Homer Studio is a local-first audio editor and audiobook production studio for Apple Silicon Macs, with a Linux server edition you access through your browser. Record or import narration, mark character voices, generate speech, split and join fragments, mix sound effects, and export WAV or M4A. Manuscript projects support chapter narration, review and audiobook export.
 
 Your desktop files and processing stay on your Mac. In the optional Linux edition, projects, models and processing stay on your own server; browser recordings upload to that server. There are no hosted accounts or analytics.
 
-![Wave Studio audio editor with colored Narrator, Maya and Leo voice tags, narration waveforms and fragment level, fade and speed controls](docs/images/wave-editor-voices.jpg)
+![Wave Studio audio editor with a muted imported video, colored Narrator, Maya and Leo voice tags, narration waveforms and fragment controls](docs/images/wave-editor-voices.jpg)
 
-*Wave Studio with an isolated demo narration: colored voice assignments, selectable fragments and audio controls. Assigned tags identify the intended voice; generate a tagged voice to change its sound.*
+*Wave Studio with an isolated demo narration and a muted video reference: colored voice assignments, selectable fragments and audio controls. Assigned tags identify the intended voice; generate a tagged voice to change its sound.*
 
 ## Downloads and requirements
 
