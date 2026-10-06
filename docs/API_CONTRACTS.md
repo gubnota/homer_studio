@@ -144,3 +144,6 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 - `/api/recording`: create a staged webm/m4a recording; PUT chunks up to 8 MB; stop queues existing memo import. Capture buffers and duration are bounded.
 - `GET /api/projects`: bounded list of saved manuscript project folders under server data; Wave projects use shared list/get/save commands.
 - Managed worker cancellation requests DELETE then verified local worker shutdown; restart is explicit when the worker is needed again. Unrelated services are not interrupted.
+
+- `wave_purge {id: string | null}` permanently removes one trash manifest or clears all deleted manifests for null, while retaining shared media. `wave_reveal {id, deleted}` is desktop-only Finder reveal. Project restore/open must drain current saves and load the restored manifest before exporting. No schema changes.
+- Renderer waveform cache keys include immutable source/take identity, window boundaries and peak count; failed/cancelled requests are never cached.

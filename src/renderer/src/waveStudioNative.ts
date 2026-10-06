@@ -7,6 +7,8 @@ export const waveApi = {
  hasVideo: (path:string)=>invoke<boolean>('wave_has_video',{path}),
  importVideo: (path:string,requestId:string|null=null)=>invoke<WaveVideo>('wave_import_video',{path,requestId}),
  videoUrl:(id:string)=>invoke<string>('wave_video_url',{id}),
+ purge:(id:string|null=null)=>invoke<number>('wave_purge',{id}),
+ reveal:(id:string,deleted=false)=>invoke<void>('wave_reveal',{id,deleted}),
  deleted:()=>invoke<WaveProject[]>('wave_deleted'),
  delete:(id:string,restore=false)=>invoke<void>('wave_delete',{id,restore}),
  saveCopy:(project:WaveProject,path:string)=>invoke<void>('wave_save_copy',{project,path}),

@@ -279,6 +279,10 @@ pub async fn dispatch(app: AppHandle, command: &str, args: Value) -> Result<Valu
             )?;
             serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
         }
+        "wave_purge" => {
+            let result = commands::wave_studio::wave_purge(app.clone(), app.state::<AppState>(), argument(&args, "id")?)?;
+            serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
+        }
         "wave_save_copy" => {
             let result = commands::wave_studio::wave_save_copy(
                 app.clone(),

@@ -214,3 +214,11 @@
 - Added linked Russian README with matching platform requirements and workflows; demo screenshot will include an imported muted video.
 - Browser verification confirmed Mute/Normalize labels, visible imported video and video lane, and a 176-pixel right-aligned timeline-start field. Updated shared README screenshot; 38 renderer tests and typecheck/production build passed.
 - Final v0.2.9 arm64 DMG build, bundled resources and ad-hoc signature checks passed. README language links and local documentation/image links passed validation. Linux release validation remains in CI.
+
+## 2026-10-06 - Approved v0.3.0 UI and recovery release
+- Updated existing screens to the supplied Echoline prototype style: route SVG icons, neutral buttons, black switches, Voice Memos search/bulk actions, aligned edit/conversion fields and live recording levels. Added common close/Escape/focus behavior and expiring dismissible toasts. Preserved the user's app/sidebar/switch CSS adjustments.
+- Fixed save/restore ordering and loaded recovered project content before export. Added validated trash cleanup and desktop Finder reveal; shared media remains intact. HTTP integration verified populated restored `.wavehs` export/import and cleanup retention.
+- Added bounded LRU reuse of completed immutable waveform windows in both editors while retaining native disk caching/invalidation. Failures remain retryable; no full audio retained in visual cache.
+- Version set to 0.3.0 on explicit user request. Refreshed actual Wave/video/voice and Voice Memos screenshots and described workflows in English/Russian READMEs. Split Linux test compilation from execution after prior release compilation timeout.
+- Validation: 40 renderer tests, typecheck/web build, 55 optimized core tests, 2 server tests, 3 desktop tests, real-FFmpeg HTTP recovery/media integration and 18 Python checks passed. Browser confirmed project dialog Escape/focus restoration, real memo waveform, editing buttons, and muted video with voice tags. Final packaging, startup smoke and publication follow.
+- Final arm64 DMG, resources/ad-hoc signature verification and packaged startup smoke passed. Release v0.3.0 publication is authorized; Linux artifacts are validated and produced by GitHub Actions. Real microphone hardware and CUDA inference remain manual checks.

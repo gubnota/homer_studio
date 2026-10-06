@@ -633,6 +633,16 @@ pub fn wave_delete(
     wave_store::trash(&app, &id, restore)
 }
 #[cfg_attr(feature = "desktop", tauri::command)]
+pub fn wave_purge(app: AppHandle, state: State<'_, AppState>, id: Option<String>) -> Result<usize, CommandError> {
+    let _guard = state.project_write_lock.lock().map_err(|_| CommandError::internal("Project lock unavailable"))?;
+    wave_store::purge(&app, id.as_deref())
+}
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn wave_reveal(app: AppHandle, id: String, deleted: bool) -> Result<(), CommandError> {
+    wave_store::reveal(&app, &id, deleted)
+}
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn wave_save_copy(
     app: AppHandle,
     project: Project,

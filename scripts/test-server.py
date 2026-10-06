@@ -125,6 +125,23 @@ def main():
                 memo = command("create_memo", name="Browser recording fixture", context={})
                 wait_job(command("import_memo_audio", memoId=memo["id"], expectedRevision=memo["revision"], sourcePath=path, name="Recording"))
                 assert command("get_memo", memoId=memo["id"])["selectedTakeId"]
+                # Restore/export uses the saved project, including its timeline and media.
+                command("wave_delete", id=project["id"], restore=False)
+                assert any(p["id"] == project["id"] for p in command("wave_deleted"))
+                command("wave_delete", id=project["id"], restore=True)
+                recovered = command("wave_get", id=project["id"])
+                assert recovered["timeline"]["clips"] == [clip]
+                destination = json.loads(request("/api/destination", {"name": "restored.wavehs"})[0])["path"]
+                command("wave_export_bundle", project=recovered, path=destination)
+                restored = command("wave_import_bundle", path=destination)
+                assert len(restored["timeline"]["clips"]) == 1 and len(restored["sources"]) == 1
+                command("wave_delete", id=project["id"], restore=False)
+                assert command("wave_purge", id=project["id"]) == 1
+                assert command("wave_get", id=restored["id"])["sources"]
+                command("wave_delete", id=restored["id"], restore=False)
+                assert command("wave_purge") == 1
+                assert command("wave_deleted") == []
+                assert request(url, headers={"Range": "bytes=0-3"}, status=206)[0] == b"RIFF"
                 print("HTTP integration passed: authentication, paths, MP3/peaks, ranged playback, WAV/M4A, bundle restoration, SFX and streamed recording.")
             finally:
                 server.terminate()

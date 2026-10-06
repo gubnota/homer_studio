@@ -56,6 +56,9 @@ jobs:
           rustup default stable
       - name: Verify browser editor
         run: npm ci && npm run build
+      - name: Compile shared service tests
+        timeout-minutes: 30
+        run: cargo test --release --no-run -p homer-core -p homer-server --features homer-core/server
       - name: Test shared services
         timeout-minutes: 10
         run: cargo test --release -p homer-core -p homer-server --features homer-core/server

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { clipDuration, clipEnd, type WaveClip, type WaveView } from '../../../shared/waveStudio'
 import { waveApi } from '../waveStudioNative'
+import { WaveformCache } from '../waveformCache'
 interface Props { clips: WaveClip[]; view: WaveView; height: number; selectedId: string | null; onError: (message: string) => void }
-const peakCache = new Map<string, [number, number][]>()
+const peakCache = new WaveformCache<[number, number][]>()
 export function WaveformCanvas({ clips, view, height: preferredHeight, selectedId, onError }: Props): JSX.Element {
  const ref = useRef<HTMLCanvasElement>(null), [width, setWidth] = useState(800), [height, setHeight] = useState(preferredHeight), [version, refresh] = useState(0)
  const callbacks = useRef(onError); callbacks.current = onError
@@ -15,8 +16,8 @@ export function WaveformCanvas({ clips, view, height: preferredHeight, selectedI
      const start = Math.max(0, Math.floor(c.sourceStartMs + (a - c.startMs) * c.speed)), end = Math.ceil(Math.min(c.sourceEndMs, c.sourceStartMs + (b - c.startMs) * c.speed))
      if (end <= start) continue
      const count = Math.max(1, Math.min(2048, Math.ceil((b - a) / view.spanMs * width / 3))), key = `${c.sourceId}:${start}:${end}:${count}`
-     if (peakCache.has(key)) continue
-     const requestId=crypto.randomUUID();requests.add(requestId);try { const peaks = await waveApi.peaks(c.sourceId!, start, end, count, requestId); peakCache.set(key, peaks.peaks); while (peakCache.size > 120) peakCache.delete(peakCache.keys().next().value!); if (alive) refresh(n => n + 1) } catch { if (alive) callbacks.current('Some waveform peaks could not be read. Your audio remains available for playback.') } finally {requests.delete(requestId)}
+     if (peakCache.get(key)) continue
+     const requestId=crypto.randomUUID();requests.add(requestId);try { const peaks = await waveApi.peaks(c.sourceId!, start, end, count, requestId); peakCache.set(key, peaks.peaks); if (alive) refresh(n => n + 1) } catch { if (alive) callbacks.current('Some waveform peaks could not be read. Your audio remains available for playback.') } finally {requests.delete(requestId)}
    } }
    void Promise.all([work(), work()]); return () => { alive = false; for(const id of requests)void waveApi.cancelPeaks(id).catch(()=>{}) }
  }, [clips, view.offsetMs, view.spanMs, width])
@@ -36,7 +37,7 @@ export function WaveformCanvas({ clips, view, height: preferredHeight, selectedI
      const peaks = peakCache.get(`${c.sourceId}:${start}:${end}:${count}`), gain = c.gainDb <= -96 ? 0 : 10 ** (c.gainDb / 20)
      ctx.fillStyle = '#535b5d'
      peaks?.forEach(([lo, hi], i) => { const px = left + i / peaks.length * (right - left), local = a - c.startMs + i / peaks.length * (b - a), envelope = Math.min(1, c.fadeInMs ? local / c.fadeInMs : 1, c.fadeOutMs ? (clipDuration(c) - local) / c.fadeOutMs : 1), low = Math.max(-1, lo * gain * envelope), high = Math.min(1, hi * gain * envelope); ctx.fillRect(px, height / 2 - high * (height / 2 - 28), Math.max(1, (right - left) / peaks.length - 1), Math.max(1, (high - low) * (height / 2 - 28))) })
-     ctx.save(); ctx.beginPath(); ctx.rect(left + 5, 0, Math.max(0, right - left - 10), 24); ctx.clip(); ctx.fillStyle = '#737971'; ctx.font = '10px -apple-system, sans-serif'; ctx.fillText(`${c.name}${c.speed !== 1 ? ` · ${c.speed.toFixed(2)}×` : ''}`, left + 8, 16); ctx.restore()
+     ctx.save(); ctx.beginPath(); ctx.rect(left + 5, 0, Math.max(0, right - left - 10), 24); ctx.clip(); ctx.fillStyle = '#737971'; ctx.font = '10px -apple-system, sans-serif'; ctx.fillText(`${c.name}${c.speed !== 1 ? `  /  ${c.speed.toFixed(2)}x` : ''}`, left + 8, 16); ctx.restore()
      if (c.fadeInMs || c.fadeOutMs) { ctx.strokeStyle = '#9b7956'; ctx.beginPath(); ctx.moveTo(x(c.startMs), height - 5); ctx.lineTo(x(c.startMs + c.fadeInMs), 22); ctx.lineTo(x(clipEnd(c) - c.fadeOutMs), 22); ctx.lineTo(x(clipEnd(c)), height - 5); ctx.stroke() }
    }
  }, [clips, view.offsetMs, view.spanMs, width, height, selectedId, view.selectedIds, version])

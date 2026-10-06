@@ -236,3 +236,13 @@ Context: User requested Linux application artifacts, macOS Apple Silicon DMG onl
 Decision: Publish a runnable Linux x86_64 tar bundle and macOS aarch64 DMG, starting v0.2.7; increment the patch version for each new release. Linux remains the browser-server edition.
 Consequences: ZIP is no longer created or required for new macOS releases. Older release assets remain historical. README separates runtime and source-build requirements for each platform.
 Related files: `.github/workflows/release.yml`, `scripts/verify-release.mjs`, `scripts/package-server.sh`, `README.md`, `docs/LINUX_SERVER.md`.
+
+# ADR-0025: Recovery ordering and shared studio UI
+
+Date: 2026-10-06
+Status: Accepted
+
+Context: Restored projects could export stale/empty state and custom dialogs/controls differed across screens.
+Decision: Drain serialized saves before project changes, synchronously maintain current project refs, and load restored manifests before closing the project picker. Purge only validated trash manifests, retaining shared media. Use shared icon/modal/toast components and bounded completed waveform-window reuse over native disk caches. Preserve manual CSS edits.
+Consequences: Dialog close waits for recording stop when necessary; errors remain retryable. Memory cache evicts old windows without loading full audio. Linux has no Finder action.
+Related files: WaveStudioProvider.tsx, WaveProjectsPanel.tsx, StudioModal.tsx, StudioToast.tsx, waveformCache.ts, wave_store.rs.

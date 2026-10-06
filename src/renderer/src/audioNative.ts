@@ -1,5 +1,7 @@
 import { invoke } from './platform'
 import type { AudioEdit, CaptureDevice, CaptureState, PeakWindow, RecordingSession } from '../../shared/audio'
+import { WaveformCache } from './waveformCache'
+const waveformCache = new WaveformCache<PeakWindow>()
 export const audioApi = {
   sourcePath: (memo: RecordingSession) => invoke<string>('memo_source_path', { memoId: memo.id, expectedRevision: memo.revision }),
   list: (includeDeleted = false) => invoke<RecordingSession[]>('list_memos', { includeDeleted }),
@@ -13,7 +15,7 @@ export const audioApi = {
   updateTake: (memo: RecordingSession, takeId: string, name: string, notes: string, favorite: boolean, deleted = false) => invoke<RecordingSession>('update_memo_take',{memoId:memo.id,expectedRevision:memo.revision,takeId,name,notes,favorite,deleted}),
   replace: (memo: RecordingSession, replacementId: string, startMs: number, endMs: number, crossfadeMs = 20) => invoke<string>('replace_memo_range', {memoId: memo.id, expectedRevision: memo.revision, replacementId, startMs, endMs, crossfadeMs}),
   url: (memoId: string, takeId: string) => invoke<string>('memo_audio_url', { memoId, takeId }),
-  waveform: (memoId: string, takeId: string, startMs: number, endMs: number, maxPeaks = 1000) => invoke<PeakWindow>('memo_waveform', { memoId, takeId, startMs, endMs, maxPeaks }),
+  waveform: (memoId: string, takeId: string, startMs: number, endMs: number, maxPeaks = 1000) => waveformCache.load(JSON.stringify([memoId, takeId, startMs, endMs, maxPeaks]), () => invoke<PeakWindow>('memo_waveform', { memoId, takeId, startMs, endMs, maxPeaks })),
   devices: () => invoke<CaptureDevice[]>('audio_capture_devices'),
   permission: (request = false) => invoke<string>('audio_capture_permission', { request }),
   start: (memoId: string, deviceId: string | null) => invoke<CaptureState>('audio_capture_start', { memoId, deviceId }),

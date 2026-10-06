@@ -62,3 +62,5 @@ Rules:
 - Axum owns single-owner authentication, same-origin checks, scoped paths, streamed transfers and browser recording staging. It exposes an explicit command allowlist.
 - Browser renderer owns microphone permission and capture; chunks go directly to server storage. Only core services execute media tools or workers.
 - Release tooling owns macOS arm64 and Linux x86_64 artifacts. Real GPU validation requires a supplied Linux CUDA host.
+
+- Shared renderer components own dialog focus/Escape and expiring toast behavior. Renderer waveform cache retains completed immutable take/source windows only; Rust owns persistent decoded waveform validation.

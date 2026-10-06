@@ -34,8 +34,8 @@ describe('Review batch narration', () => {
 
   it('shows both batch actions and selection for chapters without audio', () => {
     const html = renderToStaticMarkup(createElement(ReviewPage, { project, onProjectChange: () => {}, onOpenQueue: () => {} }))
-    expect(html).toContain('Generate pending chapters · 2')
-    expect(html).toContain('(Re)Generate selected · 0')
+    expect(html).toContain('Generate pending chapters  /  2')
+    expect(html).toContain('(Re)Generate selected  /  0')
     expect(html).toContain('aria-label="Select c0"')
     expect(html).not.toContain('aria-label="Select c0" disabled')
   })

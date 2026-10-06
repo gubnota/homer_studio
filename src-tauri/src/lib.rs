@@ -129,6 +129,8 @@ pub fn run() {
             commands::wave_studio::wave_import_video,
             commands::wave_studio::wave_video_url,
             commands::wave_studio::wave_deleted,
+            commands::wave_studio::wave_purge,
+            commands::wave_studio::wave_reveal,
             commands::wave_studio::wave_delete,
             commands::wave_studio::wave_save_copy,
             commands::wave_studio::wave_export_bundle,

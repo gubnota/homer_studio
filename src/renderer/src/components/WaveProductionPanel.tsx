@@ -1,3 +1,4 @@
+import {StudioModal} from './StudioModal'
 import { Checkbox } from './StudioControls'
 import { useEffect, useRef, useState } from 'react'
 import type { JobRecord, Voice } from '../../../shared/contracts'
@@ -41,12 +42,12 @@ export function WaveProductionPanel({kind,voices,onClose,regionId}:{kind:'speech
   c.edit(timeline,[...p.sources,...result.sources.filter(s=>!p.sources.some(old=>old.id===s.id))]);onClose()
  }
  const running=!!jobId&&!result&&!['failed','cancelled','completed'].includes(job?.status||'')
- return <section className="wave-dialog" role="dialog" aria-modal="true" aria-label={kind==='speech'?'Generate speech':'Apply tagged voices'}>
+ return <StudioModal title={kind==='speech'?'Generate speech':'Apply tagged voices'} onClose={onClose}>
   <h2>{kind==='speech'?'Generate speech':regionId?'Generate selected voice':'Apply tagged voices'}</h2>
   {kind==='speech'?<><label>Voice<select value={voiceId} disabled={busy||running||!!result} onChange={e=>setVoiceId(e.target.value)}>{voices.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label>{!voices.length&&<p>Create a voice in Voice Lab first.</p>}<label>Text<textarea rows={5} value={text} disabled={busy||running} onChange={e=>setText(e.target.value)}/></label><label>Position<select value={placement} disabled={busy||running||!!result} onChange={e=>setPlacement(e.target.value as 'cursor'|'end')}><option value="cursor">Selection start / playhead</option><option value="end">End of timeline</option></select></label></>:<><p>Convert {regions.length} {regionId?'selected':'pending'} passage(s) with Original Chatterbox. Listen below before accepting.</p><label className="wave-check"><Checkbox checked={regenerate} disabled={busy||running} onChange={e=>setRegenerate(e.target.checked)}/>Regenerate completed passages</label>{!regions.length&&<p>All passages are complete, or no voice is assigned.</p>}</>}
-  {error&&<p role="alert">{error}</p>}{job&&<p className="wave-production-status" role="status">{job.status} · {job.progress}% {job.message}</p>}
+  {error&&<p role="alert">{error}</p>}{job&&<p className="wave-production-status" role="status">{job.status}  /  {job.progress}% {job.message}</p>}
   {running&&<button onClick={()=>void systemApi.controlJob(jobId,'cancel').catch(e=>setError(errorMessage(e)))}>Cancel job</button>}
-  {result&&<><p>Ready to review</p>{result.sources.map((s,i)=><div key={s.id}><small>{s.name}{result.replacements[i]&&` · ${formatWaveTime(result.replacements[i]!.startMs)}–${formatWaveTime(result.replacements[i]!.endMs)}`}</small>{urls[s.id]&&<AudioTransport url={urls[s.id]!}/>}</div>)}{result.warnings.map((warning,i)=><p key={i}>{warning}</p>)}<button className="primary" onClick={accept}>{kind==='speech'?'Insert speech':'Accept converted voices'}</button></>}
-  <button disabled={busy||running||(kind==='speech'?(!text.trim()||!voiceId):!regions.length)} onClick={()=>void start()}>{result?'Generate again':kind==='speech'?'Generate':'Generate voice preview'}</button><button disabled={busy} onClick={onClose}>Close</button>
- </section>
+  {result&&<><p>Ready to review</p>{result.sources.map((s,i)=><div key={s.id}><small>{s.name}{result.replacements[i]&&`  /  ${formatWaveTime(result.replacements[i]!.startMs)}-${formatWaveTime(result.replacements[i]!.endMs)}`}</small>{urls[s.id]&&<AudioTransport url={urls[s.id]!}/>}</div>)}{result.warnings.map((warning,i)=><p key={i}>{warning}</p>)}<button className="primary" onClick={accept}>{kind==='speech'?'Insert speech':'Accept converted voices'}</button></>}
+  <button disabled={busy||running||(kind==='speech'?(!text.trim()||!voiceId):!regions.length)} onClick={()=>void start()}>{result?'Generate again':kind==='speech'?'Generate':'Generate voice preview'}</button>
+ </StudioModal>
 }

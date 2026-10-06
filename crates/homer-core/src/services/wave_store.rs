@@ -268,6 +268,41 @@ pub fn trash(app: &AppHandle, id: &str, restore: bool) -> Result<(), CommandErro
         .map_err(|e| CommandError::io("Cannot prepare projects", e))?;
     fs::rename(from, to).map_err(|e| CommandError::io("Cannot move project", e))
 }
+/// Permanently remove only trash manifests. Shared immutable media stays available
+/// to active projects and memos that reference the same source.
+pub fn purge(app: &AppHandle, id: Option<&str>) -> Result<usize, CommandError> {
+    let dir = root(app)?.join("trash");
+    if let Some(id) = id {
+        audio_assets::id(id)?;
+        fs::remove_file(dir.join(format!("{id}.json")))
+            .map_err(|e| CommandError::io("Cannot delete project permanently", e))?;
+        return Ok(1);
+    }
+    if !dir.exists() { return Ok(0); }
+    let mut count = 0;
+    for entry in fs::read_dir(&dir).map_err(|e| CommandError::io("Cannot read deleted projects", e))? {
+        let entry = entry.map_err(|e| CommandError::io("Cannot read deleted project", e))?;
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
+        let Some(id) = path.file_stem().and_then(|s| s.to_str()) else { continue; };
+        if audio_assets::id(id).is_err() { continue; }
+        if !entry.file_type().map_err(|e| CommandError::io("Cannot inspect deleted project", e))?.is_file() { continue; }
+        fs::remove_file(path).map_err(|e| CommandError::io("Cannot delete project permanently", e))?;
+        count += 1;
+    }
+    Ok(count)
+}
+#[cfg(feature = "desktop")]
+pub fn reveal(app: &AppHandle, id: &str, deleted: bool) -> Result<(), CommandError> {
+    audio_assets::id(id)?;
+    let path = if deleted { root(app)?.join("trash").join(format!("{id}.json")) } else { project_path(app, id)? };
+    if !path.is_file() { return Err(CommandError::new("PROJECT_NOT_FOUND", "Project is no longer available.")); }
+    let status = std::process::Command::new("/usr/bin/open").arg("-R").arg(path).status()
+        .map_err(|e| CommandError::io("Cannot reveal project in Finder", e))?;
+    if !status.success() { return Err(CommandError::new("REVEAL_FAILED", "Finder could not reveal this project.")); }
+    Ok(())
+}
+
 pub fn save_copy(app: &AppHandle, p: &Project, destination: &Path) -> Result<(), CommandError> {
     validate_sources(app, p)?;
     if destination.exists() {

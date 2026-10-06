@@ -109,3 +109,5 @@
 - Versioned releases publish macOS aarch64 DMG only and a runnable Linux x86_64 tar bundle.
 
 - `README.ru.md`: Russian setup and workflows, kept aligned with the English README.
+
+- Shared UI: `StudioIcon.tsx`, `StudioModal.tsx`, `StudioToast.tsx`; waveform memory LRU: `src/renderer/src/waveformCache.ts` (120 windows per editor).
