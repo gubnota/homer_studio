@@ -4,7 +4,7 @@ The server runs the same React editor and Rust audio/project services as the mac
 
 ## Linux application bundle
 
-The application bundle includes the native server, browser editor, workers, sound assets, launcher and container configuration. Extract `homer-studio-0.2.7-linux-x86_64.tar.gz` on Ubuntu 22.04 or newer. Install FFmpeg, Python 3.10 and its venv support (`sudo apt install ffmpeg python3.10 python3.10-venv`). From the extracted directory:
+The application bundle includes the native server, browser editor, workers, sound assets, launcher and container configuration. Extract `homer-studio-0.2.8-linux-x86_64.tar.gz` on Ubuntu 22.04 or newer. Install FFmpeg, Python 3.10 and its venv support (`sudo apt install ffmpeg python3.10 python3.10-venv`). From the extracted directory:
 
 ```sh
 export HOMER_TOKEN="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"

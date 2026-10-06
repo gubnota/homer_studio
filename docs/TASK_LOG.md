@@ -201,3 +201,8 @@
 - Updated owned version manifests/locks, removed ZIP creation/verification/publication, documented Linux bundle contents and dependencies.
 - README screenshot captured from the actual browser editor using disposable spoken fixtures and Narrator/Maya/Leo assignments; installed app and user projects were untouched.
 - v0.2.6 macOS release and CI succeeded; Linux CI was still running when this follow-up began. v0.2.7 renderer checks passed (38 tests), Apple Silicon DMG build/signature/resources passed and isolated packaged startup smoke passed. Publication and Linux CI follow.
+
+## 2026-10-06 · v0.2.8 label follow-up
+- Renamed the Wave fragment button to Mute; Unmute and behavior remain intact.
+- v0.2.7 tag and DMG were already published, so incremented to v0.2.8 rather than modifying a published tag.
+- Refreshed the real editor screenshot with the plain Mute label. Production web build, verified arm64 DMG/signature/resources and isolated packaged startup smoke passed. Main/tag publication follows; Linux bundle is built by the release workflow.
