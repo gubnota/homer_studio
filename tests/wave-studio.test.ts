@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { placeVideo, videosOverlap, arrangeVideos, videoFrame, voiceAudioKey, voiceComplete, reconcileVoiceProduction, projectDuration, blankTimeline, clipDuration, clipEnd, formatWaveTime, sourceClip, timelineDuration } from '../src/shared/waveStudio'
-import { rememberVoiceVersions, restoreVoiceOriginal, recoverVoiceVersions, packSfxRows, insertMain, transferClip, replaceRange, joinCandidateIds, assignVoice, changeSpeed, historyEdit, historyRedo, historyUndo, insertSilence, moveClip, removeRange, splitAt } from '../src/shared/waveStudioEdits'
+import { rememberVoiceVersions, restoreVoiceOriginal, recoverVoiceVersions, packSfxRows, insertMain, transferClip, replaceRange, joinCandidateIds, assignVoice, changeSpeed, historyEdit, historyRedo, historyUndo, insertSilence, moveClip, removeRange, splitAt, splitSoundtrack, trimSoundtrack } from '../src/shared/waveStudioEdits'
 const source = { id: crypto.randomUUID(), name: 'Narration', durationMs: 10000, channels: 2 }
 const original = () => ({ ...blankTimeline(), clips: [sourceClip(source)] })
 describe('Wave Studio reversible editing', () => {
@@ -101,4 +101,11 @@ describe('video timeline placement and frames',()=>{
  it('excludes the moved clip and rejects overflow or invalid positions',()=>{expect(placeVideo(videos,2000,1500,'a')).toBe(1500);expect(()=>placeVideo(videos,1000,86400000)).toThrow();expect(()=>placeVideo(videos,1000,NaN)).toThrow()})
  it('resolves black, playing, held and backward-seek frames independent of selection',()=>{expect(videoFrame(videos,0)).toBeNull();expect(videoFrame(videos,1500)).toMatchObject({video:{id:'a'},timeMs:500,held:false});expect(videoFrame(videos,4000)).toMatchObject({video:{id:'a'},timeMs:1999,held:true});expect(videoFrame(videos,5000)).toMatchObject({video:{id:'b'},timeMs:0,held:false});expect(videoFrame(videos,9000)).toMatchObject({video:{id:'b'},timeMs:999,held:true});expect(videoFrame(videos,1000)?.video.id).toBe('a')})
  it('arranges legacy overlaps explicitly while preserving input',()=>{const old=[videos[0]!,{...videos[1]!,startMs:2000}];expect(videosOverlap(old)).toBe(true);const next=arrangeVideos(old);expect(next[1]?.startMs).toBe(3000);expect(videosOverlap(next)).toBe(false);expect(old[1]?.startMs).toBe(2000)})
+})
+
+describe('independent soundtrack edits',()=>{
+ const fixture=()=>({...original(),sfx:[{...sourceClip(source,1000),speed:2,fadeInMs:2000,fadeOutMs:2000},sourceClip(source,2000)]})
+ it('splits only the selected soundtrack, with source offsets at its speed',()=>{const t=fixture(),c=t.sfx[0]!,n=splitSoundtrack(t,c.id,2000);expect(n.clips).toEqual(t.clips);expect(n.sfx.slice(0,2).map(c=>[c.startMs,c.sourceStartMs,c.sourceEndMs])).toEqual([[1000,0,2000],[2000,2000,10000]]);expect(n.sfx[2]).toEqual(t.sfx[1]);expect(n.sfx[0]?.fadeInMs).toBe(1000);expect(splitSoundtrack(t,c.id,1000).sfx).toEqual(t.sfx);const h=historyEdit({past:[],present:t,future:[]},n);expect(historyUndo(h).present).toEqual(t);expect(historyRedo(historyUndo(h)).present).toEqual(n)})
+ it('trims and restores source ranges without moving other fragments',()=>{const t=fixture(),id=t.sfx[0]!.id,n=trimSoundtrack(t,id,'start',2000,10000);expect(n.sfx[0]).toMatchObject({startMs:2000,sourceStartMs:2000,sourceEndMs:10000});expect(clipEnd(n.sfx[0]!)).toBe(6000);expect(trimSoundtrack(n,id,'start',0,10000).sfx[0]?.startMs).toBe(1000);expect(n.sfx[1]).toEqual(t.sfx[1]);expect(n.clips).toEqual(t.clips)})
+ it('clamps trim edges to source bounds and positive duration and fades',()=>{const t=fixture(),id=t.sfx[0]!.id;expect(trimSoundtrack(t,id,'end',20000,10000).sfx[0]?.sourceEndMs).toBe(10000);const c=trimSoundtrack(t,id,'end',0,10000).sfx[0]!;expect(clipDuration(c)).toBe(1);expect(c.fadeInMs).toBe(1);expect(c.fadeOutMs).toBe(1);expect(clipDuration(trimSoundtrack(t,id,'start',20000,10000).sfx[0]!)).toBe(1)})
 })

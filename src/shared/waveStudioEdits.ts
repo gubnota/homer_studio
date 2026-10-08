@@ -6,6 +6,29 @@ export function splitClip(c: WaveClip, at: number): WaveClip[] {
   return [{ ...c, sourceEndMs: sourceAt, fadeInMs: Math.min(c.fadeInMs, at - c.startMs), fadeOutMs: 0 }, { ...c, id: newId(), startMs: at, sourceStartMs: sourceAt, fadeInMs: 0, fadeOutMs: Math.min(c.fadeOutMs, clipEnd(c) - at) }]
 }
 export function splitAt(t: WaveTimeline, at: number): WaveTimeline { return { ...t, clips: t.clips.flatMap(c => splitClip(c, at)) } }
+/** Split only the selected independent soundtrack. Narration stays intact. */
+export function splitSoundtrack(t: WaveTimeline, id: string, at: number): WaveTimeline {
+ return {...t,sfx:t.sfx.flatMap(c=>c.id===id?splitClip(c,at):[c])}
+}
+export function soundtrackRange(c: WaveClip, sourceIn: number, sourceOut: number, sourceDuration: number): WaveClip {
+ const minimum = c.speed
+ const sourceStartMs=Math.max(0,Math.min(sourceIn,sourceDuration-minimum))
+ const sourceEndMs=Math.max(sourceStartMs+minimum,Math.min(sourceOut,sourceDuration))
+ const duration=(sourceEndMs-sourceStartMs)/c.speed
+ return {...c,sourceStartMs,sourceEndMs,fadeInMs:Math.min(c.fadeInMs,duration),fadeOutMs:Math.min(c.fadeOutMs,duration)}
+}
+export function trimSoundtrack(t: WaveTimeline,id:string,edge:'start'|'end',at:number,sourceDuration:number): WaveTimeline {
+ if(!Number.isFinite(at))return t
+ return {...t,sfx:t.sfx.map(c=>{
+  if(c.id!==id)return c
+  if(edge==='start'){
+   const start=Math.max(0,c.startMs-c.sourceStartMs/c.speed,Math.min(at,clipEnd(c)-1))
+   return {...soundtrackRange(c,c.sourceStartMs+(start-c.startMs)*c.speed,c.sourceEndMs,sourceDuration),startMs:start}
+  }
+  const end=Math.max(c.startMs+1,Math.min(at,86400000,c.startMs+(sourceDuration-c.sourceStartMs)/c.speed))
+  return soundtrackRange(c,c.sourceStartMs,c.sourceStartMs+(end-c.startMs)*c.speed,sourceDuration)
+ })}
+}
 function isolate(t: WaveTimeline, a: number, b: number): WaveTimeline { return splitAt(splitAt(copy(t), a), b) }
 export function removeRange(t: WaveTimeline, a: number, b: number, silence = false): WaveTimeline {
   if (b <= a) return t
