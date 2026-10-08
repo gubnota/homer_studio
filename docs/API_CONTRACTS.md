@@ -163,3 +163,5 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 
 - `wave_export` accepts optional `lengthMode: "longest" | "shortest"`. MP4 longest uses max remaining audio/video duration; shortest uses min, rejecting empty windows. Selected video starts at its placement; combined video length ends at the last video end. Longest holds the final frame or pads audio silence. Omitted mode preserves legacy selected-video length and combined max duration. Unknown modes return `INVALID_EXPORT_LENGTH`.
 - Selected SFX Split affects only that clip at playhead. Edge trims map timeline deltas through speed into source bounds, retain at least 1 ms playback, clamp fades and keep other clip placements. Start-edge trimming keeps the selected clip end fixed; Undo/Redo use existing audio history.
+
+- Export UI blocks overlapping video placements before destination selection; explicit Arrange resolves them through existing placement helpers. Preparation uses indeterminate progress; enqueue success closes the dialog and shows queued/job progress. Preparation/command errors remain inline for retry. Native export commands/length policy are unchanged.

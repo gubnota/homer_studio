@@ -9,6 +9,7 @@
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
+- v0.3.4: export failures/overlap recovery stay visible inside the dialog; preparation and queued/running/completed progress are explicit. Reproduced overlap rejection in the user’s native app; preserve their project placements.
 - v0.3.3: selected soundtrack split/source trim, explicit video removal, full-length or shorter-track MP4 export. User requested new patch tag and push after verification.
 - Approved audio/video editing follow-up: explicit separate soundtrack imports, multi-video placement without overlaps, held-frame preview and full-timeline MP4 export. Included in the requested v0.3.3 tag.
 - Version 0.3.2: incremental `.wavehs` folders, linked video and video-length MP4 export; project-owned recordings, memo playback/keyboard fixes, compact takes, paired view sliders and stronger button contrast. Preserve manual CSS and waveform caches.

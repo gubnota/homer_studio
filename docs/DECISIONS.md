@@ -286,3 +286,13 @@ Context: Selected effects lacked split/trim controls; second videos were hard to
 Decision: Route Split to the selected SFX, expose source-bounded edge handles and explicit selected-video removal. Default new MP4 UI exports to full length, with shorter-track choice and duration preview. Extend video using its final frame and pad short audio; preserve legacy API defaults when lengthMode is absent.
 Consequences: Other soundtracks/narration retain placement; audio edits remain undoable. Held-frame selected exports require encoding. A shortest export with no remaining audio is disabled/rejected. User requested patch version tag and push.
 Related files: src/shared/waveStudioEdits.ts; src/renderer/src/components/WaveStudioTimeline.tsx; src/renderer/src/components/WaveExportPanel.tsx; crates/homer-core/src/services/wave_video.rs.
+
+# ADR-0030: Visible export preflight and progress
+
+Date: 2026-10-08
+Status: Accepted
+
+Context: Native export of a legacy overlapping-video project failed before enqueue; the error appeared behind the export dialog, making Save appear unresponsive.
+Decision: Show overlap preflight with explicit Arrange inside the dialog, disable Save until resolved, retain preparation/command errors inline, and display preparation plus queued/job progress immediately.
+Consequences: No implicit reordering of user videos; failed starts remain reviewable and retryable. Native media and API validation stay unchanged.
+Related files: src/renderer/src/components/WaveExportPanel.tsx; src/renderer/src/WaveStudioPage.tsx; tests/wave-export.test.tsx.

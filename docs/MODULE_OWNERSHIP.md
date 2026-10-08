@@ -72,3 +72,5 @@ Rules:
 - Renderer owns file-drop lane intent, sequential batch imports and first-fitting video placement. Shared native validation rejects overlaps on save and combined export; legacy reads stay available for explicit Arrange. Video service owns frame normalization/holding and edited-audio mux; preview uses the shared timeline frame selector.
 
 - Source-bounded SFX trims/splits belong to shared immutable editing helpers; renderer routes selected IDs and history. Export duration policy and FFmpeg frame extension belong to homer-core; desktop/HTTP adapters forward optional lengthMode unchanged.
+
+- Export dialog owns visible preflight/retry errors and explicit overlap arrangement; the page owns queued/running/completion progress. Renderer must not rely on a message behind an active dialog.
