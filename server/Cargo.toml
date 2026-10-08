@@ -1,6 +1,6 @@
 [package]
 name = "homer-server"
-version = "0.3.5"
+version = "0.3.6"
 edition = "2024"
 [dependencies]
 homer-core = { path = "../crates/homer-core", features = ["server"] }
