@@ -64,6 +64,7 @@ pub fn create(app: &AppHandle, name: &str) -> Result<Project, CommandError> {
     Ok(p)
 }
 pub fn save(app: &AppHandle, mut p: Project, expected: u64) -> Result<Project, CommandError> {
+    super::wave_studio::validate_video_placements(&p.videos)?;
     super::wave_studio::validate(&p)?;
     let old = load(app, &p.id)?;
     if old.revision != expected {
@@ -426,6 +427,7 @@ pub fn save_copy_options(
     destination: &Path,
     include_video: bool,
 ) -> Result<(), CommandError> {
+    super::wave_studio::validate_video_placements(&p.videos)?;
     validate_sources(app, p)?;
     let existed = destination.exists();
     if existed {

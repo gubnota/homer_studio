@@ -111,6 +111,57 @@ def main():
                         assert media["streams"][0]["channel_layout"] == "stereo"
                     downloaded, h = request("/api/download?path=" + urllib.parse.quote(output))
                     assert len(downloaded) > 1000 and "attachment" in h["Content-Disposition"]
+                # Contrasting clips verify combined timeline frame selection and held gaps.
+                montage = command("wave_create", name="Video timeline fixture")
+                montage["sources"] = [audio]
+                montage["timeline"]["clips"] = [clip]
+                montage["timeline"]["sfx"] = [{**clip, "id": str(uuid.uuid4()), "startMs": 6000}]
+                fragments = []
+                for color, codec, at in [("red", "libx264", 500), ("blue", "mpeg4", 3000)]:
+                    fixture = temp / (color + ".mp4")
+                    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"color=c={color}:s=320x240:r=30:d=1", "-c:v", codec, "-pix_fmt", "yuv420p", str(fixture)], check=True)
+                    uploaded = json.loads(request("/api/upload?name=" + fixture.name, fixture.read_bytes(), method="POST")[0])["path"]
+                    started = time.monotonic()
+                    fragment = command("wave_import_video", path=uploaded, requestId=str(uuid.uuid4()))
+                    print(f"Video import {codec}: {time.monotonic()-started:.3f}s (one-second fixture)")
+                    fragment["startMs"] = at
+                    fragments.append(fragment)
+                montage["videos"] = fragments
+                bad = {**montage, "videos": [fragments[0], {**fragments[1], "startMs": 600}]}
+                request("/api/command/wave_save", {"project": bad, "expectedRevision": 0}, status=400)
+                request("/api/command/wave_export", {"project": bad, "outputPath": str(temp / "data/exports/bad.mp4"), "videoTimeline": True}, status=400)
+                montage = command("wave_save", project=montage, expectedRevision=0)
+                combined = json.loads(request("/api/destination", {"name": "timeline.mp4"})[0])["path"]
+                wait_job(command("wave_export", project=montage, outputPath=combined, videoTimeline=True))
+                measured = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", combined]))
+                assert abs(float(measured["format"]["duration"]) - 8) < .15
+                assert any(stream["codec_type"] == "audio" and stream["channels"] == 2 for stream in measured["streams"])
+                def pixel(at):
+                    return subprocess.check_output(["ffmpeg", "-v", "error", "-ss", str(at), "-i", combined, "-frames:v", "1", "-vf", "scale=1:1", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"])
+                assert max(pixel(.1)) < 10, "Leading gap must be black"
+                for at in (.7, 2.5):
+                    r,g,b = pixel(at); assert r > 180 and b < 30, (at,r,g,b)
+                for at in (3.2, 7.5):
+                    r,g,b = pixel(at); assert b > 180 and r < 30, (at,r,g,b)
+                import struct
+                gap_audio = subprocess.check_output(["ffmpeg", "-v", "error", "-ss", "4.5", "-i", combined, "-t", "0.2", "-f", "f32le", "-acodec", "pcm_f32le", "-"])
+                assert max(abs(v[0]) for v in struct.iter_unpack("<f", gap_audio)) < .001
+                long_project = {**montage, "timeline": {**montage["timeline"], "sfx": [{**clip, "id": str(uuid.uuid4()), "startMs": 118000}]}}
+                cancelled_output = str(temp / "data/exports/cancelled.mp4")
+                cancelled_job = command("wave_export", project=long_project, outputPath=cancelled_output, videoTimeline=True)
+                command("control_job", jobId=cancelled_job, action="cancel")
+                for _ in range(100):
+                    status = next(j for j in command("list_jobs") if j["id"] == cancelled_job)["status"]
+                    if status == "cancelled": break
+                    time.sleep(.1)
+                assert status == "cancelled" and not Path(cancelled_output).exists()
+                user_audio = Path("/Users/vm/Downloads/2026-10-08 14.26.46.m4a")
+                if user_audio.is_file():
+                    uploaded = json.loads(request("/api/upload?name=user.m4a", user_audio.read_bytes(), method="POST")[0])["path"]
+                    imported = command("wave_import", kind="file", path=uploaded, requestId=str(uuid.uuid4()))
+                    assert abs(imported["durationMs"] - 29312) < 150
+                    print("User M4A import passed: 29.312 seconds")
+                print("Combined video integration passed: overlap rejection, black lead, held gaps/tail, edited stereo audio and cancellation.")
                 # Keep an inactive accepted voice too; every cached source/voice must remap.
                 alex = command("create_voice", name="Alex cache fixture")
                 john = command("create_voice", name="John active fixture")

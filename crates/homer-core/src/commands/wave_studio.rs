@@ -327,7 +327,18 @@ pub fn wave_export(
     project: Project,
     output_path: String,
     video_id: Option<String>,
+    video_timeline: Option<bool>,
 ) -> Result<String, CommandError> {
+    let combined = video_timeline.unwrap_or(false);
+    if combined {
+        crate::services::wave_studio::validate_video_placements(&project.videos)?;
+    }
+    if combined && (video_id.is_some() || project.videos.is_empty()) {
+        return Err(CommandError::new(
+            "INVALID_VIDEO_SELECTION",
+            "Choose the entire timeline or one video.",
+        ));
+    }
     wave_store::validate_sources(&app, &project)?;
     let video = video_id
         .as_ref()
@@ -342,7 +353,7 @@ pub fn wave_export(
                 })
         })
         .transpose()?;
-    if project.timeline.duration() <= 0. && video.is_none() {
+    if project.timeline.duration() <= 0. && video.is_none() && !combined {
         return Err(CommandError::new(
             "EMPTY_WAVE_PROJECT",
             "Import some audio first.",
@@ -361,11 +372,22 @@ pub fn wave_export(
             let audio_temp = temp.with_extension("wav");
             let result = (|| {
                 let settings = settings::load(&app)?;
-                let (start, duration) = video
-                    .as_ref()
-                    .map(|v| (v.start_ms, v.duration_ms))
-                    .unwrap_or((0., project.timeline.duration()));
-                if video.is_some() && ext != "mp4" {
+                let (start, duration) = if combined {
+                    (
+                        0.,
+                        project
+                            .videos
+                            .iter()
+                            .map(|v| v.start_ms + v.duration_ms)
+                            .fold(project.timeline.duration(), f64::max),
+                    )
+                } else {
+                    video
+                        .as_ref()
+                        .map(|v| (v.start_ms, v.duration_ms))
+                        .unwrap_or((0., project.timeline.duration()))
+                };
+                if (video.is_some() || combined) && ext != "mp4" {
                     return Err(CommandError::new(
                         "INVALID_DESTINATION",
                         "Choose an MP4 filename for video export.",
@@ -376,12 +398,28 @@ pub fn wave_export(
                     &wave_store::root(&app)?,
                     start,
                     start + duration,
-                    if video.is_some() { &audio_temp } else { &temp },
+                    if video.is_some() || combined {
+                        &audio_temp
+                    } else {
+                        &temp
+                    },
                     &settings,
                     control.cancelled.clone(),
                 )?;
                 control.boundary()?;
-                if let Some(video) = &video {
+                if combined {
+                    progress(30);
+                    crate::services::wave_video::export_timeline(
+                        &app,
+                        &project.videos,
+                        duration,
+                        &audio_temp,
+                        &temp,
+                        &settings,
+                        control.cancelled.clone(),
+                        &*progress,
+                    )?;
+                } else if let Some(video) = &video {
                     progress(30);
                     crate::services::wave_video::export_mix(
                         &app,

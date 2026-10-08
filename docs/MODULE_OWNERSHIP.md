@@ -68,3 +68,5 @@ Rules:
 ## Project media ownership
 - Wave project sources and recorded memos with `context.projectId` are project-owned. Standalone memo lists exclude project/chapter-owned recordings.
 - The shared core owns validated folder binding and media persistence; renderer supplies save/export choices. External video paths stay in trusted app-owned metadata.
+
+- Renderer owns file-drop lane intent, sequential batch imports and first-fitting video placement. Shared native validation rejects overlaps on save and combined export; legacy reads stay available for explicit Arrange. Video service owns frame normalization/holding and edited-audio mux; preview uses the shared timeline frame selector.

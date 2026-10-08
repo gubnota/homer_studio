@@ -155,3 +155,8 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 - `wave_save_copy` accepts optional `includeVideo` (default false) and binds a readable `.wavehs` folder for incremental autosave. `wave_export_bundle` remains the explicit binary portable archive path. Legacy archive import remains supported.
 - `wave_export` accepts optional `videoId`; selected video determines length and timeline window, with silent audio gaps. Output is MP4 with edited audio, excluding original video audio.
 - Folder manifests contain relative media paths; original external video links remain app-owned and must be relinked on another machine.
+
+## Audio/video timeline follow-up
+- `wave_export` adds optional `videoTimeline: boolean` (default false), mutually exclusive with `videoId`. True exports from zero to max audio/video end as MP4: black before first video, prior final frame across gaps/tail, 1280×720 at 30 fps, edited stereo audio only. Existing selected-video exports are preserved.
+- Video intervals may touch but must not overlap on save/save-copy and combined export. Legacy overlapping projects remain readable and require explicit Arrange before saving. No schema change.
+- Separate soundtrack import keeps 0 dB gain and does not split narration. Main-lane drops explicitly insert at the drop position; soundtrack-lane drops add independent audio. File-picker dialog defaults to separate soundtrack. Multi-video imports run sequentially with progress, cancellation and retained successful clips after a later failure.

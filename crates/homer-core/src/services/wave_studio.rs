@@ -466,3 +466,42 @@ mod tests {
         assert!(validate(&p).is_err());
     }
 }
+
+/// Legacy loads remain readable; new placements and saves must be unambiguous.
+pub fn validate_video_placements(videos: &[Video]) -> Result<(), CommandError> {
+    let mut sorted: Vec<_> = videos.iter().collect();
+    sorted.sort_by(|a, b| a.start_ms.total_cmp(&b.start_ms));
+    if sorted
+        .windows(2)
+        .any(|v| v[0].start_ms + v[0].duration_ms > v[1].start_ms)
+    {
+        return Err(CommandError::new(
+            "VIDEO_OVERLAP",
+            "Arrange overlapping video fragments sequentially before saving or exporting.",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod video_placement_tests {
+    use super::*;
+    #[test]
+    fn rejects_overlaps_but_allows_touching_boundaries() {
+        let first = Video {
+            id: "a".into(),
+            name: "A".into(),
+            start_ms: 1000.,
+            duration_ms: 2000.,
+        };
+        let mut second = Video {
+            id: "b".into(),
+            name: "B".into(),
+            start_ms: 3000.,
+            duration_ms: 1000.,
+        };
+        assert!(validate_video_placements(&[second.clone(), first.clone()]).is_ok());
+        second.start_ms = 2999.;
+        assert!(validate_video_placements(&[first, second]).is_err());
+    }
+}

@@ -266,3 +266,13 @@ Context: Binary documents were large and opaque; project recordings appeared in 
 Decision: Default desktop saves use readable `.wavehs` packages and incremental copies. Keep video linked unless explicitly included; preserve legacy archive reading and explicit portable export. Use selected video length for MP4 export, with silent gaps. Scope Wave recordings to their owning project.
 Consequences: Moving a linked-video project may require Locate video. Project-owned recordings do not clutter standalone Voice Memos. Manual CSS and waveform caches remain intact.
 Related files: wave_store.rs, wave_bundle.rs, wave_video.rs, memo_store.rs, WaveProjectsPanel.tsx, WaveExportPanel.tsx, WaveRecordingPanel.tsx.
+
+# ADR-0028: Explicit audio lanes and non-overlapping video timelines
+
+Date: 2026-10-08
+Status: Accepted
+
+Context: Audio imports unexpectedly split narration; overlapping videos and gaps made playback/export ambiguous.
+Decision: Default the audio dialog to an independent soundtrack, honor drop lane/time, place videos in the first available full interval, and reject overlapping saves. Preserve legacy reads with explicit Arrange. Preview and combined export hold the previous clip’s final frame in gaps/tail and stay black before the first clip. Import videos sequentially, consolidate input probes and copy compatible H.264.
+Consequences: No persisted schema migration. Combined export normalizes video geometry/frame rate and uses edited audio; selected-video export remains supported. Incompatible inputs still require transcoding.
+Related files: WaveAudioImportPanel.tsx, WaveStudioPage.tsx, WaveStudioProvider.tsx, waveStudio.ts, wave_video.rs, wave_studio.rs, scripts/test-server.py.

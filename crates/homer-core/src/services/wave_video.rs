@@ -122,12 +122,6 @@ pub fn import_controlled(
     cancel: Arc<AtomicBool>,
     report: Arc<dyn Fn(u8) + Send + Sync>,
 ) -> Result<Video, CommandError> {
-    if !has_video(input, settings)? {
-        return Err(CommandError::new(
-            "NO_VIDEO",
-            "This file has no video track.",
-        ));
-    }
     let probe = process_runner::resolve_executable("ffprobe", settings.ffprobe_path.as_deref())
         .ok_or_else(|| CommandError::new("FFPROBE_NOT_FOUND", "Set FFprobe in Settings."))?;
     let measured = process_runner::run_bounded(
@@ -138,7 +132,7 @@ pub fn import_controlled(
             "-select_streams".into(),
             "v:0".into(),
             "-show_entries".into(),
-            "stream=duration".into(),
+            "stream=duration,codec_type,codec_name,pix_fmt:stream_disposition=attached_pic:format=duration".into(),
             "-of".into(),
             "json".into(),
             input.to_string_lossy().into(),
@@ -147,13 +141,30 @@ pub fn import_controlled(
         cancel.clone(),
     )?;
     let info: serde_json::Value = serde_json::from_str(&measured.stdout).unwrap_or_default();
+    if !measured.success {
+        return Err(CommandError::new("MEDIA_PROBE_FAILED", measured.stderr));
+    }
+    let stream = &info["streams"][0];
+    if stream["codec_type"] != "video" || stream["disposition"]["attached_pic"] == 1 {
+        return Err(CommandError::new(
+            "NO_VIDEO",
+            "This file has no video track.",
+        ));
+    }
+    let compatible = stream["codec_name"] == "h264" && stream["pix_fmt"] == "yuv420p";
     let duration = match info["streams"][0]["duration"]
         .as_str()
         .and_then(|d| d.parse::<f64>().ok())
         .filter(|d| d.is_finite() && *d > 0.)
     {
         Some(seconds) => seconds * 1000.,
-        None => speech::probe_duration(input, settings)? as f64,
+        None => {
+            info["format"]["duration"]
+                .as_str()
+                .and_then(|d| d.parse::<f64>().ok())
+                .unwrap_or(0.)
+                * 1000.
+        }
     };
     if duration <= 0. || duration > 86_400_000. {
         return Err(CommandError::new(
@@ -168,30 +179,6 @@ pub fn import_controlled(
     let result = (|| {
         let tool = process_runner::resolve_executable("ffmpeg", settings.ffmpeg_path.as_deref())
             .ok_or_else(|| CommandError::new("FFMPEG_NOT_FOUND", "Set FFmpeg in Settings."))?;
-        let probe = process_runner::resolve_executable("ffprobe", settings.ffprobe_path.as_deref())
-            .ok_or_else(|| CommandError::new("FFPROBE_NOT_FOUND", "Set FFprobe in Settings."))?;
-        let info = process_runner::run_bounded(
-            &probe,
-            &[
-                "-v",
-                "error",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
-                "stream=codec_name,pix_fmt",
-                "-of",
-                "json",
-            ]
-            .into_iter()
-            .map(String::from)
-            .chain([input.to_string_lossy().into_owned()])
-            .collect::<Vec<_>>(),
-            Duration::from_secs(30),
-            cancel.clone(),
-        )?;
-        let data: serde_json::Value = serde_json::from_str(&info.stdout).unwrap_or_default();
-        let stream = &data["streams"][0];
-        let compatible = stream["codec_name"] == "h264" && stream["pix_fmt"] == "yuv420p";
         let run = |codec: &[&str]| -> Result<bool, CommandError> {
             let args = ["-v", "error", "-nostdin", "-y", "-progress", "pipe:1", "-i"]
                 .into_iter()
@@ -212,6 +199,12 @@ pub fn import_controlled(
             .success)
         };
         let mut done = compatible && run(&["-c:v", "copy"])?;
+        if cancel.load(Ordering::SeqCst) {
+            return Err(CommandError::new(
+                "JOB_CANCELLED",
+                "Video import cancelled.",
+            ));
+        }
         if !done {
             #[cfg(target_os = "macos")]
             {
@@ -373,4 +366,133 @@ pub fn export_mix(
         ));
     }
     Ok(())
+}
+
+/// Normalize one segment at a time so long projects do not open every video at once.
+pub fn export_timeline(
+    app: &AppHandle,
+    videos: &[Video],
+    duration: f64,
+    audio: &Path,
+    output: &Path,
+    settings: &Settings,
+    cancel: Arc<AtomicBool>,
+    progress: &dyn Fn(u8),
+) -> Result<(), CommandError> {
+    super::wave_studio::validate_video_placements(videos)?;
+    let tool = process_runner::resolve_executable("ffmpeg", settings.ffmpeg_path.as_deref())
+        .ok_or_else(|| CommandError::new("FFMPEG_NOT_FOUND", "Set FFmpeg in Settings."))?;
+    let folder = output.with_extension(format!("{}.segments", uuid::Uuid::new_v4()));
+    fs::create_dir(&folder).map_err(|e| CommandError::io("Cannot stage video", e))?;
+    let result = (|| {
+        let mut sorted: Vec<_> = videos.iter().collect();
+        sorted.sort_by(|a, b| a.start_ms.total_cmp(&b.start_ms));
+        let mut segments: Vec<(Option<&Video>, f64, f64)> = vec![];
+        if let Some(first) = sorted.first() {
+            if first.start_ms > 0. {
+                segments.push((None, 0., first.start_ms));
+            }
+        }
+        for (i, v) in sorted.iter().enumerate() {
+            segments.push((
+                Some(v),
+                v.start_ms,
+                sorted.get(i + 1).map(|n| n.start_ms).unwrap_or(duration),
+            ));
+        }
+        let mut list = String::new();
+        for (i, (video, start, end)) in segments.iter().enumerate() {
+            let frames = ((end / 1000. * 30.).round() - (start / 1000. * 30.).round()) as u64;
+            if frames == 0 {
+                continue;
+            }
+            let mut args: Vec<String> = ["-v", "error", "-nostdin", "-y", "-threads", "1"]
+                .into_iter()
+                .map(String::from)
+                .collect();
+            if let Some(v) = video {
+                args.extend([
+                    "-i".into(),
+                    original_path(app, &v.id)?.to_string_lossy().into_owned(),
+                ]);
+            } else {
+                args.extend(
+                    ["-f", "lavfi", "-i", "color=c=black:s=1280x720:r=30"]
+                        .into_iter()
+                        .map(String::from),
+                );
+            }
+            let filter = if let Some(v) = video {
+                format!(
+                    "trim=duration={},setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,tpad=stop_mode=clone:stop_duration={}",
+                    v.duration_ms / 1000.,
+                    (end - start) / 1000.
+                )
+            } else {
+                "setsar=1".into()
+            };
+            let name = format!("{i}.mp4");
+            args.extend([
+                "-an".into(),
+                "-vf".into(),
+                filter,
+                "-frames:v".into(),
+                frames.to_string(),
+                "-c:v".into(),
+                "libx264".into(),
+                "-threads".into(),
+                "1".into(),
+                "-preset".into(),
+                "veryfast".into(),
+                "-pix_fmt".into(),
+                "yuv420p".into(),
+                folder.join(&name).to_string_lossy().into_owned(),
+            ]);
+            let run = process_runner::run_bounded(
+                &tool,
+                &args,
+                Duration::from_secs(7200),
+                cancel.clone(),
+            )?;
+            if !run.success {
+                return Err(CommandError::new("VIDEO_EXPORT_FAILED", run.stderr));
+            }
+            progress(30 + ((i + 1) * 55 / segments.len()) as u8);
+            list.push_str(&format!("file '{name}'\n"));
+        }
+        let manifest = folder.join("list.txt");
+        fs::write(&manifest, list).map_err(|e| CommandError::io("Cannot stage video list", e))?;
+        let args: Vec<String> = [
+            "-v", "error", "-nostdin", "-y", "-f", "concat", "-safe", "1", "-i",
+        ]
+        .into_iter()
+        .map(String::from)
+        .chain([
+            manifest.to_string_lossy().into_owned(),
+            "-i".into(),
+            audio.to_string_lossy().into_owned(),
+        ])
+        .chain(
+            [
+                "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                "-t",
+            ]
+            .into_iter()
+            .map(String::from),
+        )
+        .chain([
+            (duration / 1000.).to_string(),
+            "-movflags".into(),
+            "+faststart".into(),
+            output.to_string_lossy().into_owned(),
+        ])
+        .collect();
+        let run = process_runner::run_bounded(&tool, &args, Duration::from_secs(7200), cancel)?;
+        if !run.success {
+            return Err(CommandError::new("VIDEO_EXPORT_FAILED", run.stderr));
+        }
+        Ok(())
+    })();
+    let _ = fs::remove_dir_all(folder);
+    result
 }

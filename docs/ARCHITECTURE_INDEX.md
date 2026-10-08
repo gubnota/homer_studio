@@ -114,5 +114,7 @@
 
 ## v0.3.2 storage and export
 - `wave_store.rs` / `wave_bundle.rs`: folder binding, incremental media copies, legacy archive import and explicit portable archive export.
-- `wave_video.rs`: original-video links, relinking and cancellable MP4 mux with edited audio.
+- `wave_video.rs`: one-probe import classification, compatible H.264 copy, relinking, selected-video mux and cancellable normalized full-timeline MP4 with held gap/tail frames.
 - `AudioTransport.tsx`, `AudioEditor.tsx`, `VoiceMemosPage.tsx`: playback lifecycle, compact takes and recording shortcuts.
+
+- `components/WaveAudioImportPanel.tsx`: explicit soundtrack/narration import modes and position. `tests/wave-import.test.tsx` checks default intent; shared Wave tests cover collision placement and held frames.

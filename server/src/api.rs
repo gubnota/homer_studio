@@ -163,6 +163,7 @@ pub async fn dispatch(app: AppHandle, command: &str, args: Value) -> Result<Valu
                 argument(&args, "project")?,
                 argument(&args, "outputPath")?,
                 argument(&args, "videoId")?,
+                argument(&args, "videoTimeline")?,
             )?;
             serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
         }
