@@ -146,6 +146,28 @@ def main():
                 import struct
                 gap_audio = subprocess.check_output(["ffmpeg", "-v", "error", "-ss", "4.5", "-i", combined, "-t", "0.2", "-f", "f32le", "-acodec", "pcm_f32le", "-"])
                 assert max(abs(v[0]) for v in struct.iter_unpack("<f", gap_audio)) < .001
+                # Explicit length choices: whole timeline and offset selected clip.
+                request("/api/command/wave_export", {"project": montage, "outputPath": combined, "lengthMode": "invalid", "videoTimeline": True}, status=400)
+                for selection, fixture_project, mode, expected, frame_at, color in [
+                    (None,montage,"longest",8,7.5,"blue"),
+                    (None,montage,"shortest",4,3.8,"blue"),
+                    (fragments[0]["id"],montage,"longest",7.5,7,"red"),
+                    (fragments[0]["id"],montage,"shortest",1,.8,"red"),
+                    (None,{**montage,"timeline":{**montage["timeline"],"sfx":[]}},"shortest",2,1.8,"red"),
+                    (None,{**montage,"timeline":{**montage["timeline"],"sfx":[]}},"longest",4,3.8,"blue"),
+                    (fragments[1]["id"],{**montage,"timeline":{**montage["timeline"],"sfx":[]}},"longest",1,.8,"blue"),
+                ]:
+                    output=json.loads(request("/api/destination",{"name":str(uuid.uuid4())+".mp4"})[0])["path"]
+                    wait_job(command("wave_export",project=fixture_project,outputPath=output,videoId=selection,videoTimeline=selection is None,lengthMode=mode))
+                    media=json.loads(subprocess.check_output(["ffprobe","-v","error","-show_format","-show_streams","-of","json",output]))
+                    assert abs(float(media["format"]["duration"])-expected)<.15,media
+                    assert all(abs(float(stream["duration"])-expected)<.15 for stream in media["streams"]),media
+                    r,g,b=subprocess.check_output(["ffmpeg","-v","error","-ss",str(frame_at),"-i",output,"-frames:v","1","-vf","scale=1:1","-pix_fmt","rgb24","-f","rawvideo","-"])
+                    assert (r>180 and b<30) if color=="red" else (b>180 and r<30),(r,g,b)
+                    if fixture_project["timeline"]["sfx"]==[] and mode=="longest":
+                        raw=subprocess.check_output(["ffmpeg","-v","error","-ss",str(expected-.3),"-i",output,"-t","0.2","-f","f32le","-acodec","pcm_f32le","-"])
+                        assert raw and max(abs(v[0]) for v in struct.iter_unpack("<f",raw))<.001
+                print("Export length choices passed: full/shorter timeline and selected video, held frames, padded silence and per-stream durations.")
                 long_project = {**montage, "timeline": {**montage["timeline"], "sfx": [{**clip, "id": str(uuid.uuid4()), "startMs": 118000}]}}
                 cancelled_output = str(temp / "data/exports/cancelled.mp4")
                 cancelled_job = command("wave_export", project=long_project, outputPath=cancelled_output, videoTimeline=True)

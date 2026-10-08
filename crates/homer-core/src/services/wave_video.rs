@@ -7,8 +7,8 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
+        Arc,
     },
     time::Duration,
 };
@@ -301,10 +301,57 @@ pub fn validate(app: &AppHandle, video: &Video) -> Result<(), CommandError> {
     Ok(())
 }
 
-/// Replace the soundtrack while keeping the selected video's exact duration.
+pub fn export_duration(audio: f64, video: f64, mode: Option<&str>) -> Result<f64, CommandError> {
+    let duration = match mode {
+        None => video,
+        Some("longest") => audio.max(video),
+        Some("shortest") => audio.min(video),
+        _ => {
+            return Err(CommandError::new(
+                "INVALID_EXPORT_LENGTH",
+                "Unknown export length.",
+            ));
+        }
+    };
+    if !duration.is_finite() || duration <= 0. || duration > 86_400_000. {
+        return Err(CommandError::new(
+            "INVALID_EXPORT_DURATION",
+            "The chosen export has no audio/video overlap or exceeds 24 hours.",
+        ));
+    }
+    Ok(duration)
+}
+#[cfg(test)]
+mod length_tests {
+    use super::export_duration;
+    #[test]
+    fn chooses_length_and_keeps_legacy_video_duration() {
+        assert_eq!(
+            export_duration(8000., 1000., Some("longest")).unwrap(),
+            8000.
+        );
+        assert_eq!(
+            export_duration(8000., 1000., Some("shortest")).unwrap(),
+            1000.
+        );
+        assert_eq!(
+            export_duration(1000., 8000., Some("longest")).unwrap(),
+            8000.
+        );
+        assert_eq!(
+            export_duration(1000., 8000., Some("shortest")).unwrap(),
+            1000.
+        );
+        assert_eq!(export_duration(8000., 1000., None).unwrap(), 1000.);
+        assert!(export_duration(0., 1000., Some("shortest")).is_err());
+        assert!(export_duration(1000., 1000., Some("other")).is_err());
+    }
+}
+/// Replace audio and trim or hold the selected video to the chosen duration.
 pub fn export_mix(
     app: &AppHandle,
     video: &Video,
+    duration: f64,
     audio: &Path,
     output: &Path,
     settings: &Settings,
@@ -328,7 +375,7 @@ pub fn export_mix(
                 .into_iter()
                 .map(String::from),
             )
-            .chain([format!("{:.9}", video.duration_ms / 1000.)])
+            .chain([format!("{:.9}", duration / 1000.)])
             .chain(codec.iter().map(|s| s.to_string()))
             .chain(["-movflags", "+faststart"].into_iter().map(String::from))
             .chain([output.to_string_lossy().into_owned()])
@@ -338,14 +385,35 @@ pub fn export_mix(
             &args,
             Duration::from_secs(7200),
             cancel.clone(),
-            Some((video.duration_ms as u64, report.clone())),
+            Some((duration as u64, report.clone())),
         )?;
         Ok(result.success)
     };
-    if !run(&["-c:v", "copy"])?
-        && !run(&[
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+    let extend = duration > video.duration_ms;
+    let encoded = if extend {
+        run(&[
+            "-vf",
+            &format!(
+                "tpad=stop_mode=clone:stop_duration={}",
+                (duration - video.duration_ms) / 1000.
+            ),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
         ])?
+    } else {
+        run(&["-c:v", "copy"])?
+    };
+    if !encoded
+        && (extend
+            || !run(&[
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+            ])?)
     {
         return Err(CommandError::new(
             "VIDEO_EXPORT_FAILED",
@@ -358,11 +426,10 @@ pub fn export_mix(
             "Video export cancelled.",
         ));
     }
-    let duration = speech::probe_duration(output, settings)? as f64;
-    if (duration - video.duration_ms).abs() > 150. {
+    if (speech::probe_duration(output, settings)? as f64 - duration).abs() > 150. {
         return Err(CommandError::new(
             "INVALID_EXPORT_DURATION",
-            "Export duration did not match the selected video.",
+            "Export duration did not match the chosen length.",
         ));
     }
     Ok(())
@@ -390,14 +457,21 @@ pub fn export_timeline(
         let mut segments: Vec<(Option<&Video>, f64, f64)> = vec![];
         if let Some(first) = sorted.first() {
             if first.start_ms > 0. {
-                segments.push((None, 0., first.start_ms));
+                segments.push((None, 0., first.start_ms.min(duration)));
             }
         }
         for (i, v) in sorted.iter().enumerate() {
+            if v.start_ms >= duration {
+                break;
+            }
             segments.push((
                 Some(v),
                 v.start_ms,
-                sorted.get(i + 1).map(|n| n.start_ms).unwrap_or(duration),
+                sorted
+                    .get(i + 1)
+                    .map(|n| n.start_ms)
+                    .unwrap_or(duration)
+                    .min(duration),
             ));
         }
         let mut list = String::new();

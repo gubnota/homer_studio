@@ -2,7 +2,6 @@
 use crate::runtime::Manager;
 use crate::runtime::{AppHandle, State};
 use crate::{
-    AppState,
     services::{
         memo_store,
         project_store::CommandError,
@@ -10,10 +9,11 @@ use crate::{
         wave_studio::{Project, Source},
         waveform::{self, PeakWindow},
     },
+    AppState,
 };
 use std::sync::{
-    Arc, LazyLock, Mutex,
     atomic::{AtomicBool, Ordering},
+    Arc, LazyLock, Mutex,
 };
 #[derive(Clone, serde::Serialize)]
 pub struct OperationStatus {
@@ -328,7 +328,17 @@ pub fn wave_export(
     output_path: String,
     video_id: Option<String>,
     video_timeline: Option<bool>,
+    length_mode: Option<String>,
 ) -> Result<String, CommandError> {
+    if !matches!(
+        length_mode.as_deref(),
+        None | Some("longest") | Some("shortest")
+    ) {
+        return Err(CommandError::new(
+            "INVALID_EXPORT_LENGTH",
+            "Choose full length or shorter track.",
+        ));
+    }
     let combined = video_timeline.unwrap_or(false);
     if combined {
         crate::services::wave_studio::validate_video_placements(&project.videos)?;
@@ -372,14 +382,21 @@ pub fn wave_export(
             let audio_temp = temp.with_extension("wav");
             let result = (|| {
                 let settings = settings::load(&app)?;
-                let (start, duration) = if combined {
+                let (start, mut duration) = if combined {
                     (
                         0.,
                         project
                             .videos
                             .iter()
                             .map(|v| v.start_ms + v.duration_ms)
-                            .fold(project.timeline.duration(), f64::max),
+                            .fold(
+                                if length_mode.is_none() {
+                                    project.timeline.duration()
+                                } else {
+                                    0.
+                                },
+                                f64::max,
+                            ),
                     )
                 } else {
                     video
@@ -387,6 +404,13 @@ pub fn wave_export(
                         .map(|v| (v.start_ms, v.duration_ms))
                         .unwrap_or((0., project.timeline.duration()))
                 };
+                if video.is_some() || combined {
+                    duration = crate::services::wave_video::export_duration(
+                        (project.timeline.duration() - start).max(0.),
+                        duration,
+                        length_mode.as_deref(),
+                    )?;
+                }
                 if (video.is_some() || combined) && ext != "mp4" {
                     return Err(CommandError::new(
                         "INVALID_DESTINATION",
@@ -424,6 +448,7 @@ pub fn wave_export(
                     crate::services::wave_video::export_mix(
                         &app,
                         video,
+                        duration,
                         &audio_temp,
                         &temp,
                         &settings,

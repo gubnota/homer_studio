@@ -29,7 +29,7 @@ export const waveApi = {
  peaks: (sourceId: string, startMs: number, endMs: number, maxPeaks: number, requestId?: string) => invoke<PeakWindow>('wave_peaks', { requestId, sourceId, startMs: Math.max(0, Math.floor(startMs)), endMs: Math.ceil(endMs), maxPeaks: Math.min(2048, Math.max(1, Math.floor(maxPeaks))) }),
  cancelPreview: () => invoke<void>('wave_cancel_preview'),
  preview: (project: WaveProject, startMs: number, endMs: number) => invoke<ArrayBuffer>('wave_preview', { project, startMs, endMs }),
- export: (project: WaveProject, outputPath: string, videoId: string|null=null, videoTimeline=false) => invoke<string>('wave_export', { project, outputPath, videoId, videoTimeline }),
+ export: (project: WaveProject, outputPath: string, videoId: string|null=null, videoTimeline=false, lengthMode:'longest'|'shortest'|null=null) => invoke<string>('wave_export', { project, outputPath, videoId, videoTimeline, lengthMode }),
  sfx: () => invoke<SfxAsset[]>('wave_sfx_list'),
  addSfx: (source: WaveSource, category: string) => invoke<SfxAsset[]>('wave_sfx_add', { source, category }),
  updateSfx: (id: string, name: string, category: string, remove = false) => invoke<SfxAsset[]>('wave_sfx_update', { id, name, category, delete: remove }),
