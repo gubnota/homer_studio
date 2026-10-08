@@ -50,16 +50,36 @@ Get the [latest release](https://github.com/gubnota/homer_studio/releases/latest
 
 See [Linux installation, browser access and GPU setup](docs/LINUX_SERVER.md). The Linux edition runs on your server and serves the editor in your browser.
 
-### Building from source
+### Build and run from source
 
-Node.js 22, npm and the stable Rust toolchain are required in addition to the platform requirements above. macOS builds require the Apple Silicon Rust target; Linux builds require `build-essential`, `pkg-config` and `libssl-dev`.
+On an Apple Silicon Mac, install Xcode Command Line Tools (`xcode-select --install`), Node.js 22, npm, Bun, and stable Rust with Cargo. Install FFmpeg (including FFprobe) for audio/video processing. Linux additionally requires `build-essential`, `pkg-config`, and `libssl-dev`.
 
-## Run from source
+From the repository root, install the exact dependencies recorded in the lockfile:
 
 ```sh
 npm ci
-npm run dev
 ```
+
+Run the desktop app during development:
+
+```sh
+bun run dev
+```
+
+To build a local Apple Silicon app and DMG you can install in Applications:
+
+```sh
+bun run package:mac
+```
+
+This command builds the browser editor and Rust application, creates the app and DMG, and verifies bundled resources and signing. It can take several minutes. Outputs are:
+
+- App: `src-tauri/target/release/bundle/macos/Homer Studio.app`
+- Installer: `src-tauri/target/release/bundle/dmg/Homer Studio_<version>_aarch64.dmg`
+
+Quit Homer Studio before replacing it. Open the new DMG, drag **Homer Studio** into **Applications**, and choose **Replace** when prompted. You can also copy the built `.app` into Applications using Finder. Building alone does not replace the installed app. Keep your project folders and application data; replacing the app keeps them available. Local builds use ad-hoc signing, so macOS may require **Open Anyway** in Privacy & Security for the first launch.
+
+To run type checks, tests, and build only the browser editor, run `bun run build`. To verify packaged startup, run `bun run test:smoke` after packaging. You can use `npm run` in place of `bun run` for all scripts. For the Linux bundle, follow [the Linux build instructions](docs/LINUX_SERVER.md).
 
 Create a project in a folder you control, then choose, drop, or paste a TXT or Markdown manuscript. Homer Studio stores a readable `project.json` manifest and generated files inside that project folder.
 
