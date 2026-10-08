@@ -19,7 +19,7 @@ Voice assigns the selected passage a colored annotation. Edit canonical voice na
 Add SFX opens categories, search and recent assets. The bundled Audience `sitcom_laugh01` defaults to -10 dB on placement; its original remains intact. Intro, outro, rewind, shoosh, riser, suspense, thud, surprised reaction, gong and closing door are also bundled and available in Sound Studio. Choose selection start, center or end/punchline alignment. Transitions snap to nearby clip boundaries. SFX can be imported or copied from saved Sound Studio/Voice Lab clips; the full SFX page manages custom names and categories.
 
 ## Playback and navigation
-Space plays/pauses; Shift+Space plays the selection; Loop repeats it. Transport buttons jump five seconds. Cmd/Ctrl-wheel zooms at the pointer; ordinary trackpad scrolling pans. +/− zoom, 0 fits the project, and Fit selection focuses a passage. Cmd+Z / Shift+Cmd+Z undo/redo. Sidebar collapse preserves icon tooltips.
+Space plays/pauses; Shift+Space plays the selection; Loop repeats it. Transport buttons jump five seconds. Cmd/Ctrl-wheel zooms at the pointer; vertical scrolling reveals soundtrack rows; horizontal or Shift-wheel scrolling pans. +/− zoom, 0 fits the project, and Fit selection focuses a passage. Cmd+Z / Shift+Cmd+Z undo/redo. Sidebar collapse preserves icon tooltips.
 
 Voice Memos, Voice Lab and Sound Studio can open their audio in Wave Studio. Navigation retains current history; restart restores the project, viewport, playhead, selection and Loop state. Switching projects and normal Quit drain pending saves. Export writes a verified WAV, MP3, M4A, AAC or FLAC mix.
 
@@ -44,9 +44,13 @@ Export opens a format selector: M4A (AAC) or WAV. The selected format controls t
 
 ## 0.2.6 editing and portability
 - Double-click selects a fragment; Shift-click adds fragments and Cmd-click toggles them. Join prompts for one resulting voice if tags differ.
-- Left/Right select adjacent fragments; Cmd/Ctrl+Left/Right seek fragment bounds; Shift+Left/Right seek five seconds; Shift+Space plays selection. Shortcut help is available in the editor.
+- Left/Right select adjacent fragments; Option/Cmd/Ctrl+Left/Right seek fragment bounds (video fragments when narration is empty); Shift+Left/Right seek five seconds; Shift+Space plays selection. Shortcut help is available in the editor.
 - Gain supports −96 to +20 dB with neutral zero at the center. Fade sliders snap to zero; playback speed snaps to 1. Peak normalization can attenuate loud peaks and boost quiet audio within the gain bounds; it does not measure perceived loudness.
 - Coincident SFX occupy visible rows. Preview starts on one click. Bottom timeline control adjusts zoom.
 - Cancel is available for generation and media preparation. Cancelled managed inference may require starting its worker again.
 - Save/import `.wavehs` to transfer media, video references and custom voice samples. Bundles open by drag, File menu or desktop argument.
 - Optional browser operation is documented in `LINUX_SERVER.md`. Server projects and models reside on the server.
+
+## 0.3.5 video coverage
+- The video lane labels held final frames across gaps and through the audio tail; the preview explicitly says Holding final frame. Source video durations remain unchanged. Keep full length exports extend the final image or pad audio silence.
+- The complete editor timeline scrolls vertically, including all overlapping soundtrack rows. Export verifies both audio and video stream durations before reporting success.

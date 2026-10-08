@@ -56,3 +56,16 @@ input.studio-slider:focus-visible { outline:2px solid #699f96; outline-offset:5p
 .wave-dialog fieldset input[type=radio] { width: auto; }
 
 .wave-sfx-trim{position:absolute;top:0;height:110px;pointer-events:none;border:1px solid #699f96;box-sizing:border-box}.wave-sfx-handle{position:absolute;top:0;bottom:0;width:10px;min-width:10px;padding:0;margin:0;border:0;border-radius:0;background:#699f96aa;cursor:ew-resize;pointer-events:auto;touch-action:none}.wave-sfx-handle.start{left:0}.wave-sfx-handle.end{right:0}.wave-sfx-handle:focus-visible{outline:2px solid #222;outline-offset:1px}.wave-video-choice{grid-column:1/-1;min-width:0}.wave-video-choice select{width:100%;min-width:0}
+
+/* Scroll the complete timeline vertically; keep each soundtrack at its full row height. */
+.wave-timeline-column{min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain}
+.wave-timeline-column .wave-timeline-wrap{flex:0 0 auto}
+.wave-timeline-wrap .wave-timeline{flex:0 0 auto}
+.wave-main-lane{flex:0 0 280px}
+.wave-video-lane,.wave-voice-lane,.wave-ruler{flex-shrink:0}
+.wave-video-hold{position:absolute;top:5px;height:32px;box-sizing:border-box;padding:7px;border:1px dashed #b7ac94;background:repeating-linear-gradient(135deg,#ece7dd,#ece7dd 6px,#f7f4ee 6px,#f7f4ee 12px);color:#71634c;font-size:10px;white-space:nowrap;overflow:hidden;pointer-events:none}
+
+.wave-shell .workspace{min-height:0;height:100%}
+
+.wave-shell{grid-template-rows:minmax(0,1fr)}
+.wave-shell .sidebar{min-height:0;overflow-y:auto}

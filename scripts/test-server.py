@@ -168,6 +168,31 @@ def main():
                         raw=subprocess.check_output(["ffmpeg","-v","error","-ss",str(expected-.3),"-i",output,"-t","0.2","-f","f32le","-acodec","pcm_f32le","-"])
                         assert raw and max(abs(v[0]) for v in struct.iter_unpack("<f",raw))<.001
                 print("Export length choices passed: full/shorter timeline and selected video, held frames, padded silence and per-stream durations.")
+                # Moving footage proves the tail holds its actual final image, not an arbitrary frame.
+                moving=temp/"moving.mp4"
+                subprocess.run(["ffmpeg","-v","error","-f","lavfi","-i","testsrc2=s=320x180:r=60:d=1.35","-an","-c:v","libx264","-pix_fmt","yuv420p",str(moving)],check=True)
+                moving_uploaded=json.loads(request("/api/upload?name=moving.mp4",moving.read_bytes(),method="POST")[0])["path"]
+                moving_video=command("wave_import_video",path=moving_uploaded,requestId=str(uuid.uuid4()))
+                moving_video["startMs"]=0
+                moving_project={**montage,"videos":[moving_video]}
+                def image_bytes(path,at):
+                    return subprocess.check_output(["ffmpeg","-v","error","-ss",str(at),"-i",str(path),"-frames:v","1","-vf","scale=160:90","-pix_fmt","rgb24","-f","rawvideo","-"])
+                final=image_bytes(moving,1.333)
+                earlier=image_bytes(moving,.2)
+                for selected in [None,moving_video["id"]]:
+                    output=json.loads(request("/api/destination",{"name":str(uuid.uuid4())+".mp4"})[0])["path"]
+                    wait_job(command("wave_export",project=moving_project,outputPath=output,videoId=selected,videoTimeline=selected is None,lengthMode="longest"))
+                    media=json.loads(subprocess.check_output(["ffprobe","-v","error","-show_streams","-of","json",output]))
+                    assert all(abs(float(stream["duration"])-8)<.15 for stream in media["streams"]),media
+                    first_tail=image_bytes(output,2)
+                    last_tail=image_bytes(output,7.8)
+                    # Allow small lossy H.264 quantization differences across held frames.
+                    difference=lambda a,b:sum(abs(x-y) for x,y in zip(a,b))/len(a)
+                    assert len(last_tail)==len(final)==43200
+                    assert difference(first_tail,last_tail)<2, ("Held tail changed its image",selected,difference(first_tail,last_tail),difference(final,last_tail))
+                    assert difference(final,last_tail)<5, "Tail did not preserve the last source frame"
+                    assert difference(earlier,last_tail)>10, "Moving fixture must distinguish earlier frames"
+                print("Moving 60fps footage passed final-frame hold and both-stream length checks for selected/combined exports.")
                 long_project = {**montage, "timeline": {**montage["timeline"], "sfx": [{**clip, "id": str(uuid.uuid4()), "startMs": 118000}]}}
                 cancelled_output = str(temp / "data/exports/cancelled.mp4")
                 cancelled_job = command("wave_export", project=long_project, outputPath=cancelled_output, videoTimeline=True)

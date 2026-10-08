@@ -165,3 +165,5 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 - Selected SFX Split affects only that clip at playhead. Edge trims map timeline deltas through speed into source bounds, retain at least 1 ms playback, clamp fades and keep other clip placements. Start-edge trimming keeps the selected clip end fixed; Undo/Redo use existing audio history.
 
 - Export UI blocks overlapping video placements before destination selection; explicit Arrange resolves them through existing placement helpers. Preparation uses indeterminate progress; enqueue success closes the dialog and shows queued/job progress. Preparation/command errors remain inline for retry. Native export commands/length policy are unchanged.
+
+- Both selected and combined MP4 exports require audio and video stream durations within 150 ms of the chosen duration; missing/mismatched streams return INVALID_EXPORT_DURATION. Held coverage is presentation-only; no persisted schema changes.

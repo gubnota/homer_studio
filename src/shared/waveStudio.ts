@@ -83,3 +83,20 @@ export function videoFrame(videos: WaveVideo[], playheadMs: number): {video: Wav
  const held = playheadMs >= video.startMs + video.durationMs
  return {video, held, timeMs: Math.max(0, Math.min(playheadMs-video.startMs, video.durationMs-1))}
 }
+
+/** Navigation uses video fragments when the narration lane is empty. */
+export function navigateFragment(timeline: WaveTimeline, videos: WaveVideo[], view: WaveView, right: boolean, boundary: boolean): {id:string;at:number}|null {
+ const fragments=(timeline.clips.length?timeline.clips.map(c=>({id:c.id,start:c.startMs,end:clipEnd(c)})):videos.map(v=>({id:v.id,start:v.startMs,end:v.startMs+v.durationMs}))).sort((a,b)=>a.start-b.start)
+ if(!fragments.length)return null
+ const selected=fragments.find(c=>c.id===view.selectedId),inside=fragments.find(c=>view.playheadMs>=c.start&&view.playheadMs<c.end)
+ let target=selected||inside
+ if(boundary){target=target||(right?fragments.find(c=>c.start>=view.playheadMs):[...fragments].reverse().find(c=>c.end<=view.playheadMs))||(right?fragments.at(-1):fragments[0]);return target?{id:target.id,at:right?target.end:target.start}:null}
+ if(target){const index=fragments.indexOf(target);if(right&&index===fragments.length-1)return {id:target.id,at:target.end};target=fragments[Math.max(0,Math.min(fragments.length-1,index+(right?1:-1)))]}
+ else target=(right?fragments.find(c=>c.start>=view.playheadMs):[...fragments].reverse().find(c=>c.start<view.playheadMs))||(right?fragments.at(-1):fragments[0])
+ return target?{id:target.id,at:target.start}:null
+}
+/** Display held-frame coverage without changing the source video duration. */
+export function videoHolds(videos: WaveVideo[], endMs: number): {video:WaveVideo;startMs:number;endMs:number}[] {
+ const sorted=[...videos].sort((a,b)=>a.startMs-b.startMs)
+ return sorted.flatMap((video,i)=>{const startMs=video.startMs+video.durationMs,end=sorted[i+1]?.startMs??endMs;return end>startMs?[{video,startMs,endMs:end}]:[]})
+}

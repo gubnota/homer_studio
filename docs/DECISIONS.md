@@ -296,3 +296,13 @@ Context: Native export of a legacy overlapping-video project failed before enque
 Decision: Show overlap preflight with explicit Arrange inside the dialog, disable Save until resolved, retain preparation/command errors inline, and display preparation plus queued/job progress immediately.
 Consequences: No implicit reordering of user videos; failed starts remain reviewable and retryable. Native media and API validation stay unchanged.
 Related files: src/renderer/src/components/WaveExportPanel.tsx; src/renderer/src/WaveStudioPage.tsx; tests/wave-export.test.tsx.
+
+# ADR-0031: Explicit held coverage and complete timeline navigation
+
+Date: 2026-10-08
+Status: Accepted
+
+Context: Export extension was difficult to distinguish in the timeline; additional soundtrack rows were clipped and Option arrows were ignored.
+Decision: Draw derived held-frame intervals and label held preview frames; scroll the timeline vertically inside a window-constrained grid. Route Option/Ctrl/Command bounds through a shared helper, falling back to videos when narration is empty. Verify both MP4 stream lengths and moving-source final frames.
+Consequences: Source durations and project schema remain unchanged. Horizontal/Shift-wheel pans; vertical wheel scrolls tracks. User requested local app/DMG, clearer build instructions, patch tag and push.
+Related files: src/shared/waveStudio.ts; WaveStudioPage.tsx; WaveStudioTimeline.tsx; wave-studio.css; wave_video.rs; tests/wave-navigation.test.ts; scripts/test-server.py; README.md.

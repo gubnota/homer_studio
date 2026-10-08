@@ -426,13 +426,7 @@ pub fn export_mix(
             "Video export cancelled.",
         ));
     }
-    if (speech::probe_duration(output, settings)? as f64 - duration).abs() > 150. {
-        return Err(CommandError::new(
-            "INVALID_EXPORT_DURATION",
-            "Export duration did not match the chosen length.",
-        ));
-    }
-    Ok(())
+    verify_export(output, duration, settings, cancel)
 }
 
 /// Normalize one segment at a time so long projects do not open every video at once.
@@ -561,12 +555,59 @@ pub fn export_timeline(
             output.to_string_lossy().into_owned(),
         ])
         .collect();
-        let run = process_runner::run_bounded(&tool, &args, Duration::from_secs(7200), cancel)?;
+        let run =
+            process_runner::run_bounded(&tool, &args, Duration::from_secs(7200), cancel.clone())?;
         if !run.success {
             return Err(CommandError::new("VIDEO_EXPORT_FAILED", run.stderr));
         }
-        Ok(())
+        verify_export(output, duration, settings, cancel)
     })();
     let _ = fs::remove_dir_all(folder);
     result
+}
+
+/// Container duration alone can hide a video stream that ends before its audio.
+fn verify_export(
+    output: &Path,
+    duration: f64,
+    settings: &Settings,
+    cancel: Arc<AtomicBool>,
+) -> Result<(), CommandError> {
+    let probe = process_runner::resolve_executable("ffprobe", settings.ffprobe_path.as_deref())
+        .ok_or_else(|| CommandError::new("FFPROBE_NOT_FOUND", "Set FFprobe in Settings."))?;
+    let result = process_runner::run_bounded(
+        &probe,
+        &[
+            "-v".into(),
+            "error".into(),
+            "-show_entries".into(),
+            "stream=codec_type,duration".into(),
+            "-of".into(),
+            "json".into(),
+            output.to_string_lossy().into_owned(),
+        ],
+        Duration::from_secs(30),
+        cancel,
+    )?;
+    if !result.success {
+        return Err(CommandError::new("MEDIA_PROBE_FAILED", result.stderr));
+    }
+    let media: serde_json::Value =
+        serde_json::from_str(&result.stdout).map_err(|e| CommandError::internal(e.to_string()))?;
+    for kind in ["video", "audio"] {
+        let measured = media["streams"]
+            .as_array()
+            .and_then(|streams| streams.iter().find(|stream| stream["codec_type"] == kind))
+            .and_then(|stream| stream["duration"].as_str())
+            .and_then(|n| n.parse::<f64>().ok());
+        if !measured.is_some_and(|seconds| {
+            seconds.is_finite() && (seconds * 1000. - duration).abs() <= 150.
+        }) {
+            return Err(CommandError::new(
+                "INVALID_EXPORT_DURATION",
+                format!("The {kind} stream did not match the chosen export length."),
+            ));
+        }
+    }
+    Ok(())
 }

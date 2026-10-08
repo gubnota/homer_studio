@@ -74,3 +74,5 @@ Rules:
 - Source-bounded SFX trims/splits belong to shared immutable editing helpers; renderer routes selected IDs and history. Export duration policy and FFmpeg frame extension belong to homer-core; desktop/HTTP adapters forward optional lengthMode unchanged.
 
 - Export dialog owns visible preflight/retry errors and explicit overlap arrangement; the page owns queued/running/completion progress. Renderer must not rely on a message behind an active dialog.
+
+- Renderer displays held-frame coverage without changing source video durations; shared navigation helpers select narration or video fallback. Core verifies both MP4 stream lengths before export publication.
