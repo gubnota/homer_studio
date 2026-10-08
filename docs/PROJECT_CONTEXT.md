@@ -9,7 +9,8 @@
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
-- Approved audio/video editing follow-up: explicit separate soundtrack imports, multi-video placement without overlaps, held-frame preview and full-timeline MP4 export. Local changes; no new release requested.
+- v0.3.3: selected soundtrack split/source trim, explicit video removal, full-length or shorter-track MP4 export. User requested new patch tag and push after verification.
+- Approved audio/video editing follow-up: explicit separate soundtrack imports, multi-video placement without overlaps, held-frame preview and full-timeline MP4 export. Included in the requested v0.3.3 tag.
 - Version 0.3.2: incremental `.wavehs` folders, linked video and video-length MP4 export; project-owned recordings, memo playback/keyboard fixes, compact takes, paired view sliders and stronger button contrast. Preserve manual CSS and waveform caches.
 - Version 0.3.1: reversible per-passage voice versions using original audio, compressed backward-readable `.wavehs` documents, global cancellable opening and Linux process-group cleanup fix. Preserve manual CSS/icons and waveform caches.
 - Version 0.3.0: approved prototype UI refresh, unified modal/toast behavior, live memo levels, reliable project restore/export/purge, bounded waveform reuse and refreshed bilingual screenshots. Preserve user CSS changes. Release DMG and Linux bundle.

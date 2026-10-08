@@ -118,3 +118,5 @@
 - `AudioTransport.tsx`, `AudioEditor.tsx`, `VoiceMemosPage.tsx`: playback lifecycle, compact takes and recording shortcuts.
 
 - `components/WaveAudioImportPanel.tsx`: explicit soundtrack/narration import modes and position. `tests/wave-import.test.tsx` checks default intent; shared Wave tests cover collision placement and held frames.
+
+- Soundtrack source edits: `src/shared/waveStudioEdits.ts` (`splitSoundtrack`, `trimSoundtrack`, `soundtrackRange`); UI handles in `WaveStudioTimeline.tsx`, numeric controls in `WaveStudioInspector.tsx`. `WaveExportPanel.tsx` and shared `wave_video.rs` own length selection and held-frame rendering.

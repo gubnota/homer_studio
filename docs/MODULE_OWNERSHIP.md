@@ -70,3 +70,5 @@ Rules:
 - The shared core owns validated folder binding and media persistence; renderer supplies save/export choices. External video paths stay in trusted app-owned metadata.
 
 - Renderer owns file-drop lane intent, sequential batch imports and first-fitting video placement. Shared native validation rejects overlaps on save and combined export; legacy reads stay available for explicit Arrange. Video service owns frame normalization/holding and edited-audio mux; preview uses the shared timeline frame selector.
+
+- Source-bounded SFX trims/splits belong to shared immutable editing helpers; renderer routes selected IDs and history. Export duration policy and FFmpeg frame extension belong to homer-core; desktop/HTTP adapters forward optional lengthMode unchanged.

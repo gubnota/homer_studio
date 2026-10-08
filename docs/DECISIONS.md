@@ -276,3 +276,13 @@ Context: Audio imports unexpectedly split narration; overlapping videos and gaps
 Decision: Default the audio dialog to an independent soundtrack, honor drop lane/time, place videos in the first available full interval, and reject overlapping saves. Preserve legacy reads with explicit Arrange. Preview and combined export hold the previous clip’s final frame in gaps/tail and stay black before the first clip. Import videos sequentially, consolidate input probes and copy compatible H.264.
 Consequences: No persisted schema migration. Combined export normalizes video geometry/frame rate and uses edited audio; selected-video export remains supported. Incompatible inputs still require transcoding.
 Related files: WaveAudioImportPanel.tsx, WaveStudioPage.tsx, WaveStudioProvider.tsx, waveStudio.ts, wave_video.rs, wave_studio.rs, scripts/test-server.py.
+
+# ADR-0029: Source-bounded soundtrack editing and explicit MP4 length
+
+Date: 2026-10-08
+Status: Accepted
+
+Context: Selected effects lacked split/trim controls; second videos were hard to remove, and video-length export cut longer audio.
+Decision: Route Split to the selected SFX, expose source-bounded edge handles and explicit selected-video removal. Default new MP4 UI exports to full length, with shorter-track choice and duration preview. Extend video using its final frame and pad short audio; preserve legacy API defaults when lengthMode is absent.
+Consequences: Other soundtracks/narration retain placement; audio edits remain undoable. Held-frame selected exports require encoding. A shortest export with no remaining audio is disabled/rejected. User requested patch version tag and push.
+Related files: src/shared/waveStudioEdits.ts; src/renderer/src/components/WaveStudioTimeline.tsx; src/renderer/src/components/WaveExportPanel.tsx; crates/homer-core/src/services/wave_video.rs.
