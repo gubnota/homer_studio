@@ -7,8 +7,8 @@ use std::{
     io::{BufReader, Read, Write},
     path::{Path, PathBuf},
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
+        Arc,
     },
 };
 const MAGIC: &[u8; 8] = b"WAVEHS01";
@@ -364,7 +364,7 @@ pub fn import(
             }
         }
         for video in &p.videos {
-            if let Ok(path) = super::wave_video::path(app, &video.id) {
+            if let Ok(path) = super::wave_video::path(app, video.asset_id()) {
                 let _ = fs::remove_file(path);
             }
         }
@@ -388,7 +388,7 @@ pub fn import(
             if path.join("media").join(format!("{}.mp4", old.id)).is_file() {
                 super::wave_store::copy_media(
                     path,
-                    &super::wave_video::original_path(app, &video.id)?,
+                    &super::wave_video::original_path(app, video.asset_id())?,
                     &PathBuf::from(format!("media/{}.mp4", video.id)),
                 )?;
             }

@@ -69,3 +69,8 @@ input.studio-slider:focus-visible { outline:2px solid #699f96; outline-offset:5p
 
 .wave-shell{grid-template-rows:minmax(0,1fr)}
 .wave-shell .sidebar{min-height:0;overflow-y:auto}
+
+/* Source handles remain visible on short cuts and restore trimmed material. */
+.wave-main-trim {top:0;height:280px;z-index:6}
+.wave-video-clip .wave-sfx-handle {top:0;bottom:0;height:100%;z-index:3}
+.wave-sfx-handle {min-width:10px;background:rgba(221,224,255,.55);border:1px solid rgba(255,255,255,.8);cursor:ew-resize}

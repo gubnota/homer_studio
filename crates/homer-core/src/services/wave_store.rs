@@ -463,7 +463,7 @@ pub fn save_copy_options(
         for video in p.videos.iter().filter(|_| include_video) {
             copy_media(
                 &work,
-                &super::wave_video::original_path(app, &video.id)?,
+                &super::wave_video::original_path(app, video.asset_id())?,
                 &PathBuf::from(format!("media/{}.mp4", video.id)),
             )?;
         }
@@ -642,7 +642,7 @@ fn open_copy_controlled(
         let imported = if !local_video.exists() {
             // An archive may describe a missing link, but never authorize arbitrary external paths.
             if super::wave_video::validate(app, v).is_ok()
-                && super::wave_video::path(app, &v.id)?.is_file()
+                && super::wave_video::path(app, v.asset_id())?.is_file()
             {
                 v.clone()
             } else {
@@ -671,19 +671,18 @@ fn open_copy_controlled(
                 .0
                 .push(super::wave_video::path(app, &imported.id)?);
         }
-        if (imported.duration_ms - v.duration_ms).abs() > 100. {
+        if (imported.source_duration_ms.unwrap_or(imported.duration_ms)
+            - v.source_duration_ms.unwrap_or(v.duration_ms))
+        .abs()
+            > 100.
+        {
             return Err(CommandError::new(
                 "INVALID_MEDIA",
                 "Project video duration changed.",
             ));
         }
-        if let Some(view) = &mut p.view {
-            if view.selected_id.as_ref() == Some(&v.id) {
-                view.selected_id = Some(imported.id.clone());
-            }
-        }
-        v.id = imported.id;
-        v.duration_ms = imported.duration_ms;
+        v.asset_id = Some(imported.asset_id().to_string());
+        v.source_duration_ms = Some(imported.source_duration_ms.unwrap_or(imported.duration_ms));
         completed += 1;
         report((65 + completed * 30 / total.max(1)) as u8);
     }

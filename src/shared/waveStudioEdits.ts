@@ -1,4 +1,4 @@
-import { clipDuration, clipEnd, newId, voiceColor, voiceAudioKey, type VoiceRegion, type WaveClip, type WaveTimeline } from './waveStudio'
+import { clipDuration, clipEnd, newId, placeVideo, voiceColor, voiceAudioKey, type VoiceRegion, type WaveClip, type WaveVideo, type WaveTimeline } from './waveStudio'
 const copy = (t: WaveTimeline): WaveTimeline => structuredClone(t)
 export function splitClip(c: WaveClip, at: number): WaveClip[] {
   if (at <= c.startMs || at >= clipEnd(c)) return [c]
@@ -19,7 +19,8 @@ export function soundtrackRange(c: WaveClip, sourceIn: number, sourceOut: number
 }
 export function trimSoundtrack(t: WaveTimeline,id:string,edge:'start'|'end',at:number,sourceDuration:number): WaveTimeline {
  if(!Number.isFinite(at))return t
- return {...t,sfx:t.sfx.map(c=>{
+ const lane=t.clips.some(c=>c.id===id)?'clips':'sfx'
+ return {...t,[lane]:t[lane].map(c=>{
   if(c.id!==id)return c
   if(edge==='start'){
    const start=Math.max(0,c.startMs-c.sourceStartMs/c.speed,Math.min(at,clipEnd(c)-1))
@@ -141,9 +142,10 @@ export function insertMain(t: WaveTimeline, clip: WaveClip, at: number): WaveTim
 export function transferClip(t: WaveTimeline, id: string, lane: 'main' | 'sfx', at: number): WaveTimeline {
  const source = t.clips.find(c=>c.id===id) || t.sfx.find(c=>c.id===id)
  if (!source) return t
- const wasMain=t.clips.some(c=>c.id===id)
- const base = { ...t, clips: wasMain&&lane==='sfx' ? t.clips.map(c=>c.id===id?{...c,id:newId(),sourceId:null,name:'Silence',sourceStartMs:0,sourceEndMs:clipDuration(c),speed:1,gainDb:0,fadeInMs:0,fadeOutMs:0}:c) : t.clips.filter(c=>c.id!==id), sfx: t.sfx.filter(c=>c.id!==id) }
- return lane === 'main' ? insertMain(base, source, at) : { ...base, sfx: [...base.sfx,{...source,startMs:Math.max(0,at)}] }
+ const base = {...t,clips:t.clips.filter(c=>c.id!==id),sfx:t.sfx.filter(c=>c.id!==id)}
+ const target=lane==='main'?'clips':'sfx'
+ const startMs=Math.max(0,Math.min(at,86400000-clipDuration(source)))
+ return {...base,[target]:[...base[target],{...source,startMs}].sort((a,b)=>a.startMs-b.startMs)}
 }
 export function replaceRange(t: WaveTimeline, a: number, b: number, clip: WaveClip): WaveTimeline {
  const next = isolate(t,a,b)
@@ -158,9 +160,11 @@ export function joinCandidateIds(t: WaveTimeline, selection: [number,number] | n
  return i<0 ? [] : clips.slice(i,i+2).map(c=>c.id)
 }
 
-export function packSfxRows(clips: WaveClip[]): WaveClip[][] {
+export function packSfxRows(clips: WaveClip[], preferred: ReadonlyMap<string,number> = new Map()): WaveClip[][] {
  const rows: WaveClip[][] = []
- for (const clip of [...clips].sort((a,b)=>a.startMs-b.startMs)) { let row=rows.find(r=>clipEnd(r[r.length-1]!)<=clip.startMs); if(!row){row=[];rows.push(row)} row.push(clip) }
+ const fits=(row:WaveClip[],clip:WaveClip)=>row.every(c=>clipEnd(c)<=clip.startMs || clipEnd(clip)<=c.startMs)
+ const ordered=[...clips].sort((a,b)=>Number(preferred.has(b.id))-Number(preferred.has(a.id)) || a.startMs-b.startMs)
+ for(const clip of ordered){let i=preferred.get(clip.id);if(i===undefined || !fits(rows[i]||[],clip)){i=rows.findIndex(row=>fits(row,clip));if(i<0)i=rows.length}while(rows.length<=i)rows.push([]);rows[i]!.push(clip)}
  return rows.length ? rows : [[]]
 }
 
@@ -209,4 +213,47 @@ export function recoverVoiceVersions(t:WaveTimeline,original:WaveTimeline|null|u
   if(v.audio || !original.voices.some(r=>r.startMs===v.startMs && r.endMs===v.endMs))return v
   return {...v,audio:{original:passageClips(original,v),versions:v.production?[{voiceId:v.voiceId,clips:passageClips(t,v),production:{...v.production}}]:[],activeAudioKey:voiceAudioKey(t,v)}}
  })}
+}
+
+/** Placements keep the full asset range after a cut or copy. */
+export function splitVideo(videos:WaveVideo[],id:string,at:number):WaveVideo[]{
+ return videos.flatMap(v=>{
+  if(v.id!==id||at<=v.startMs||at>=v.startMs+v.durationMs)return [v]
+  const sourceDurationMs=v.sourceDurationMs??v.durationMs,assetId=v.assetId??v.id,sourceStartMs=v.sourceStartMs??0,first=at-v.startMs
+  return [{...v,assetId,sourceDurationMs,sourceStartMs,durationMs:first},{...v,id:newId(),assetId,sourceDurationMs,sourceStartMs:sourceStartMs+first,startMs:at,durationMs:v.durationMs-first}]
+ })
+}
+export function trimVideo(videos:WaveVideo[],id:string,edge:'start'|'end',at:number):WaveVideo[]{
+ if(!Number.isFinite(at))return videos
+ return videos.map(v=>{
+  if(v.id!==id)return v
+  const sourceStartMs=v.sourceStartMs??0,sourceDurationMs=v.sourceDurationMs??v.durationMs,end=v.startMs+v.durationMs
+  const before=Math.max(0,...videos.filter(n=>n.id!==id&&n.startMs<v.startMs).map(n=>n.startMs+n.durationMs))
+  const after=Math.min(86400000,...videos.filter(n=>n.id!==id&&n.startMs>=end).map(n=>n.startMs))
+  if(edge==='start'){
+   const startMs=Math.max(before,v.startMs-sourceStartMs,Math.min(at,end-1))
+   return {...v,assetId:v.assetId??v.id,sourceDurationMs,sourceStartMs:sourceStartMs+startMs-v.startMs,startMs,durationMs:end-startMs}
+  }
+  return {...v,assetId:v.assetId??v.id,sourceDurationMs,sourceStartMs,durationMs:Math.max(1,Math.min(at,after,v.startMs+sourceDurationMs-sourceStartMs)-v.startMs)}
+ })
+}
+
+export type FragmentCopy = {lane:'video';items:WaveVideo[]} | {lane:'clips'|'sfx';items:WaveClip[]}
+export function copyFragments(t:WaveTimeline,videos:WaveVideo[],ids:string[]):FragmentCopy|null {
+ const video=videos.filter(v=>ids.includes(v.id));if(video.length)return {lane:'video',items:structuredClone(video)}
+ for(const lane of ['clips','sfx'] as const){const items=t[lane].filter(c=>ids.includes(c.id));if(items.length)return {lane,items:structuredClone(items)}}
+ return null
+}
+export function pasteFragments(copy:FragmentCopy,t:WaveTimeline,videos:WaveVideo[],at:number):{timeline:WaveTimeline;videos:WaveVideo[];ids:string[]} {
+ const origin=Math.min(...copy.items.map(c=>c.startMs)),offset=Math.max(0,at)-origin
+ const ids:string[]=[]
+ if(copy.lane==='video'){
+  const placed=[...videos]
+  for(const v of [...copy.items].sort((a,b)=>a.startMs-b.startMs)){
+   const id=newId();ids.push(id);placed.push({...v,id,assetId:v.assetId??v.id,sourceStartMs:v.sourceStartMs??0,sourceDurationMs:v.sourceDurationMs??v.durationMs,startMs:placeVideo(placed,v.durationMs,v.startMs+offset)})
+  }
+  return {timeline:t,videos:placed,ids}
+ }
+ const added=copy.items.map(c=>{const id=newId();ids.push(id);const startMs=c.startMs+offset;if(startMs+clipDuration(c)>86400000)throw new Error('No free space within the 24-hour timeline.');return {...c,id,startMs}})
+ return {timeline:{...t,[copy.lane]:[...t[copy.lane],...added].sort((a,b)=>a.startMs-b.startMs)},videos,ids}
 }

@@ -5,7 +5,7 @@ export interface VoiceVersion { voiceId: string; clips: WaveClip[]; production: 
 export interface VoiceAudio { original: WaveClip[]; versions: VoiceVersion[]; activeAudioKey: string }
 export interface VoiceRegion { id: string; voiceId: string; name: string; color: string; startMs: number; endMs: number; production?: VoiceProduction; audio?: VoiceAudio }
 export interface WaveTimeline { clips: WaveClip[]; sfx: WaveClip[]; voices: VoiceRegion[] }
-export interface WaveVideo { id:string; name:string; durationMs:number; startMs:number }
+export interface WaveVideo { id:string; name:string; durationMs:number; startMs:number; assetId?:string; sourceStartMs?:number; sourceDurationMs?:number }
 export interface WaveProject { schemaVersion: 1; id: string; name: string; revision: number; updatedAtMs: number; sources: WaveSource[]; timeline: WaveTimeline; view?: WaveView; voiceOriginal?: WaveTimeline | null; videos?: WaveVideo[] }
 export interface SfxAsset extends WaveSource { category: string; builtIn: boolean }
 export interface WaveView { offsetMs: number; spanMs: number; playheadMs: number; selection: [number, number] | null; selectedId: string | null; selectedIds?: string[]; loop: boolean }
@@ -81,7 +81,7 @@ export function videoFrame(videos: WaveVideo[], playheadMs: number): {video: Wav
  const video = [...videos].sort((a,b) => b.startMs-a.startMs).find(v => v.startMs <= playheadMs)
  if (!video) return null
  const held = playheadMs >= video.startMs + video.durationMs
- return {video, held, timeMs: Math.max(0, Math.min(playheadMs-video.startMs, video.durationMs-1))}
+ return {video, held, timeMs: (video.sourceStartMs || 0) + Math.max(0, Math.min(playheadMs-video.startMs, video.durationMs-1))}
 }
 
 /** Navigation uses video fragments when the narration lane is empty. */

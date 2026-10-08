@@ -124,3 +124,5 @@
 - `tests/wave-export.test.tsx`: export dialog overlap blocking/recovery visibility. `WaveExportPanel.tsx` owns preparation and inline errors; `WaveStudioPage.tsx` owns queued/job progress.
 
 - Shared `waveStudio.ts` owns fragment navigation/video hold intervals; `tests/wave-navigation.test.ts` verifies narration precedence, video fallback and hold coverage. `wave-studio.css` constrains the editor grid and owns vertical timeline scrolling.
+
+- v0.3.6: shared `waveStudioEdits.ts` owns stable soundtrack row packing, cross-lane transfers, source-bounded video splits/trims and fragment copies. Provider history snapshots both audio timeline and video placements. `scripts/test-server.py` verifies edited video portability, overlapping main audio, and optional actual 4K HEVC export with live progress.

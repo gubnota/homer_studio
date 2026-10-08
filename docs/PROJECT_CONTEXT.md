@@ -9,6 +9,7 @@
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
+- v0.3.6: bounded FFmpeg encoding with observed progress; keep-full-length exports hold trimmed final frames at 30 fps. Cross-lane audio moves preserve time/overlap and other soundtrack rows. Source-bounded audio/video edge restoration, fragment copy/paste/duplicate and combined audio/video Undo/Redo. Original assets stay immutable.
 - v0.3.5: visible held-frame coverage, complete soundtrack scrolling, Option/Ctrl fragment bounds and video navigation fallback. Full-length MP4 checks both stream durations. Local macOS build/replacement instructions in both READMEs.
 - v0.3.4: export failures/overlap recovery stay visible inside the dialog; preparation and queued/running/completed progress are explicit. Reproduced overlap rejection in the user’s native app; preserve their project placements.
 - v0.3.3: selected soundtrack split/source trim, explicit video removal, full-length or shorter-track MP4 export. User requested new patch tag and push after verification.

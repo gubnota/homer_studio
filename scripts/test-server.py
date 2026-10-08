@@ -92,10 +92,13 @@ def main():
                 assert bytes(preview["binary"][:4]) == b"RIFF"
 
                 def wait_job(job_id):
-                    for _ in range(600):
+                    progress_seen = set()
+                    for _ in range(3000):
                         job = next((j for j in command("list_jobs") if j["id"] == job_id), None)
+                        if job:
+                            progress_seen.add(job.get("progress", 0))
                         if job and job["status"] == "completed":
-                            return
+                            return progress_seen
                         assert not job or job["status"] not in ("failed", "cancelled"), job
                         time.sleep(.1)
                     raise RuntimeError("Job timed out")
@@ -193,6 +196,37 @@ def main():
                     assert difference(final,last_tail)<5, "Tail did not preserve the last source frame"
                     assert difference(earlier,last_tail)>10, "Moving fixture must distinguish earlier frames"
                 print("Moving 60fps footage passed final-frame hold and both-stream length checks for selected/combined exports.")
+                # Split/copy placements share the original asset and preserve source offsets across folder saves.
+                cut={**moving_video,"id":str(uuid.uuid4()),"assetId":moving_video["id"],"sourceStartMs":500,"sourceDurationMs":moving_video["durationMs"],"durationMs":500,"startMs":0}
+                copied={**cut,"id":str(uuid.uuid4()),"startMs":1000}
+                cut_project=command("wave_create",name="Trimmed video copy")
+                cut_project.update(sources=[audio],videos=[cut,copied],timeline={**cut_project["timeline"],"clips":[clip,{**clip,"id":str(uuid.uuid4()),"startMs":500}]})
+                cut_project=command("wave_save",project=cut_project,expectedRevision=0)
+                assert len(cut_project["timeline"]["clips"])==2, "Overlapping narration must save without ripple"
+                cut_folder=str(temp/"data/exports/cut.wavehs")
+                command("wave_save_copy",project=cut_project,path=cut_folder,includeVideo=True)
+                reopened=command("wave_import_bundle",path=cut_folder)
+                assert [(v["id"],v["sourceStartMs"],v["durationMs"],v["startMs"]) for v in reopened["videos"]]==[(v["id"],500,500,v["startMs"]) for v in cut_project["videos"]]
+                for selected in [None,reopened["videos"][0]["id"]]:
+                    output=str(temp/"data/exports"/(str(uuid.uuid4())+".mp4"))
+                    wait_job(command("wave_export",project=reopened,outputPath=output,videoId=selected,videoTimeline=selected is None,lengthMode="longest"))
+                    assert difference(image_bytes(moving,.983),image_bytes(output,2.3))<6,"Trimmed video tail must use the trimmed final frame"
+                print("Overlapping narration and split/copied video passed folder round-trip and selected/combined exports.")
+                # Exercise the reported 4K HEVC file without touching the user's saved project.
+                actual=Path("/Users/vm/Downloads/2026-10-08 14.26.46_apo8_thf4.mp4")
+                if actual.is_file():
+                    uploaded=json.loads(request("/api/upload?name=actual.mp4",actual.read_bytes(),method="POST")[0])["path"]
+                    actual_video=command("wave_import_video",path=uploaded,requestId=str(uuid.uuid4()))
+                    actual_project=command("wave_create",name="4K export regression")
+                    actual_project.update(sources=[audio],videos=[actual_video],timeline={**actual_project["timeline"],"clips":[clip],"sfx":[{**clip,"id":str(uuid.uuid4()),"startMs":28660.609}]})
+                    for selected in [None,actual_video["id"]]:
+                        output=str(temp/"data/exports"/(str(uuid.uuid4())+".mp4"))
+                        observed=wait_job(command("wave_export",project=actual_project,outputPath=output,videoId=selected,videoTimeline=selected is None,lengthMode="longest"))
+                        media=json.loads(subprocess.check_output(["ffprobe","-v","error","-show_streams","-of","json",output]))
+                        assert all(abs(float(stream["duration"])-30.660609)<.15 for stream in media["streams"]),media
+                        assert any(30<p<95 for p in observed),observed
+                        assert difference(image_bytes(output,29.6),image_bytes(output,30.5))<2
+                        print("Actual 4K HEVC keep-full-length export passed:","selected" if selected else "combined", "progress",sorted(observed))
                 long_project = {**montage, "timeline": {**montage["timeline"], "sfx": [{**clip, "id": str(uuid.uuid4()), "startMs": 118000}]}}
                 cancelled_output = str(temp / "data/exports/cancelled.mp4")
                 cancelled_job = command("wave_export", project=long_project, outputPath=cancelled_output, videoTimeline=True)

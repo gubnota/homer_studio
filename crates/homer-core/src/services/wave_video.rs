@@ -64,19 +64,27 @@ pub fn retain_original(app: &AppHandle, id: &str, input: &Path) -> Result<(), Co
     audio_assets::atomic_json(&metadata, &value)
 }
 pub fn missing(app: &AppHandle, video: &Video) -> Result<Video, CommandError> {
-    let mut video = video.clone();
-    video.id = uuid::Uuid::new_v4().to_string();
+    let id = uuid::Uuid::new_v4().to_string();
+    let mut owned = video.clone();
+    owned.id = id.clone();
+    owned.asset_id = None;
+    owned.duration_ms = video.source_duration_ms.unwrap_or(video.duration_ms);
+    owned.source_start_ms = 0.;
+    owned.source_duration_ms = None;
     let mut value =
-        serde_json::to_value(&video).map_err(|e| CommandError::internal(e.to_string()))?;
+        serde_json::to_value(&owned).map_err(|e| CommandError::internal(e.to_string()))?;
     value["missing"] = true.into();
     audio_assets::atomic_json(
         &wave_store::root(app)?
             .join("videos")
-            .join(format!("{}.json", video.id)),
+            .join(format!("{id}.json")),
         &value,
     )?;
-    Ok(video)
+    let mut placement = video.clone();
+    placement.asset_id = Some(id);
+    Ok(placement)
 }
+
 pub fn has_video(p: &Path, settings: &Settings) -> Result<bool, CommandError> {
     if !p.is_file() {
         return Err(CommandError::new(
@@ -180,15 +188,27 @@ pub fn import_controlled(
         let tool = process_runner::resolve_executable("ffmpeg", settings.ffmpeg_path.as_deref())
             .ok_or_else(|| CommandError::new("FFMPEG_NOT_FOUND", "Set FFmpeg in Settings."))?;
         let run = |codec: &[&str]| -> Result<bool, CommandError> {
-            let args = ["-v", "error", "-nostdin", "-y", "-progress", "pipe:1", "-i"]
-                .into_iter()
-                .map(String::from)
-                .chain([input.to_string_lossy().into_owned()])
-                .chain(["-map", "0:v:0", "-an"].into_iter().map(String::from))
-                .chain(codec.iter().map(|s| s.to_string()))
-                .chain(["-movflags", "+faststart"].into_iter().map(String::from))
-                .chain([output.to_string_lossy().into_owned()])
-                .collect::<Vec<_>>();
+            let args = [
+                "-v",
+                "error",
+                "-nostdin",
+                "-y",
+                "-progress",
+                "pipe:1",
+                "-threads",
+                "2",
+                "-filter_threads",
+                "1",
+                "-i",
+            ]
+            .into_iter()
+            .map(String::from)
+            .chain([input.to_string_lossy().into_owned()])
+            .chain(["-map", "0:v:0", "-an"].into_iter().map(String::from))
+            .chain(codec.iter().map(|s| s.to_string()))
+            .chain(["-movflags", "+faststart"].into_iter().map(String::from))
+            .chain([output.to_string_lossy().into_owned()])
+            .collect::<Vec<_>>();
             Ok(process_runner::run_observed(
                 &tool,
                 &args,
@@ -247,6 +267,9 @@ pub fn import_controlled(
             ));
         }
         let video = Video {
+            asset_id: None,
+            source_start_ms: 0.,
+            source_duration_ms: None,
             id: id.clone(),
             name: input
                 .file_name()
@@ -283,15 +306,18 @@ pub fn validate(app: &AppHandle, video: &Video) -> Result<(), CommandError> {
     let data = fs::read(
         wave_store::root(app)?
             .join("videos")
-            .join(format!("{}.json", video.id)),
+            .join(format!("{}.json", video.asset_id())),
     )
     .map_err(|e| CommandError::io("Cannot read video reference", e))?;
     let metadata: serde_json::Value =
         serde_json::from_slice(&data).map_err(|e| CommandError::internal(e.to_string()))?;
     let owned: Video =
         serde_json::from_slice(&data).map_err(|e| CommandError::internal(e.to_string()))?;
-    if owned.duration_ms != video.duration_ms
-        || (metadata["missing"] != true && !path(app, &video.id)?.is_file())
+    if video.source_start_ms + video.duration_ms > owned.duration_ms + 0.01
+        || video
+            .source_duration_ms
+            .is_some_and(|d| (d - owned.duration_ms).abs() > 100.)
+        || (metadata["missing"] != true && !path(app, video.asset_id())?.is_file())
     {
         return Err(CommandError::new(
             "INVALID_VIDEO",
@@ -358,28 +384,40 @@ pub fn export_mix(
     cancel: Arc<AtomicBool>,
     report: Arc<dyn Fn(u8) + Send + Sync>,
 ) -> Result<(), CommandError> {
-    let input = original_path(app, &video.id)?;
+    let input = original_path(app, video.asset_id())?;
     let tool = process_runner::resolve_executable("ffmpeg", settings.ffmpeg_path.as_deref())
         .ok_or_else(|| CommandError::new("FFMPEG_NOT_FOUND", "Set FFmpeg in Settings."))?;
+    let last_error = std::sync::Mutex::new(String::new());
     let run = |codec: &[&str]| -> Result<bool, CommandError> {
-        let args = ["-v", "error", "-nostdin", "-y", "-progress", "pipe:1", "-i"]
+        let args = [
+            "-v",
+            "error",
+            "-nostdin",
+            "-y",
+            "-progress",
+            "pipe:1",
+            "-threads",
+            "2",
+            "-filter_threads",
+            "1",
+            "-i",
+        ]
+        .into_iter()
+        .map(String::from)
+        .chain([input.to_string_lossy().into_owned()])
+        .chain(["-i".into(), audio.to_string_lossy().into_owned()])
+        .chain(
+            [
+                "-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-t",
+            ]
             .into_iter()
-            .map(String::from)
-            .chain([input.to_string_lossy().into_owned()])
-            .chain(["-i".into(), audio.to_string_lossy().into_owned()])
-            .chain(
-                [
-                    "-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k", "-ac", "2",
-                    "-t",
-                ]
-                .into_iter()
-                .map(String::from),
-            )
-            .chain([format!("{:.9}", duration / 1000.)])
-            .chain(codec.iter().map(|s| s.to_string()))
-            .chain(["-movflags", "+faststart"].into_iter().map(String::from))
-            .chain([output.to_string_lossy().into_owned()])
-            .collect::<Vec<_>>();
+            .map(String::from),
+        )
+        .chain([format!("{:.9}", duration / 1000.)])
+        .chain(codec.iter().map(|s| s.to_string()))
+        .chain(["-movflags", "+faststart"].into_iter().map(String::from))
+        .chain([output.to_string_lossy().into_owned()])
+        .collect::<Vec<_>>();
         let result = process_runner::run_observed(
             &tool,
             &args,
@@ -387,18 +425,24 @@ pub fn export_mix(
             cancel.clone(),
             Some((duration as u64, report.clone())),
         )?;
+        if !result.success {
+            *last_error.lock().unwrap() = result.stderr;
+        }
         Ok(result.success)
     };
-    let extend = duration > video.duration_ms;
+    let extend = duration > video.duration_ms
+        || video.source_start_ms > 0.
+        || video.source_duration_ms.is_some();
     let encoded = if extend {
         run(&[
             "-vf",
             &format!(
-                "tpad=stop_mode=clone:stop_duration={}",
-                (duration - video.duration_ms) / 1000.
+                "trim=start={}:duration={},setpts=PTS-STARTPTS,fps=30,tpad=stop_mode=clone:stop_duration={}",
+                video.source_start_ms / 1000., video.duration_ms / 1000., (duration - video.duration_ms).max(0.) / 1000.
             ),
             "-c:v",
             "libx264",
+            "-threads", "2",
             "-preset",
             "veryfast",
             "-crf",
@@ -417,7 +461,10 @@ pub fn export_mix(
     {
         return Err(CommandError::new(
             "VIDEO_EXPORT_FAILED",
-            "Cannot export this video with edited audio.",
+            format!(
+                "Cannot export this video with edited audio. {}",
+                last_error.lock().unwrap()
+            ),
         ));
     }
     if cancel.load(Ordering::SeqCst) {
@@ -426,6 +473,7 @@ pub fn export_mix(
             "Video export cancelled.",
         ));
     }
+    report(100);
     verify_export(output, duration, settings, cancel)
 }
 
@@ -438,7 +486,7 @@ pub fn export_timeline(
     output: &Path,
     settings: &Settings,
     cancel: Arc<AtomicBool>,
-    progress: &dyn Fn(u8),
+    progress: Arc<dyn Fn(u8) + Send + Sync>,
 ) -> Result<(), CommandError> {
     super::wave_studio::validate_video_placements(videos)?;
     let tool = process_runner::resolve_executable("ffmpeg", settings.ffmpeg_path.as_deref())
@@ -474,14 +522,27 @@ pub fn export_timeline(
             if frames == 0 {
                 continue;
             }
-            let mut args: Vec<String> = ["-v", "error", "-nostdin", "-y", "-threads", "1"]
-                .into_iter()
-                .map(String::from)
-                .collect();
+            let mut args: Vec<String> = [
+                "-v",
+                "error",
+                "-nostdin",
+                "-y",
+                "-progress",
+                "pipe:1",
+                "-threads",
+                "1",
+                "-filter_threads",
+                "1",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect();
             if let Some(v) = video {
                 args.extend([
                     "-i".into(),
-                    original_path(app, &v.id)?.to_string_lossy().into_owned(),
+                    original_path(app, v.asset_id())?
+                        .to_string_lossy()
+                        .into_owned(),
                 ]);
             } else {
                 args.extend(
@@ -492,8 +553,8 @@ pub fn export_timeline(
             }
             let filter = if let Some(v) = video {
                 format!(
-                    "trim=duration={},setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,tpad=stop_mode=clone:stop_duration={}",
-                    v.duration_ms / 1000.,
+                    "trim=start={}:duration={},setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,tpad=stop_mode=clone:stop_duration={}",
+                    v.source_start_ms / 1000., v.duration_ms / 1000.,
                     (end - start) / 1000.
                 )
             } else {
@@ -516,22 +577,39 @@ pub fn export_timeline(
                 "yuv420p".into(),
                 folder.join(&name).to_string_lossy().into_owned(),
             ]);
-            let run = process_runner::run_bounded(
+            let report = progress.clone();
+            let base = 30. + 55. * start / duration;
+            let weight = 55. * (end - start) / duration;
+            let run = process_runner::run_observed(
                 &tool,
                 &args,
                 Duration::from_secs(7200),
                 cancel.clone(),
+                Some((
+                    (end - start) as u64,
+                    Arc::new(move |p| report((base + weight * p as f64 / 100.).min(85.) as u8)),
+                )),
             )?;
             if !run.success {
                 return Err(CommandError::new("VIDEO_EXPORT_FAILED", run.stderr));
             }
-            progress(30 + ((i + 1) * 55 / segments.len()) as u8);
+            progress((30. + 55. * end / duration).min(85.) as u8);
             list.push_str(&format!("file '{name}'\n"));
         }
         let manifest = folder.join("list.txt");
         fs::write(&manifest, list).map_err(|e| CommandError::io("Cannot stage video list", e))?;
         let args: Vec<String> = [
-            "-v", "error", "-nostdin", "-y", "-f", "concat", "-safe", "1", "-i",
+            "-v",
+            "error",
+            "-nostdin",
+            "-y",
+            "-progress",
+            "pipe:1",
+            "-f",
+            "concat",
+            "-safe",
+            "1",
+            "-i",
         ]
         .into_iter()
         .map(String::from)
@@ -555,11 +633,21 @@ pub fn export_timeline(
             output.to_string_lossy().into_owned(),
         ])
         .collect();
-        let run =
-            process_runner::run_bounded(&tool, &args, Duration::from_secs(7200), cancel.clone())?;
+        let report = progress.clone();
+        let run = process_runner::run_observed(
+            &tool,
+            &args,
+            Duration::from_secs(7200),
+            cancel.clone(),
+            Some((
+                duration as u64,
+                Arc::new(move |p| report(85 + ((p as u16 * 10) / 100) as u8)),
+            )),
+        )?;
         if !run.success {
             return Err(CommandError::new("VIDEO_EXPORT_FAILED", run.stderr));
         }
+        progress(96);
         verify_export(output, duration, settings, cancel)
     })();
     let _ = fs::remove_dir_all(folder);

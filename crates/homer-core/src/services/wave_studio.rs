@@ -96,10 +96,21 @@ pub struct View {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Video {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset_id: Option<String>,
+    #[serde(default)]
+    pub source_start_ms: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_duration_ms: Option<f64>,
     pub id: String,
     pub name: String,
     pub duration_ms: f64,
     pub start_ms: f64,
+}
+impl Video {
+    pub fn asset_id(&self) -> &str {
+        self.asset_id.as_deref().unwrap_or(&self.id)
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,7 +133,7 @@ pub fn validate(p: &Project) -> Result<(), CommandError> {
     let bad = || {
         CommandError::new(
             "INVALID_WAVE_PROJECT",
-            "The timeline contains invalid or overlapping audio. Undo the last edit and try again.",
+            "The timeline contains invalid audio. Undo the last edit and try again.",
         )
     };
     super::audio_assets::id(&p.id)?;
@@ -140,6 +151,15 @@ pub fn validate(p: &Project) -> Result<(), CommandError> {
     let mut video_ids = std::collections::HashSet::new();
     for v in &p.videos {
         super::audio_assets::id(&v.id)?;
+        super::audio_assets::id(v.asset_id())?;
+        if !v.source_start_ms.is_finite()
+            || v.source_start_ms < 0.
+            || v.source_duration_ms.is_some_and(|d| {
+                !d.is_finite() || d <= 0. || v.source_start_ms + v.duration_ms > d + 0.01
+            })
+        {
+            return Err(bad());
+        }
         if !video_ids.insert(&v.id)
             || v.name.len() > 512
             || !v.duration_ms.is_finite()
@@ -201,11 +221,6 @@ pub fn validate(p: &Project) -> Result<(), CommandError> {
                 return Err(bad());
             }
         }
-    }
-    let mut clips = p.timeline.clips.iter().collect::<Vec<_>>();
-    clips.sort_by(|a, b| a.start_ms.total_cmp(&b.start_ms));
-    if clips.windows(2).any(|w| w[0].end() > w[1].start_ms + 0.01) {
-        return Err(bad());
     }
     for v in &p.timeline.voices {
         super::audio_assets::id(&v.id)?;
@@ -326,14 +341,14 @@ mod tests {
         }
     }
     #[test]
-    fn rejects_overlap_unsupported_schema_and_outside_annotations() {
+    fn allows_audio_overlap_but_rejects_unsupported_schema_and_outside_annotations() {
         let mut p = project();
         assert!(validate(&p).is_ok());
         let mut c = p.timeline.clips[0].clone();
         c.id = uuid::Uuid::new_v4().to_string();
         c.start_ms = 100.;
         p.timeline.clips.push(c);
-        assert!(validate(&p).is_err());
+        assert!(validate(&p).is_ok());
         p.timeline.clips.pop();
         p.schema_version = 2;
         assert!(validate(&p).is_err());
@@ -430,6 +445,9 @@ mod tests {
     fn validates_video_bounds_and_production_roundtrip() {
         let mut p = project();
         p.videos.push(Video {
+            asset_id: None,
+            source_start_ms: 0.,
+            source_duration_ms: None,
             id: uuid::Uuid::new_v4().to_string(),
             name: "Reference".into(),
             start_ms: 0.,
@@ -489,12 +507,18 @@ mod video_placement_tests {
     #[test]
     fn rejects_overlaps_but_allows_touching_boundaries() {
         let first = Video {
+            asset_id: None,
+            source_start_ms: 0.,
+            source_duration_ms: None,
             id: "a".into(),
             name: "A".into(),
             start_ms: 1000.,
             duration_ms: 2000.,
         };
         let mut second = Video {
+            asset_id: None,
+            source_start_ms: 0.,
+            source_duration_ms: None,
             id: "b".into(),
             name: "B".into(),
             start_ms: 3000.,

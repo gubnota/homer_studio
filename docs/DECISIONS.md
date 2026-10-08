@@ -306,3 +306,13 @@ Context: Export extension was difficult to distinguish in the timeline; addition
 Decision: Draw derived held-frame intervals and label held preview frames; scroll the timeline vertically inside a window-constrained grid. Route Option/Ctrl/Command bounds through a shared helper, falling back to videos when narration is empty. Verify both MP4 stream lengths and moving-source final frames.
 Consequences: Source durations and project schema remain unchanged. Horizontal/Shift-wheel pans; vertical wheel scrolls tracks. User requested local app/DMG, clearer build instructions, patch tag and push.
 Related files: src/shared/waveStudio.ts; WaveStudioPage.tsx; WaveStudioTimeline.tsx; wave-studio.css; wave_video.rs; tests/wave-navigation.test.ts; scripts/test-server.py; README.md.
+
+# ADR-0044: Preserve immutable assets across video fragment edits
+
+Date: 2026-10-08
+Status: Accepted
+
+Context: Split video ranges must restore the original source and remain portable; cross-lane audio moves must retain simultaneous playback.
+Decision: Add optional asset/source-range fields to schema-1 video placements, retain unique placement IDs, snapshot audio/video in one edit history, allow overlapping narration, and preserve soundtrack row assignments in the renderer session. Normalize encoded selected-video frame rate before padding and bound FFmpeg threads.
+Consequences: Legacy projects remain readable. Copies reuse original assets; relinking updates their placements together. Explicit ripple edits retain their existing semantics.
+Related files: src/shared/waveStudioEdits.ts, src/renderer/src/WaveStudioProvider.tsx, crates/homer-core/src/services/wave_video.rs, crates/homer-core/src/services/wave_store.rs.

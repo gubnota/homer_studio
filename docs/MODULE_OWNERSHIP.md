@@ -76,3 +76,5 @@ Rules:
 - Export dialog owns visible preflight/retry errors and explicit overlap arrangement; the page owns queued/running/completion progress. Renderer must not rely on a message behind an active dialog.
 
 - Renderer displays held-frame coverage without changing source video durations; shared navigation helpers select narration or video fallback. Core verifies both MP4 stream lengths before export publication.
+
+- Video placement IDs are distinct from app-owned asset IDs after trims/splits/copies. Renderer edits placements and retains immutable asset references; core validates source bounds and resolves trusted asset metadata. Audio transfers preserve concurrent mixing and every unrelated placement; explicit narration ripple operations retain their existing semantics. Provider owns shared audio/video edit history.

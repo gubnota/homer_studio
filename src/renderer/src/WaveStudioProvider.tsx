@@ -5,28 +5,35 @@ import {notify} from './components/StudioToast'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { createContext, useContext, useEffect, useReducer, useRef, useState, type PropsWithChildren } from 'react'
 import { placeVideo, videosOverlap, blankTimeline, reconcileVoiceProduction, sourceClip, timelineDuration, type WaveProject, type WaveSource, type WaveTimeline, type WaveView, type WaveVideo } from '../../shared/waveStudio'
-import { recoverVoiceVersions, historyEdit, historyRedo, historyUndo, insertMain, type TimelineHistory } from '../../shared/waveStudioEdits'
+import { recoverVoiceVersions, insertMain } from '../../shared/waveStudioEdits'
 import { errorMessage, hasBackend } from './native'
 import { waveApi } from './waveStudioNative'
-interface State { project: WaveProject | null; history: TimelineHistory; change: number }
+interface EditSnapshot { timeline:WaveTimeline; videos:WaveVideo[] }
+interface EditHistory {past:EditSnapshot[];present:EditSnapshot;future:EditSnapshot[]}
+interface State { project: WaveProject | null; history: EditHistory; change: number }
 type Action = {kind:'clear'} | {kind:'videos';videos:WaveVideo[]} | { kind: 'load'; project: WaveProject } | { kind: 'edit'; timeline: WaveTimeline; sources?: WaveSource[] } | { kind: 'undo' | 'redo' } | { kind: 'name'; name: string } | { kind: 'saved'; id: string; revision: number } | { kind: 'original'; timeline: WaveTimeline | null }
-const initial: State = { project: null, history: { past: [], present: blankTimeline(), future: [] }, change: 0 }
+const initial: State = { project: null, history: { past: [], present: {timeline:blankTimeline(),videos:[]}, future: [] }, change: 0 }
 function reducer(s: State, a: Action): State {
  if (a.kind === 'clear') return initial
- if (a.kind === 'load') return { project: a.project, history: { past: [], present: a.project.timeline, future: [] }, change: 0 }
+ if (a.kind === 'load') return { project: a.project, history: { past: [], present: {timeline:a.project.timeline,videos:a.project.videos||[]}, future: [] }, change: 0 }
  if (!s.project) return s
- if (a.kind === 'videos') return {...s,project:{...s.project,videos:a.videos},change:s.change+1}
  if (a.kind === 'saved' && a.id !== s.project.id) return s
  if (a.kind === 'saved') return { ...s, project: { ...s.project, revision: a.revision } }
  if (a.kind === 'original') return { ...s, project: { ...s.project, voiceOriginal: a.timeline }, change: s.change + 1 }
  if (a.kind === 'name') return { ...s, project: { ...s.project, name: a.name }, change: s.change + 1 }
- const h = a.kind === 'edit' ? historyEdit(s.history, a.timeline) : a.kind === 'undo' ? historyUndo(s.history) : historyRedo(s.history)
- if (h === s.history && !(a.kind === 'edit' && a.sources)) return s
- return { project: { ...s.project, timeline: h.present, sources: a.kind === 'edit' && a.sources ? a.sources : s.project.sources }, history: h, change: s.change + 1 }
+ const h=s.history
+ let next:EditHistory=h
+ if(a.kind==='edit'||a.kind==='videos'){
+  const present=a.kind==='edit'?{...h.present,timeline:a.timeline}:{...h.present,videos:a.videos}
+  if(JSON.stringify(present)!==JSON.stringify(h.present))next={past:[...h.past,h.present].slice(-100),present,future:[]}
+ }else if(a.kind==='undo'&&h.past.length)next={past:h.past.slice(0,-1),present:h.past.at(-1)!,future:[h.present,...h.future].slice(0,100)}
+ else if(a.kind==='redo'&&h.future.length)next={past:[...h.past,h.present].slice(-100),present:h.future[0]!,future:h.future.slice(1)}
+ if(next===h&&!(a.kind==='edit'&&a.sources))return s
+ return {project:{...s.project,timeline:next.present.timeline,videos:next.present.videos,sources:a.kind==='edit'&&a.sources?a.sources:s.project.sources},history:next,change:s.change+1}
 }
 const defaultView: WaveView = { offsetMs: 0, spanMs: 30000, playheadMs: 0, selection: null, selectedId: null, loop: false }
 interface Context {
- operation:{id:string;label:string;progress:number}|null;cancelOperation:()=>void;project: WaveProject | null; history: TimelineHistory; view: WaveView; setView: React.Dispatch<React.SetStateAction<WaveView>>
+ operation:{id:string;label:string;progress:number}|null;cancelOperation:()=>void;project: WaveProject | null; history: EditHistory; view: WaveView; setView: React.Dispatch<React.SetStateAction<WaveView>>
  edit: (timeline: WaveTimeline, sources?: WaveSource[]) => void; undo: () => void; redo: () => void; rename: (name: string) => void
  busy: boolean; error: string; setError: (error: string) => void; saveStatus: string; flush: () => Promise<void>
  openBundle:(path:string|File)=>Promise<boolean>; deleteProject:(id:string)=>Promise<void>; setVideos:(videos:WaveVideo[])=>void; importVideo:(path:string,at:number)=>Promise<void>; importVideos:(paths:string[],at:number)=>Promise<void>; create: () => Promise<boolean>; open: (id: string) => Promise<boolean>; importAudio: (kind: 'file' | 'memo' | 'sound', value: string, mode?: 'insert' | 'append' | 'replace' | 'sfx', at?: number) => Promise<void>; addSource: (source: WaveSource, at?: number, lane?: 'main' | 'sfx') => void; rememberOriginal: () => void; restoreOriginal: () => void
@@ -62,7 +69,7 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
    saving.current = work
    try { await work } finally { if (saving.current === work) saving.current = null }
  }
- function load(p: WaveProject): void { p = { ...p, timeline: recoverVoiceVersions(reconcileVoiceProduction(p.timeline),p.voiceOriginal) }; const previous = p.view || readView(p.id); const restored = {...previous, selectedIds: previous.selectedIds || (previous.selectedId ? [previous.selectedId] : [])}; current.current = { project: p, history: { past: [], present: p.timeline, future: [] }, change: 0 }; viewRef.current = restored; savedView.current = JSON.stringify(restored); revision.current = p.revision; savedChange.current = 0; dispatch({ kind: 'load', project: p }); setView(restored); localStorage.setItem('homer.wave.lastProject', p.id); setSaveStatus('Saved') }
+ function load(p: WaveProject): void { p = { ...p, timeline: recoverVoiceVersions(reconcileVoiceProduction(p.timeline),p.voiceOriginal) }; const previous = p.view || readView(p.id); const restored = {...previous, selectedIds: previous.selectedIds || (previous.selectedId ? [previous.selectedId] : [])}; current.current = { project: p, history: { past: [], present: {timeline:p.timeline,videos:p.videos||[]}, future: [] }, change: 0 }; viewRef.current = restored; savedView.current = JSON.stringify(restored); revision.current = p.revision; savedChange.current = 0; dispatch({ kind: 'load', project: p }); setView(restored); localStorage.setItem('homer.wave.lastProject', p.id); setSaveStatus('Saved') }
  useEffect(() => {
    if (!hasBackend()) { restoring.current=false; return }
    let alive = true

@@ -54,3 +54,9 @@ Export opens a format selector: M4A (AAC) or WAV. The selected format controls t
 ## 0.3.5 video coverage
 - The video lane labels held final frames across gaps and through the audio tail; the preview explicitly says Holding final frame. Source video durations remain unchanged. Keep full length exports extend the final image or pad audio silence.
 - The complete editor timeline scrolls vertically, including all overlapping soundtrack rows. Export verifies both audio and video stream durations before reporting success.
+
+## 0.3.6 source restoration and copies
+- Select an audio fragment, then drag its start/end edge to trim or restore the source outside a split. SFX handles work on every soundtrack row. Video edges preserve the original asset and stop at adjacent video fragments. Split (S) also works on a selected video. Audio and video edits share Undo/Redo.
+- Cmd/Ctrl+C copies selected fragments; Cmd/Ctrl+V pastes at the playhead; Cmd/Ctrl+D duplicates after the selection. Copies retain source range, speed, gain and fades. Video copies use the next free interval. Text fields keep normal clipboard shortcuts.
+- Moving between narration and soundtrack lanes retains timing and overlapping playback; other clips and existing soundtrack rows stay in place. Main audio overlap is accepted on save and mixes during playback/export.
+- Keep full length reports encoding progress while generating held frames. Thread limits bound encoder resource use; selected encoded video uses 30 fps. Exports validate both stream lengths, including trimmed/copied sources.

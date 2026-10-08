@@ -373,6 +373,13 @@ pub fn wave_export(
         "wave_export",
         "Export Wave Studio mix".into(),
         move |control, progress| {
+            let callback = std::sync::Arc::new(std::sync::Mutex::new(progress));
+            let progress: std::sync::Arc<dyn Fn(u8) + Send + Sync> =
+                std::sync::Arc::new(move |p| {
+                    if let Ok(report) = callback.lock() {
+                        report(p);
+                    }
+                });
             control.boundary()?;
             progress(10);
             let output = std::path::PathBuf::from(output_path);
@@ -441,7 +448,7 @@ pub fn wave_export(
                         &temp,
                         &settings,
                         control.cancelled.clone(),
-                        &*progress,
+                        progress.clone(),
                     )?;
                 } else if let Some(video) = &video {
                     progress(30);
@@ -453,7 +460,10 @@ pub fn wave_export(
                         &temp,
                         &settings,
                         control.cancelled.clone(),
-                        std::sync::Arc::new(|_| {}),
+                        {
+                            let report = progress.clone();
+                            std::sync::Arc::new(move |p| report(30 + ((p as u16 * 65) / 100) as u8))
+                        },
                     )?;
                 }
                 let measured =

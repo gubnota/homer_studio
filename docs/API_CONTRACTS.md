@@ -167,3 +167,8 @@ Add exact payloads, state transitions, and errors here as each later stage lands
 - Export UI blocks overlapping video placements before destination selection; explicit Arrange resolves them through existing placement helpers. Preparation uses indeterminate progress; enqueue success closes the dialog and shows queued/job progress. Preparation/command errors remain inline for retry. Native export commands/length policy are unchanged.
 
 - Both selected and combined MP4 exports require audio and video stream durations within 150 ms of the chosen duration; missing/mismatched streams return INVALID_EXPORT_DURATION. Held coverage is presentation-only; no persisted schema changes.
+
+## v0.3.6 non-destructive fragments
+- Video placements add optional `assetId`, `sourceStartMs` (default 0), `sourceDurationMs` (full asset duration). Legacy records use placement ID as asset ID. Splits/copies keep unique placement IDs and share immutable assets; bounds are checked against app-owned metadata. Folder/archive import preserves placement IDs/ranges while remapping asset IDs. Relink preserves all placements of the replaced asset.
+- Main audio may overlap and mixes through the same preview/export engine as SFX. Cross-lane moves preserve requested placement time and do not ripple other fragments. Renderer keeps existing soundtrack row assignments during the editing session.
+- Selected video exports requiring encoding use 30 fps to establish a valid filter frame rate before cloning trimmed final frames. Core reports observed encoding progress, limits FFmpeg threads and verifies both output stream lengths before publication.
