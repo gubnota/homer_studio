@@ -64,8 +64,9 @@ export async function open(options:Parameters<typeof nativeOpen>[0]={}):Promise<
   const response=await serverRequest('/api/projects');const projects=await response.json() as {name:string;path:string}[]
   return new Promise<string|null>(resolve=>{const backdrop=document.createElement('div');backdrop.className='wave-dialog-backdrop';const panel=document.createElement('section');panel.className='wave-dialog';panel.setAttribute('role','dialog');panel.setAttribute('aria-label','Open server project');const title=document.createElement('h2');title.textContent='Open project';panel.append(title);if(!projects.length){const empty=document.createElement('p');empty.textContent='No manuscript projects saved on this server yet.';panel.append(empty)}for(const project of projects){const button=document.createElement('button');button.textContent=project.name;button.onclick=()=>{cleanup();backdrop.remove();resolve(project.path)};panel.append(button)}const cancel=document.createElement('button');cancel.textContent='Cancel';const dismiss=()=>{cleanup();backdrop.remove();resolve(null)};cancel.onclick=dismiss;const cleanup=browserDialog(panel,dismiss);panel.append(cancel);backdrop.append(panel);document.body.append(backdrop);panel.focus()})
  }
- const file=await new Promise<File|null>(resolve=>{const input=document.createElement('input');input.type='file';input.accept=(options.filters||[]).flatMap(f=>f.extensions.map(e=>'.'+e)).join(',');input.onchange=()=>resolve(input.files?.[0]||null);input.oncancel=()=>resolve(null);input.click()})
- return file?uploadFile(file,file.name):null
+ const file=await new Promise<File[]|null>(resolve=>{const input=document.createElement('input');input.type='file';input.multiple=!!options.multiple;input.accept=(options.filters||[]).flatMap(f=>f.extensions.map(e=>'.'+e)).join(',');input.hidden=true;const finish=(files:File[]|null)=>{input.remove();resolve(files)};input.onchange=()=>finish(input.files?.length?Array.from(input.files):null);input.oncancel=()=>finish(null);document.body.append(input);input.click()})
+ if(!file)return null
+ const paths:string[]=[];for(const item of file)paths.push(await uploadFile(item,item.name));return options.multiple?paths:paths[0]!
 }
 export async function save(options:Parameters<typeof nativeSave>[0]={}):Promise<string|null>{
  if(isDesktop())return nativeSave(options)

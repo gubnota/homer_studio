@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { voiceAudioKey, voiceComplete, reconcileVoiceProduction, projectDuration, blankTimeline, clipDuration, clipEnd, formatWaveTime, sourceClip, timelineDuration } from '../src/shared/waveStudio'
+import { placeVideo, videosOverlap, arrangeVideos, videoFrame, voiceAudioKey, voiceComplete, reconcileVoiceProduction, projectDuration, blankTimeline, clipDuration, clipEnd, formatWaveTime, sourceClip, timelineDuration } from '../src/shared/waveStudio'
 import { rememberVoiceVersions, restoreVoiceOriginal, recoverVoiceVersions, packSfxRows, insertMain, transferClip, replaceRange, joinCandidateIds, assignVoice, changeSpeed, historyEdit, historyRedo, historyUndo, insertSilence, moveClip, removeRange, splitAt } from '../src/shared/waveStudioEdits'
 const source = { id: crypto.randomUUID(), name: 'Narration', durationMs: 10000, channels: 2 }
 const original = () => ({ ...blankTimeline(), clips: [sourceClip(source)] })
@@ -93,4 +93,12 @@ describe('saved voice versions',()=>{
   const back=assignVoice(j,0,10000,alex)
   expect(back.clips[0]!.sourceId).toBe(source.id);expect(back.voices[0]!.production!.status).toBe('generated')
  })
+})
+
+describe('video timeline placement and frames',()=>{
+ const videos=[{id:'a',name:'First',startMs:1000,durationMs:2000},{id:'b',name:'Second',startMs:5000,durationMs:1000}]
+ it('uses a whole free interval and permits touching boundaries',()=>{expect(placeVideo(videos,1000,0)).toBe(0);expect(placeVideo(videos,2500,0)).toBe(6000);expect(placeVideo(videos,2000,3000)).toBe(3000)})
+ it('excludes the moved clip and rejects overflow or invalid positions',()=>{expect(placeVideo(videos,2000,1500,'a')).toBe(1500);expect(()=>placeVideo(videos,1000,86400000)).toThrow();expect(()=>placeVideo(videos,1000,NaN)).toThrow()})
+ it('resolves black, playing, held and backward-seek frames independent of selection',()=>{expect(videoFrame(videos,0)).toBeNull();expect(videoFrame(videos,1500)).toMatchObject({video:{id:'a'},timeMs:500,held:false});expect(videoFrame(videos,4000)).toMatchObject({video:{id:'a'},timeMs:1999,held:true});expect(videoFrame(videos,5000)).toMatchObject({video:{id:'b'},timeMs:0,held:false});expect(videoFrame(videos,9000)).toMatchObject({video:{id:'b'},timeMs:999,held:true});expect(videoFrame(videos,1000)?.video.id).toBe('a')})
+ it('arranges legacy overlaps explicitly while preserving input',()=>{const old=[videos[0]!,{...videos[1]!,startMs:2000}];expect(videosOverlap(old)).toBe(true);const next=arrangeVideos(old);expect(next[1]?.startMs).toBe(3000);expect(videosOverlap(next)).toBe(false);expect(old[1]?.startMs).toBe(2000)})
 })

@@ -4,7 +4,7 @@ import {StudioModal} from './components/StudioModal'
 import {notify} from './components/StudioToast'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { createContext, useContext, useEffect, useReducer, useRef, useState, type PropsWithChildren } from 'react'
-import { blankTimeline, reconcileVoiceProduction, sourceClip, timelineDuration, type WaveProject, type WaveSource, type WaveTimeline, type WaveView, type WaveVideo } from '../../shared/waveStudio'
+import { placeVideo, videosOverlap, blankTimeline, reconcileVoiceProduction, sourceClip, timelineDuration, type WaveProject, type WaveSource, type WaveTimeline, type WaveView, type WaveVideo } from '../../shared/waveStudio'
 import { recoverVoiceVersions, historyEdit, historyRedo, historyUndo, insertMain, type TimelineHistory } from '../../shared/waveStudioEdits'
 import { errorMessage, hasBackend } from './native'
 import { waveApi } from './waveStudioNative'
@@ -29,7 +29,7 @@ interface Context {
  operation:{id:string;label:string;progress:number}|null;cancelOperation:()=>void;project: WaveProject | null; history: TimelineHistory; view: WaveView; setView: React.Dispatch<React.SetStateAction<WaveView>>
  edit: (timeline: WaveTimeline, sources?: WaveSource[]) => void; undo: () => void; redo: () => void; rename: (name: string) => void
  busy: boolean; error: string; setError: (error: string) => void; saveStatus: string; flush: () => Promise<void>
- openBundle:(path:string|File)=>Promise<boolean>; deleteProject:(id:string)=>Promise<void>; setVideos:(videos:WaveVideo[])=>void; importVideo:(path:string,at:number)=>Promise<void>; create: () => Promise<boolean>; open: (id: string) => Promise<boolean>; importAudio: (kind: 'file' | 'memo' | 'sound', value: string, mode?: 'insert' | 'append' | 'replace' | 'sfx', at?: number) => Promise<void>; addSource: (source: WaveSource, at?: number, lane?: 'main' | 'sfx') => void; rememberOriginal: () => void; restoreOriginal: () => void
+ openBundle:(path:string|File)=>Promise<boolean>; deleteProject:(id:string)=>Promise<void>; setVideos:(videos:WaveVideo[])=>void; importVideo:(path:string,at:number)=>Promise<void>; importVideos:(paths:string[],at:number)=>Promise<void>; create: () => Promise<boolean>; open: (id: string) => Promise<boolean>; importAudio: (kind: 'file' | 'memo' | 'sound', value: string, mode?: 'insert' | 'append' | 'replace' | 'sfx', at?: number) => Promise<void>; addSource: (source: WaveSource, at?: number, lane?: 'main' | 'sfx') => void; rememberOriginal: () => void; restoreOriginal: () => void
 }
 const WaveContext = createContext<Context | null>(null)
 export function useOptionalWaveStudio(): Context | null { return useContext(WaveContext) }
@@ -39,11 +39,12 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
  const [state, rawDispatch] = useReducer(reducer, initial), [view, rawSetView] = useState<WaveView>(defaultView)
  const [operation,setOperation]=useState<{id:string;label:string;progress:number}|null>(null)
  const restoring=useRef(true)
+ const batchCancelled=useRef(false)
  const activeImport=useRef<string|null>(null)
  const busyRef=useRef(false), uploadAbort=useRef<AbortController|null>(null)
  const [openingBundle,setOpeningBundle]=useState(false)
- async function importing<T>(label:string,fn:(id:string)=>Promise<T>):Promise<T>{if(activeImport.current)throw new Error("Finish or cancel the active import first.");const id=crypto.randomUUID();activeImport.current=id;setOperation({id,label,progress:0});let polling=false;const timer=window.setInterval(()=>{if(polling)return;polling=true;void waveApi.operationStatus(id).then(s=>{if(s&&activeImport.current===id)setOperation(s)}).catch(()=>{}).finally(()=>{polling=false})},500);try{return await fn(id)}finally{window.clearInterval(timer);if(activeImport.current===id){activeImport.current=null;setOperation(null)}}}
- function cancelOperation():void{uploadAbort.current?.abort();if(activeImport.current)void waveApi.cancelOperation(activeImport.current).catch(e=>setError(errorMessage(e)))}
+ async function importing<T>(label:string,fn:(id:string)=>Promise<T>):Promise<T>{if(activeImport.current)throw new Error("Finish or cancel the active import first.");const id=crypto.randomUUID();activeImport.current=id;setOperation({id,label,progress:0});let polling=false;const timer=window.setInterval(()=>{if(polling)return;polling=true;void waveApi.operationStatus(id).then(s=>{if(s&&activeImport.current===id)setOperation({...s,label})}).catch(()=>{}).finally(()=>{polling=false})},500);try{return await fn(id)}finally{window.clearInterval(timer);if(activeImport.current===id){activeImport.current=null;setOperation(null)}}}
+ function cancelOperation():void{batchCancelled.current=true;uploadAbort.current?.abort();if(activeImport.current)void waveApi.cancelOperation(activeImport.current).catch(e=>setError(errorMessage(e)))}
  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [saveStatus, setSaveStatus] = useState('Saved')
  const current = useRef(state)
  function dispatch(action: Action): void { current.current = reducer(current.current, action); rawDispatch(action) }
@@ -107,8 +108,9 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
  async function create(): Promise<boolean> { return task(async () => { await drain(); load(await waveApi.create('Untitled narration')) }) }
  async function open(id: string): Promise<boolean> { return task(async () => { await drain(); load(await waveApi.get(id)); window.location.hash = 'wave-studio' }) }
  async function deleteProject(id:string):Promise<void>{await drain();await waveApi.delete(id);if(current.current.project?.id===id){current.current=initial;dispatch({kind:'clear'});setView(defaultView);savedView.current=JSON.stringify(defaultView);savedChange.current=0;revision.current=0;localStorage.removeItem('homer.wave.lastProject')}}
- function setVideos(videos:WaveVideo[]):void{dispatch({kind:'videos',videos})}
- async function importVideo(path:string,at:number):Promise<void>{await task(async()=>{const origin=current.current.project?.id,video=await importing('Preparing video',id=>waveApi.importVideo(path,id));let p=current.current.project;if(p?.id!==origin)throw new Error('Project changed during video import. Try again.');if(!p){p=await waveApi.create(video.name);load(p)}setVideos([...(p.videos||[]),{...video,startMs:at}]);setView(v=>({...v,selectedId:video.id,...(timelineDuration(p!.timeline)===0&&!p!.videos?.length?{offsetMs:0,spanMs:Math.max(1000,(at+video.durationMs)*1.04)}:{spanMs:Math.max(v.spanMs,at+video.durationMs)})}))})}
+ function setVideos(videos:WaveVideo[]):void{if(videosOverlap(videos)){setError('Video fragments cannot overlap. Arrange them sequentially first.');return}dispatch({kind:'videos',videos})}
+ async function importVideos(paths:string[],at:number):Promise<void>{await task(async()=>{batchCancelled.current=false;let position=at;for(let i=0;i<paths.length;i++){if(batchCancelled.current)throw new Error(`Import cancelled. ${i} of ${paths.length} videos added; remaining files were not imported.`);try{const origin=current.current.project?.id,video=await importing(`Preparing video ${i+1} of ${paths.length}`,id=>waveApi.importVideo(paths[i]!,id));let p=current.current.project;if(p?.id!==origin)throw new Error('Project changed during video import. Try again.');if(!p){p=await waveApi.create(video.name);load(p)}if(videosOverlap(p.videos||[]))throw new Error('Arrange existing overlapping videos before adding more.');const start=placeVideo(p.videos||[],video.durationMs,position);setVideos([...(p.videos||[]),{...video,startMs:start}]);position=start+video.durationMs;setView(v=>({...v,selectedId:video.id,spanMs:Math.max(v.spanMs,position*1.04)}));if(start!==at&&i===0)setError(`Video placed at ${(start/1000).toFixed(3)}s to avoid overlap.`)}catch(e){throw new Error(`${errorMessage(e)} (${i} of ${paths.length} videos added; unfinished: ${paths.slice(i).map(p=>p.split('/').pop()).join(', ')})`)}}})}
+ async function importVideo(path:string,at:number):Promise<void>{await importVideos([path],at)}
  function edit(timeline: WaveTimeline, sources?: WaveSource[]): void { dispatch({ kind: 'edit', timeline: reconcileVoiceProduction(timeline), sources }) }
  function addSource(source: WaveSource, at?: number, lane: 'main' | 'sfx' = 'sfx'): void {
    const p = current.current.project; if (!p) return
@@ -125,12 +127,13 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
      if (!p) { p = await waveApi.create(source.name.replace(/\.[^.]+$/, '')); load(p) }
      const timeline = mode === 'replace' ? { ...p.timeline, clips: [], voices: [] } : p.timeline
      const position = mode === 'append' ? Math.max(0, ...timeline.clips.map(c => c.startMs + (c.sourceEndMs - c.sourceStartMs) / c.speed)) : mode === 'replace' ? 0 : Math.max(0, at ?? viewRef.current.selection?.[0] ?? viewRef.current.playheadMs)
-     const next = mode === 'sfx' ? { ...timeline, sfx: [...timeline.sfx, sourceClip(source, position, true)] } : insertMain(timeline, sourceClip(source, position), position)
+     if(position+source.durationMs>86400000)throw new Error('Audio would exceed the 24-hour timeline limit. Choose an earlier position.')
+     const next = mode === 'sfx' ? { ...timeline, sfx: [...timeline.sfx, sourceClip(source, position)] } : insertMain(timeline, sourceClip(source, position), position)
      edit(next, [...p.sources, source]); setView(v => ({ ...v, ...(timelineDuration(p!.timeline) === 0 || mode === 'replace' ? { offsetMs: 0, spanMs: Math.max(1000, timelineDuration(next) * 1.04) } : {}), playheadMs: position, selection: null, selectedId: null })); window.location.hash = 'wave-studio'
    })
  }
  function rememberOriginal(): void { if (current.current.project && !current.current.project.voiceOriginal) dispatch({ kind: 'original', timeline: current.current.project.timeline }) }
  function restoreOriginal(): void { const p = current.current.project; if (p?.voiceOriginal) { edit(p.voiceOriginal); dispatch({ kind: 'original', timeline: null }) } }
- const value: Context = { operation,cancelOperation,project: state.project, history: state.history, view, setView, edit, undo: () => dispatch({ kind: 'undo' }), redo: () => dispatch({ kind: 'redo' }), rename: name => dispatch({ kind: 'name', name }), busy, error, setError, saveStatus, flush: drain, deleteProject, setVideos, importVideo, create, open, openBundle, importAudio, addSource, rememberOriginal, restoreOriginal }
+ const value: Context = { operation,cancelOperation,project: state.project, history: state.history, view, setView, edit, undo: () => dispatch({ kind: 'undo' }), redo: () => dispatch({ kind: 'redo' }), rename: name => dispatch({ kind: 'name', name }), busy, error, setError, saveStatus, flush: drain, deleteProject, setVideos, importVideo, importVideos, create, open, openBundle, importAudio, addSource, rememberOriginal, restoreOriginal }
  return <WaveContext.Provider value={value}>{children}{openingBundle&&<div className="wave-modal-backdrop"><StudioModal title="Opening project" onClose={cancelOperation}><h2>{operation?.label||'Opening project'}</h2><p>Restoring audio, video references and voice versions.</p><progress max={100} value={operation?.progress||0}/><p>{operation?.progress||0}%</p><button onClick={cancelOperation}>Cancel</button></StudioModal></div>}</WaveContext.Provider>
 }

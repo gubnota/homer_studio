@@ -56,3 +56,30 @@ export function reconcileVoiceProduction(t: WaveTimeline): WaveTimeline {
 }
 
 export const projectDuration = (p: WaveProject) => Math.max(timelineDuration(p.timeline),...(p.videos || []).map(v=>v.startMs+v.durationMs))
+
+/** Find a complete free interval, keeping existing references in place. */
+export function placeVideo(videos: WaveVideo[], durationMs: number, requested: number, excludeId?: string): number {
+ if (!Number.isFinite(requested) || !Number.isFinite(durationMs) || durationMs <= 0) throw new Error('Invalid video position or duration.')
+ let start = Math.max(0, requested)
+ for (const video of videos.filter(v => v.id !== excludeId).sort((a,b) => a.startMs-b.startMs)) {
+  if (start + durationMs <= video.startMs) break
+  if (start < video.startMs + video.durationMs) start = video.startMs + video.durationMs
+ }
+ if (start + durationMs > 86400000) throw new Error('Video would exceed the 24-hour timeline limit.')
+ return start
+}
+export function videosOverlap(videos: WaveVideo[]): boolean {
+ const sorted = [...videos].sort((a,b) => a.startMs-b.startMs)
+ return sorted.some((v,i) => i > 0 && v.startMs < sorted[i-1]!.startMs + sorted[i-1]!.durationMs)
+}
+export function arrangeVideos(videos: WaveVideo[]): WaveVideo[] {
+ const placed: WaveVideo[] = []
+ for (const video of [...videos].sort((a,b) => a.startMs-b.startMs)) placed.push({...video,startMs:placeVideo(placed,video.durationMs,video.startMs)})
+ return placed
+}
+export function videoFrame(videos: WaveVideo[], playheadMs: number): {video: WaveVideo; timeMs: number; held: boolean} | null {
+ const video = [...videos].sort((a,b) => b.startMs-a.startMs).find(v => v.startMs <= playheadMs)
+ if (!video) return null
+ const held = playheadMs >= video.startMs + video.durationMs
+ return {video, held, timeMs: Math.max(0, Math.min(playheadMs-video.startMs, video.durationMs-1))}
+}
