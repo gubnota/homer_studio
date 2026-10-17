@@ -9,6 +9,7 @@
     "test": "vitest run",
     "build": "npm run typecheck && npm test && npm run build:web",
     "build:web": "vite build",
+    "clean": "node scripts/clean.mjs",
     "test:integration": "cargo test -p homer-core --features server services::exports::tests::ffmpeg_exports_quoted_unicode_paths_and_mixed_audio",
     "test:smoke": "node scripts/smoke-app.mjs",
     "pack:mac": "tauri build --bundles app && node scripts/verify-release.mjs --app",

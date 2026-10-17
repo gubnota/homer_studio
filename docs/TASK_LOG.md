@@ -1,5 +1,9 @@
 # Task log
 
+## 2026-10-17 — Development folder cleanup
+- Added `npm run clean` with a dry run and allowlisted build-output removal. The initial preview found 24.85 GiB; optional local Python environments and downloaded models require separate flags, with model deletion explicitly confirmed.
+- Updated English/Russian README instructions and added fixture tests for project/model preservation and symlink refusal. Existing `.wavehs` packages and Application Support are outside the command's scope.
+
 ## 2026-09-23 — English narration and model setup
 - Approved plan: `docs/IMPLEMENTATION_PLAN_NARRATION_EDITING_AND_MODEL_SETUP.md`. Commits are local; pushing is deferred. The user's heading-font change in `src/renderer/styles/app.css` is deliberately untouched.
 - Render Queue now exposes actual chunk progress, elapsed phase, bounded logs/errors, Select all/Deselect all/Clean, and cancel. Chapter export/delete and Sound Studio's Kind modal, selection controls, and improved spacing are in place. Save-dialog permission and explicit macOS icon verification were added.

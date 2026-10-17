@@ -81,6 +81,17 @@ Quit Homer Studio before replacing it. Open the new DMG, drag **Homer Studio** i
 
 To run type checks, tests, and build only the browser editor, run `bun run build`. To verify packaged startup, run `bun run test:smoke` after packaging. You can use `npm run` in place of `bun run` for all scripts. For the Linux bundle, follow [the Linux build instructions](docs/LINUX_SERVER.md).
 
+### Reclaim development disk space
+
+Quit Homer Studio and any development server first. From the repository root, preview or remove generated build output:
+
+```sh
+npm run clean -- --dry-run
+npm run clean
+```
+
+This removes the two Rust `target/` folders and disposable web/test caches. The dry run reports the current size; it showed 24.85 GiB on the development Mac when this command was added. The next build will recreate these files. To also remove repository-local Python environments, run `npm run clean -- --runtimes`; you will need to reinstall those environments before using local voice workers. To preview downloaded repository-local model weights, run `npm run clean -- --models --dry-run`. Only `npm run clean -- --models --yes` deletes those weights; they will need to be downloaded again. The command never removes `.wavehs` projects, recordings, Application Support data, installed apps, Git history, `node_modules`, or the separate `release/` and `release-artifacts/` folders.
+
 Create a project in a folder you control, then choose, drop, or paste a TXT or Markdown manuscript. Homer Studio stores a readable `project.json` manifest and generated files inside that project folder.
 
 ## Local tool locations

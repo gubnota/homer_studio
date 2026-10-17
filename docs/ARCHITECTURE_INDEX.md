@@ -1,5 +1,7 @@
 # Architecture index
 
+- `scripts/clean.mjs`: allowlisted repository build cleanup with optional local Python environments and explicitly confirmed downloaded models; does not touch project or app data.
+
 ## Reference prototype
 - `.gitignore`: excludes `audio_studio_ui/` and `.DS_Store`.
 - `audio_studio_ui/index.html`: downloaded SPA entry, including hosted auth/tracking.
