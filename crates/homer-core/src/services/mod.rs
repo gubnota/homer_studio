@@ -31,3 +31,8 @@ pub mod wave_processing;
 pub mod wave_video;
 
 pub mod wave_bundle;
+
+pub mod wave_voice_audio;
+
+#[cfg(all(test, feature = "server", not(feature = "desktop")))]
+mod wave_audio_tests;

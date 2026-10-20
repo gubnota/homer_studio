@@ -73,8 +73,12 @@ def main():
                 subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", str(source)], check=True)
                 upload = json.loads(request("/api/upload?name=fixture.mp3", source.read_bytes(), method="POST")[0])["path"]
                 project = command("wave_create", name="HTTP integration fixture")
-                audio = command("wave_import", kind="file", path=upload, requestId=str(uuid.uuid4()))
+                audio = command("wave_import", projectId=project["id"], kind="file", path=upload, requestId=str(uuid.uuid4()))
                 assert 1900 < audio["durationMs"] < 2200
+                package = Path(command("wave_project_storage",id=project["id"])["folder"])
+                assert package.suffix == ".wavehs" and (package/"media"/(audio["id"]+".wav")).is_file()
+                assert not list((temp/"data/wave-studio/assets").glob("*.wav")), "Project imports must not grow global assets"
+                request("/api/command/wave_locate_project",{"id":project["id"],"directory":"/etc"},status=400)
                 clip = {"id": str(uuid.uuid4()), "sourceId": audio["id"], "name": audio["name"],
                         "startMs": 0, "sourceStartMs": 0, "sourceEndMs": 2000, "speed": 1,
                         "gainDb": 0, "fadeInMs": 0, "fadeOutMs": 0}
@@ -239,7 +243,7 @@ def main():
                 user_audio = Path("/Users/vm/Downloads/2026-10-08 14.26.46.m4a")
                 if user_audio.is_file():
                     uploaded = json.loads(request("/api/upload?name=user.m4a", user_audio.read_bytes(), method="POST")[0])["path"]
-                    imported = command("wave_import", kind="file", path=uploaded, requestId=str(uuid.uuid4()))
+                    imported = command("wave_import", projectId=project["id"], kind="file", path=uploaded, requestId=str(uuid.uuid4()))
                     assert abs(imported["durationMs"] - 29312) < 150
                     print("User M4A import passed: 29.312 seconds")
                 print("Combined video integration passed: overlap rejection, black lead, held gaps/tail, edited stereo audio and cancellation.")
@@ -258,6 +262,8 @@ def main():
                 restored = command("wave_import_bundle", path=bundle)
                 assert restored["id"] != project["id"]
                 assert restored["sources"][0]["id"] != audio["id"]
+                restored_folder = Path(command("wave_project_storage", id=restored["id"])["folder"])
+                assert len(list((restored_folder / "media").glob("*.wav"))) == len(restored["sources"]), "Archive collision remapping must not duplicate package audio"
                 assert restored["timeline"]["clips"][0]["sourceId"] == restored["sources"][0]["id"]
                 document = Path(bundle).read_bytes()
                 assert document.startswith(b"WAVEHS02")
@@ -344,6 +350,7 @@ def main():
                 assert command("wave_purge") == 1
                 assert command("wave_deleted") == []
                 assert request(url, headers={"Range": "bytes=0-3"}, status=206)[0] == b"RIFF"
+                assert not list((temp/"data/wave-studio/assets").glob("*.wav")), "Round-trips and SFX must not write global Wave assets"
                 print("HTTP integration passed: authentication, paths, MP3/peaks, ranged playback, WAV/M4A, compressed/legacy bundles with voice versions, SFX and streamed recording.")
             finally:
                 server.terminate()

@@ -44,13 +44,14 @@ def generate(request, model_dir):
         if _vc_model is None:
             _vc_model = ChatterboxVC.from_local(str(model_dir), device=device)
             _vc_builtin = _vc_model.ref_dict
-        if not request.get("referencePath"):
-            _vc_model.ref_dict = _vc_builtin
+        # Always reset conditioning before selecting the explicit target. A failed/custom
+        # conversion must never leak its previous speaker into the next request.
+        _vc_model.ref_dict = _vc_builtin
         try:
             with torch.inference_mode():
                 wave = _vc_model.generate(audio=request["sourcePath"], target_voice_path=request.get("referencePath"))
                 result = io.BytesIO()
-                torchaudio.save(result, wave.cpu(), _vc_model.sr, format="wav")
+                torchaudio.save(result, wave.cpu(), _vc_model.sr, format="wav", encoding="PCM_F", bits_per_sample=32)
                 return result.getvalue()
         finally:
             if device == "mps":
@@ -78,7 +79,7 @@ def generate(request, model_dir):
             wave = _model.generate(request["prompt"].strip(), audio_prompt_path=request.get("referencePath"),
                                    exaggeration=exaggeration, cfg_weight=cfg_weight)
             result = io.BytesIO()
-            torchaudio.save(result, wave.cpu(), _model.sr, format="wav")
+            torchaudio.save(result, wave.cpu(), _model.sr, format="wav", encoding="PCM_F", bits_per_sample=32)
             return result.getvalue()
     finally:
         if device == "mps":

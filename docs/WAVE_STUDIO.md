@@ -1,6 +1,6 @@
 # Wave Studio
 
-Wave Studio opens by default. Import or drop WAV, MP3, M4A, AAC, FLAC or WebM audio. Later imports offer insertion at a chosen time, append, sound-effect overlay or narration replacement. Projects save automatically in app data independently of chapter projects and Voice Memos.
+Wave Studio opens by default. Import or drop WAV, MP3, M4A, AAC, FLAC or WebM audio. Later imports offer insertion at a chosen time, append, sound-effect overlay or narration replacement. Projects autosave in their working `.wavehs` folders independently of chapter projects and Voice Memos.
 
 ## Editing
 - Drag across narration to select; drag selection handles to refine. Select all uses Cmd+A.
@@ -10,16 +10,22 @@ Wave Studio opens by default. Import or drop WAV, MP3, M4A, AAC, FLAC or WebM au
 - Insert silence offers 0.25/0.5/1/2 seconds or a custom duration. Select silence to change its length, or drag its right edge.
 - Drag a fragment title (or Option-drag) to move it. The insertion preview preserves other narration; Shift explicitly swaps with a fragment.
 - Speed supports 0.85–1.20×, including custom values such as 1.08×. Pitch is preserved; duration and annotations follow the edit.
-- The inspector adjusts clip gain/fades and SFX trim, placement, gain, mute and duplication. Normalize measures the isolated fragment peak and targets −1 dB, with gain capped at +6 dB; silence reports an error.
+- The inspector adjusts clip gain/fades and SFX trim, placement, gain, mute and duplication. Normalize selection measures the rendered range, selected fragments or voice passage, including gains, fades and overlaps. One shared adjustment targets −1 dBFS and preserves relative levels; gain limits are reported. Partial fragments split at selection boundaries in one undoable edit. Time ranges affect narration; sound effects participate only when explicitly selected. Silence reports an error.
 - Drag fragment titles vertically between narration and SFX. Moving SFX into narration shifts later audio and annotations; moving narration to SFX leaves silence to preserve timing.
 
 ## Voices and sound effects
-Voice assigns the selected passage a colored annotation. Edit canonical voice names, colors, notes and model provider in Voices. Assignment itself performs no conversion. Apply tagged voices queues Original Chatterbox conversion, previews each output and replaces narration only after acceptance. Nonoverlapping passages are split into at most 15-second chunks; small duration differences are fitted to the original range, larger differences fail explicitly. Accepted audio is heard in playback and included in export. Restore original voices restores the full timeline saved before the first acceptance. Optional model setup remains an explicit Settings action.
+Voice assigns the selected passage a colored annotation. Edit canonical voice names, colors, notes and model provider in Voices. Assignment itself performs no conversion. Apply tagged voices queues Original Chatterbox conversion from the preserved original recording, previews each output and replaces narration only after acceptance. Nonoverlapping passages are split into at most 15-second chunks, processed consistently as one passage and fitted to exact duration. Sample-rounding differences need no stretching; large duration differences fail explicitly.
+
+Gentle hiss cleanup (6 dB) defaults on. Toggle it while reviewing to compare staged audio without generating the voice again. The converted passage matches the original's loudness, with gentle limiting when needed to keep true peaks at −1 dB. A peak ceiling can prevent an exact loudness match; near-silent results fail clearly. Match original volume repairs an already applied conversion without running AI, with the same comparison and explicit acceptance.
+
+Restore original on a passage retains its original recording and other cached voices through repeated conversions; the full-timeline restore remains available. Undo/Redo includes acceptance and restoration. Original Chatterbox remains required; its English speech-generation label does not add an English-only setting to voice conversion. Reference quality and the model still limit speaker similarity and audio detail. Optional model setup remains an explicit Settings action.
 
 Add SFX opens categories, search and recent assets. The bundled Audience `sitcom_laugh01` defaults to -10 dB on placement; its original remains intact. Intro, outro, rewind, shoosh, riser, suspense, thud, surprised reaction, gong and closing door are also bundled and available in Sound Studio. Choose selection start, center or end/punchline alignment. Transitions snap to nearby clip boundaries. SFX can be imported or copied from saved Sound Studio/Voice Lab clips; the full SFX page manages custom names and categories.
 
 ## Playback and navigation
 Space plays/pauses; Shift+Space plays the selection; Loop repeats it. Transport buttons jump five seconds. Cmd/Ctrl-wheel zooms at the pointer; vertical scrolling reveals soundtrack rows; horizontal or Shift-wheel scrolling pans. +/− zoom, 0 fits the project, and Fit selection focuses a passage. Cmd+Z / Shift+Cmd+Z undo/redo. Sidebar collapse preserves icon tooltips.
+
+Playback prepares the first two bounded chunks before starting and shows buffering if later rendering falls behind. Each request has its own cancellation identity; Play/Stop/Play and seeking cannot let an older cancellation stop a new preview. Audio edits invalidate preview caches. Invalid audio or unavailable output produces an actionable error.
 
 Voice Memos, Voice Lab and Sound Studio can open their audio in Wave Studio. Navigation retains current history; restart restores the project, viewport, playhead, selection and Loop state. Switching projects and normal Quit drain pending saves. Export writes a verified WAV, MP3, M4A, AAC or FLAC mix.
 
@@ -60,3 +66,9 @@ Export opens a format selector: M4A (AAC) or WAV. The selected format controls t
 - Cmd/Ctrl+C copies selected fragments; Cmd/Ctrl+V pastes at the playhead; Cmd/Ctrl+D duplicates after the selection. Copies retain source range, speed, gain and fades. Video copies use the next free interval. Text fields keep normal clipboard shortcuts.
 - Moving between narration and soundtrack lanes retains timing and overlapping playback; other clips and existing soundtrack rows stay in place. Main audio overlap is accepted on save and mixes during playback/export.
 - Keep full length reports encoding progress while generating held frames. Thread limits bound encoder resource use; selected encoded video uses 30 fps. Exports validate both stream lengths, including trimmed/copied sources.
+
+## Working project folders
+- Creating a project or starting its first import, recording or generation asks where to save a `.wavehs` folder. Cancel leaves the current project alone. Audio is stored in that folder’s `media/` directory and edits autosave to `project.json`.
+- Open a `.wavehs` folder directly. Opening an exported archive asks for a new working folder. Keep the entire folder together when moving it; if its previous location is missing, choose its new location when reopening. Save as switches to a new working copy.
+- Legacy projects ask for a destination when opened. Migration verifies copied audio and reclaims old global WAVs only when no project, deleted project, reusable sound or processing result still needs them. Removing a project from recents keeps its package on disk.
+- Reusable sounds, voice samples and standalone recordings retain their independent libraries. Browser projects use server-owned working folders.

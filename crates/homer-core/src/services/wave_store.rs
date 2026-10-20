@@ -26,27 +26,232 @@ pub fn now() -> u64 {
         .as_millis() as u64
 }
 pub fn source_path(app: &AppHandle, id: &str) -> Result<PathBuf, CommandError> {
-    audio_assets::path(&root(app)?, id)
+    source_path_at(&root(app)?, id)
+}
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageStatus {
+    pub folder: Option<String>,
+    pub migrated_bytes: u64,
+    pub reclaimed_bytes: u64,
+}
+fn location_path(base: &Path, id: &str) -> Result<PathBuf, CommandError> {
+    audio_assets::id(id)?;
+    Ok(base.join("locations").join(format!("{id}.json")))
+}
+fn checked_media(folder: &Path, id: &str) -> Result<PathBuf, CommandError> {
+    audio_assets::id(id)?;
+    let owned = folder.canonicalize().map_err(|_| {
+        CommandError::new(
+            "PROJECT_FOLDER_MISSING",
+            "Locate the .wavehs project folder before continuing.",
+        )
+    })?;
+    let media = owned.join("media");
+    if media.exists()
+        && media
+            .canonicalize()
+            .map_err(|e| CommandError::io("Cannot resolve media", e))?
+            != media
+    {
+        return Err(CommandError::new(
+            "UNSAFE_MEDIA",
+            "Project media directory cannot be a link.",
+        ));
+    }
+    let file = media.join(format!("{id}.wav"));
+    if file.exists()
+        && file
+            .canonicalize()
+            .map_err(|e| CommandError::io("Cannot resolve audio", e))?
+            != file
+    {
+        return Err(CommandError::new(
+            "UNSAFE_MEDIA",
+            "Project audio cannot be a link.",
+        ));
+    }
+    Ok(file)
+}
+pub fn project_source_path_at(
+    base: &Path,
+    project_id: &str,
+    id: &str,
+) -> Result<PathBuf, CommandError> {
+    audio_assets::id(project_id)?;
+    let binding = base.join("folders").join(format!("{project_id}.json"));
+    if binding.exists() {
+        let folder: PathBuf = serde_json::from_slice(
+            &fs::read(binding).map_err(|e| CommandError::io("Cannot read project location", e))?,
+        )
+        .map_err(|e| CommandError::internal(e.to_string()))?;
+        let path = checked_media(&folder, id)?;
+        if !path.is_file() {
+            return Err(CommandError::new(
+                "PROJECT_MEDIA_MISSING",
+                "Audio is missing from this .wavehs folder.",
+            ));
+        }
+        return Ok(path);
+    }
+    source_path_at(base, id)
+}
+pub fn source_path_at(base: &Path, id: &str) -> Result<PathBuf, CommandError> {
+    let location = location_path(base, id)?;
+    let library = base.join("library");
+    if library.join("media").join(format!("{id}.wav")).exists() {
+        return checked_media(&library, id);
+    }
+    if location.exists() {
+        let owners: Vec<String> = serde_json::from_slice(
+            &fs::read(location).map_err(|e| CommandError::io("Cannot read audio location", e))?,
+        )
+        .map_err(|e| CommandError::internal(e.to_string()))?;
+        for owner in owners {
+            audio_assets::id(&owner)?;
+            let binding = base.join("folders").join(format!("{owner}.json"));
+            let bytes = match fs::read(binding) {
+                Ok(bytes) => bytes,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(CommandError::io("Cannot read project location", e)),
+            };
+            let folder: PathBuf = serde_json::from_slice(&bytes)
+                .map_err(|e| CommandError::internal(e.to_string()))?;
+            if folder.is_dir() {
+                let path = checked_media(&folder, id)?;
+                if path.is_file() {
+                    return Ok(path);
+                }
+            }
+        }
+        return Err(CommandError::new(
+            "PROJECT_FOLDER_MISSING",
+            "Locate the .wavehs folder containing this audio.",
+        ));
+    }
+    audio_assets::path(base, id)
+}
+fn register_source(app: &AppHandle, source: &Source, project_id: &str) -> Result<(), CommandError> {
+    let path = location_path(&root(app)?, &source.id)?;
+    let mut owners: Vec<String> = if path.exists() {
+        serde_json::from_slice(
+            &fs::read(&path).map_err(|e| CommandError::io("Cannot read audio owners", e))?,
+        )
+        .map_err(|e| CommandError::internal(e.to_string()))?
+    } else {
+        vec![]
+    };
+    if !owners.iter().any(|id| id == project_id) {
+        owners.push(project_id.into());
+    }
+    audio_assets::atomic_json(
+        &root(app)?
+            .join("sources")
+            .join(format!("{}.json", source.id)),
+        source,
+    )?;
+    audio_assets::atomic_json(&path, &owners)
+}
+pub fn require_package(app: &AppHandle, id: &str) -> Result<PathBuf, CommandError> {
+    let folder = bound_folder(app, id)?.ok_or_else(|| {
+        CommandError::new(
+            "PROJECT_DESTINATION_REQUIRED",
+            "Save this project as a .wavehs folder before adding audio.",
+        )
+    })?;
+    let canonical = folder.canonicalize().map_err(|_| {
+        CommandError::new(
+            "PROJECT_FOLDER_MISSING",
+            "Locate the .wavehs project folder before continuing.",
+        )
+    })?;
+    if canonical != folder {
+        return Err(CommandError::new(
+            "UNSAFE_MEDIA",
+            "Project folder location changed. Locate it again.",
+        ));
+    }
+    let p = read_project(&folder.join("project.json"))?;
+    if p.id != id {
+        return Err(CommandError::new(
+            "INVALID_DESTINATION",
+            "This folder belongs to another project.",
+        ));
+    }
+    Ok(folder)
+}
+pub fn storage(app: &AppHandle, id: &str) -> Result<StorageStatus, CommandError> {
+    Ok(StorageStatus {
+        folder: bound_folder(app, id)?.map(|p| p.to_string_lossy().into_owned()),
+        migrated_bytes: 0,
+        reclaimed_bytes: 0,
+    })
+}
+fn read_project(path: &Path) -> Result<Project, CommandError> {
+    if fs::metadata(path)
+        .map_err(|e| CommandError::io("Cannot open Wave project", e))?
+        .len()
+        > 16 * 1024 * 1024
+    {
+        return Err(CommandError::new(
+            "INVALID_WAVE_PROJECT",
+            "Project is too large.",
+        ));
+    }
+    let p: Project = serde_json::from_slice(
+        &fs::read(path).map_err(|e| CommandError::io("Cannot open Wave project", e))?,
+    )
+    .map_err(|e| CommandError::new("INVALID_WAVE_PROJECT", e.to_string()))?;
+    super::wave_studio::validate(&p)?;
+    Ok(p)
+}
+pub fn locate(app: &AppHandle, id: &str, folder: &Path) -> Result<Project, CommandError> {
+    let p = read_project(&folder.join("project.json"))?;
+    if p.id != id {
+        return Err(CommandError::new(
+            "INVALID_DESTINATION",
+            "Choose the folder for this project.",
+        ));
+    }
+    for source in &p.sources {
+        validate_pcm(&checked_media(folder, &source.id)?, source)?;
+    }
+    bind_folder(app, &p, folder)?;
+    for source in &p.sources {
+        register_source(app, source, id)?;
+    }
+    audio_assets::atomic_json(&project_path(app, id)?, &p)?;
+    Ok(p)
 }
 fn project_path(app: &AppHandle, id: &str) -> Result<PathBuf, CommandError> {
     audio_assets::id(id)?;
     Ok(root(app)?.join("projects").join(format!("{id}.json")))
 }
 pub fn load(app: &AppHandle, id: &str) -> Result<Project, CommandError> {
-    let b = fs::read(project_path(app, id)?)
-        .map_err(|e| CommandError::io("Cannot open Wave project", e))?;
-    if b.len() > 16 * 1024 * 1024 {
+    audio_assets::id(id)?;
+    let path = if bound_folder(app, id)?.is_some() {
+        require_package(app, id)?.join("project.json")
+    } else {
+        project_path(app, id)?
+    };
+    let p = read_project(&path)?;
+    if p.id != id {
         return Err(CommandError::new(
             "INVALID_WAVE_PROJECT",
-            "Project is too large.",
+            "Project identity changed.",
         ));
     }
-    let p: Project = serde_json::from_slice(&b)
-        .map_err(|e| CommandError::new("INVALID_WAVE_PROJECT", e.to_string()))?;
-    super::wave_studio::validate(&p)?;
     Ok(p)
 }
-pub fn create(app: &AppHandle, name: &str) -> Result<Project, CommandError> {
+/// Used only to display recents and recover a moved/legacy package; never for editing a missing folder.
+pub fn cached(app: &AppHandle, id: &str) -> Result<Project, CommandError> {
+    read_project(&project_path(app, id)?)
+}
+pub fn create(
+    app: &AppHandle,
+    name: &str,
+    destination: Option<&Path>,
+) -> Result<Project, CommandError> {
     let p = Project {
         schema_version: 1,
         id: uuid::Uuid::new_v4().to_string(),
@@ -60,8 +265,68 @@ pub fn create(app: &AppHandle, name: &str) -> Result<Project, CommandError> {
         videos: vec![],
     };
     super::wave_studio::validate(&p)?;
+    let destination = package_destination(app, destination)?;
+    save_copy_options(app, &p, &destination, false)?;
+    bind_folder(app, &p, &destination)?;
     audio_assets::atomic_json(&project_path(app, &p.id)?, &p)?;
     Ok(p)
+}
+// Isolated desktop document smoke only: the harness sets a UUID-scoped application identifier.
+pub fn smoke_destination_enabled() -> bool {
+    std::env::var("HOMER_SMOKE_IDENTIFIER")
+        .ok()
+        .and_then(|id| {
+            id.strip_prefix("com.homer-studio.smoke.")
+                .map(str::to_owned)
+        })
+        .is_some_and(|id| uuid::Uuid::parse_str(&id).is_ok())
+}
+pub fn package_destination(
+    app: &AppHandle,
+    destination: Option<&Path>,
+) -> Result<PathBuf, CommandError> {
+    let path = match destination {
+        Some(path) => path.to_path_buf(),
+        #[cfg(all(feature = "server", not(feature = "desktop")))]
+        None => root(app)?
+            .join("packages")
+            .join(format!("{}.wavehs", uuid::Uuid::new_v4())),
+        #[cfg(any(feature = "desktop", not(feature = "server")))]
+        None => {
+            if smoke_destination_enabled() {
+                root(app)?
+                    .join("packages")
+                    .join(format!("{}.wavehs", uuid::Uuid::new_v4()))
+            } else {
+                return Err(CommandError::new(
+                    "PROJECT_DESTINATION_REQUIRED",
+                    "Choose a .wavehs project folder.",
+                ));
+            }
+        }
+    };
+    if !path
+        .extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("wavehs"))
+    {
+        return Err(CommandError::new(
+            "INVALID_DESTINATION",
+            "Choose a folder ending in .wavehs.",
+        ));
+    }
+    if path.exists() {
+        return Err(CommandError::new(
+            "DESTINATION_EXISTS",
+            "Choose a new .wavehs project folder.",
+        ));
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| CommandError::new("INVALID_DESTINATION", "Choose a project folder."))?;
+    fs::create_dir_all(parent)
+        .map_err(|e| CommandError::io("Cannot create project destination", e))?;
+    Ok(path)
 }
 pub fn save(app: &AppHandle, mut p: Project, expected: u64) -> Result<Project, CommandError> {
     super::wave_studio::validate_video_placements(&p.videos)?;
@@ -73,20 +338,19 @@ pub fn save(app: &AppHandle, mut p: Project, expected: u64) -> Result<Project, C
             "This Wave project was changed elsewhere. Reopen it before saving.",
         ));
     }
+    let folder = require_package(app, &p.id)?;
     validate_sources(app, &p)?;
     p.revision = expected + 1;
     p.updated_at_ms = now();
-    if let Some(folder) = bound_folder(app, &p.id)? {
-        let include = fs::read(
-            root(app)?
-                .join("folders")
-                .join(format!("{}.options.json", p.id)),
-        )
-        .ok()
-        .and_then(|b| serde_json::from_slice::<bool>(&b).ok())
-        .unwrap_or(false);
-        save_copy_options(app, &p, &folder, include)?;
-    }
+    let include = fs::read(
+        root(app)?
+            .join("folders")
+            .join(format!("{}.options.json", p.id)),
+    )
+    .ok()
+    .and_then(|b| serde_json::from_slice::<bool>(&b).ok())
+    .unwrap_or(false);
+    save_copy_options(app, &p, &folder, include)?;
     audio_assets::atomic_json(&project_path(app, &p.id)?, &p)?;
     Ok(p)
 }
@@ -102,7 +366,7 @@ pub fn list(app: &AppHandle) -> Result<Vec<Project>, CommandError> {
     {
         let entry = entry.map_err(|e| CommandError::io("Cannot inspect project", e))?;
         if let Some(id) = entry.path().file_stem().and_then(|s| s.to_str()) {
-            if let Ok(p) = load(app, id) {
+            if let Ok(p) = load(app, id).or_else(|_| cached(app, id)) {
                 result.push(p);
             }
         }
@@ -121,6 +385,7 @@ pub fn import(
     path: &Path,
     name: &str,
     settings: &Settings,
+    project_id: &str,
 ) -> Result<Source, CommandError> {
     import_controlled(
         app,
@@ -129,6 +394,7 @@ pub fn import(
         settings,
         Default::default(),
         std::sync::Arc::new(|_| {}),
+        project_id,
     )
 }
 pub fn import_controlled(
@@ -138,6 +404,49 @@ pub fn import_controlled(
     settings: &Settings,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     report: std::sync::Arc<dyn Fn(u8) + Send + Sync>,
+    project_id: &str,
+) -> Result<Source, CommandError> {
+    let folder = require_package(app, project_id)?;
+    import_to(
+        app,
+        &folder,
+        path,
+        name,
+        settings,
+        cancel,
+        report,
+        Some(project_id),
+    )
+}
+pub fn import_library(
+    app: &AppHandle,
+    path: &Path,
+    name: &str,
+    settings: &Settings,
+) -> Result<Source, CommandError> {
+    let folder = root(app)?.join("library");
+    fs::create_dir_all(folder.join("media"))
+        .map_err(|e| CommandError::io("Cannot create effects library", e))?;
+    import_to(
+        app,
+        &folder,
+        path,
+        name,
+        settings,
+        Default::default(),
+        std::sync::Arc::new(|_| {}),
+        None,
+    )
+}
+fn import_to(
+    app: &AppHandle,
+    folder: &Path,
+    path: &Path,
+    name: &str,
+    settings: &Settings,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    report: std::sync::Arc<dyn Fn(u8) + Send + Sync>,
+    project_id: Option<&str>,
 ) -> Result<Source, CommandError> {
     if !path.is_file()
         || !matches!(
@@ -162,7 +471,8 @@ pub fn import_controlled(
         ));
     }
     let id = uuid::Uuid::new_v4().to_string();
-    let output = source_path(app, &id)?;
+    let published = checked_media(&folder, &id)?;
+    let output = published.with_file_name(format!(".{id}.part.wav"));
     fs::create_dir_all(output.parent().unwrap())
         .map_err(|e| CommandError::io("Cannot create audio library", e))?;
     let result = (|| {
@@ -208,11 +518,24 @@ pub fn import_controlled(
             duration_ms: speech::probe_duration(&output, settings)? as f64,
             channels: 2,
         };
-        audio_assets::atomic_json(&root(app)?.join("sources").join(format!("{id}.json")), &s)?;
+        if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(CommandError::new("JOB_CANCELLED", "Import cancelled."));
+        }
+        fs::rename(&output, &published)
+            .map_err(|e| CommandError::io("Cannot publish project audio", e))?;
+        if let Some(id) = project_id {
+            register_source(app, &s, id)?;
+        } else {
+            audio_assets::atomic_json(
+                &root(app)?.join("sources").join(format!("{}.json", s.id)),
+                &s,
+            )?;
+        }
         Ok(s)
     })();
     if result.is_err() {
         let _ = fs::remove_file(output);
+        let _ = fs::remove_file(published);
     }
     result
 }
@@ -233,6 +556,9 @@ pub fn validate_sources(app: &AppHandle, p: &Project) -> Result<(), CommandError
                 "Source metadata does not match imported audio.",
             ));
         }
+    }
+    if bound_folder(app, &p.id)?.is_some() {
+        ensure_project_media(app, p, &require_package(app, &p.id)?)?;
     }
     Ok(())
 }
@@ -375,15 +701,215 @@ pub fn save_folder(
     p: &Project,
     destination: &Path,
     include_video: bool,
-) -> Result<(), CommandError> {
+) -> Result<StorageStatus, CommandError> {
+    if !destination
+        .extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("wavehs"))
+    {
+        return Err(CommandError::new(
+            "INVALID_DESTINATION",
+            "Choose a folder ending in .wavehs.",
+        ));
+    }
+    let mut owned = p.clone();
+    let results = root(app)?.join("results");
+    if results.is_dir() {
+        for entry in fs::read_dir(results)
+            .map_err(|e| CommandError::io("Cannot inspect processing results", e))?
+        {
+            let path = entry
+                .map_err(|e| CommandError::io("Cannot inspect processing result", e))?
+                .path();
+            if path.extension().and_then(|v| v.to_str()) != Some("json") {
+                continue;
+            }
+            let value: serde_json::Value = serde_json::from_slice(
+                &fs::read(path)
+                    .map_err(|e| CommandError::io("Cannot read processing result", e))?,
+            )
+            .map_err(|e| CommandError::internal(e.to_string()))?;
+            if value.get("projectId").and_then(|v| v.as_str()) == Some(p.id.as_str()) {
+                if let Some(items) = value.get("sources").and_then(|v| v.as_array()) {
+                    for item in items {
+                        let source: Source = serde_json::from_value(item.clone())
+                            .map_err(|e| CommandError::internal(e.to_string()))?;
+                        if !owned.sources.iter().any(|s| s.id == source.id) {
+                            owned.sources.push(source);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let p = &owned;
+    let mut migrated_bytes = 0;
+    for source in &p.sources {
+        let input = source_path(app, &source.id)?;
+        let target = destination.join("media").join(format!("{}.wav", source.id));
+        if !target.exists() {
+            migrated_bytes += fs::metadata(&input)
+                .map_err(|e| CommandError::io("Cannot inspect source", e))?
+                .len();
+        }
+    }
     save_copy_options(app, p, destination, include_video)?;
+    for source in &p.sources {
+        verify_copy(
+            &source_path(app, &source.id)?,
+            &checked_media(destination, &source.id)?,
+        )?;
+    }
     audio_assets::atomic_json(
         &root(app)?
             .join("folders")
             .join(format!("{}.options.json", p.id)),
         &include_video,
     )?;
-    bind_folder(app, p, destination)
+    bind_folder(app, p, destination)?;
+    for source in &p.sources {
+        register_source(app, source, &p.id)?;
+    }
+    audio_assets::atomic_json(&project_path(app, &p.id)?, p)?;
+    let reclaimed_bytes = reclaim_legacy(app, &p.sources).unwrap_or(0);
+    Ok(StorageStatus {
+        folder: Some(
+            destination
+                .canonicalize()
+                .map_err(|e| CommandError::io("Cannot resolve project", e))?
+                .to_string_lossy()
+                .into(),
+        ),
+        migrated_bytes,
+        reclaimed_bytes,
+    })
+}
+fn verify_copy(a: &Path, b: &Path) -> Result<(), CommandError> {
+    if a == b {
+        return Ok(());
+    }
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    fn digest(path: &Path) -> Result<Vec<u8>, CommandError> {
+        let mut f =
+            fs::File::open(path).map_err(|e| CommandError::io("Cannot verify project media", e))?;
+        let mut hash = Sha256::new();
+        let mut buf = [0u8; 65536];
+        loop {
+            let n = f
+                .read(&mut buf)
+                .map_err(|e| CommandError::io("Cannot verify project media", e))?;
+            if n == 0 {
+                break;
+            }
+            hash.update(&buf[..n]);
+        }
+        Ok(hash.finalize().to_vec())
+    }
+    if digest(a)? != digest(b)? {
+        return Err(CommandError::new(
+            "INVALID_MEDIA",
+            "Saved audio differs from its source. Original audio was retained.",
+        ));
+    }
+    Ok(())
+}
+fn ensure_project_media(app: &AppHandle, p: &Project, folder: &Path) -> Result<(), CommandError> {
+    for source in &p.sources {
+        let target = checked_media(folder, &source.id)?;
+        let input = source_path(app, &source.id)?;
+        copy_media(
+            folder,
+            &input,
+            &PathBuf::from(format!("media/{}.wav", source.id)),
+        )?;
+        verify_copy(&input, &target)?;
+        register_source(app, source, &p.id)?;
+    }
+    Ok(())
+}
+/// Conservative collection: unreadable records block cleanup; only verified migrated candidates are removed.
+fn reclaim_legacy(app: &AppHandle, sources: &[Source]) -> Result<u64, CommandError> {
+    let base = root(app)?;
+    let mut records = Vec::new();
+    for name in ["projects", "trash", "results"] {
+        let dir = base.join(name);
+        if !dir.exists() {
+            continue;
+        }
+        let Ok(entries) = fs::read_dir(dir) else {
+            return Ok(0);
+        };
+        for entry in entries {
+            let Ok(entry) = entry else { return Ok(0) };
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(bytes) = fs::read(path) else {
+                return Ok(0);
+            };
+            let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+                return Ok(0);
+            };
+            records.push((name, value));
+        }
+    }
+    let library = base.join("sfx.json");
+    let sfx = if library.exists() {
+        match fs::read(library) {
+            Ok(b) => match serde_json::from_slice::<serde_json::Value>(&b) {
+                Ok(v) => v.to_string(),
+                Err(_) => return Ok(0),
+            },
+            Err(_) => return Ok(0),
+        }
+    } else {
+        String::new()
+    };
+    let mut bytes = 0;
+    for source in sources {
+        let legacy = audio_assets::path(&base, &source.id)?;
+        if !legacy.is_file() {
+            continue;
+        }
+        if sfx.contains(&source.id) {
+            continue;
+        }
+        let mut referenced = false;
+        for (kind, value) in &records {
+            if !value.to_string().contains(&source.id) {
+                continue;
+            }
+            if *kind == "results" {
+                referenced = true;
+                break;
+            }
+            let Some(id) = value.get("id").and_then(|v| v.as_str()) else {
+                return Ok(0);
+            };
+            let Some(folder) = bound_folder(app, id)? else {
+                referenced = true;
+                break;
+            };
+            match checked_media(&folder, &source.id).and_then(|path| verify_copy(&legacy, &path)) {
+                Ok(()) => (),
+                Err(_) => {
+                    referenced = true;
+                    break;
+                }
+            }
+        }
+        if !referenced {
+            let size = fs::metadata(&legacy)
+                .map_err(|e| CommandError::io("Cannot inspect legacy audio", e))?
+                .len();
+            if fs::remove_file(&legacy).is_ok() {
+                bytes += size;
+            }
+        }
+    }
+    Ok(bytes)
 }
 pub fn save_copy(app: &AppHandle, p: &Project, destination: &Path) -> Result<(), CommandError> {
     save_copy_options(app, p, destination, false)
@@ -414,6 +940,7 @@ pub fn copy_media(folder: &Path, source: &Path, relative: &Path) -> Result<(), C
     let temp = target.with_extension(format!("{}.part", uuid::Uuid::new_v4()));
     let result = (|| {
         fs::copy(source, &temp).map_err(|e| CommandError::io("Cannot copy project media", e))?;
+        verify_copy(source, &temp)?;
         fs::rename(&temp, &target).map_err(|e| CommandError::io("Cannot publish project media", e))
     })();
     if result.is_err() {
@@ -458,6 +985,10 @@ pub fn save_copy_options(
                 &work,
                 &source_path(app, &source.id)?,
                 &PathBuf::from(format!("media/{}.wav", source.id)),
+            )?;
+            verify_copy(
+                &source_path(app, &source.id)?,
+                &checked_media(&work, &source.id)?,
             )?;
         }
         for video in p.videos.iter().filter(|_| include_video) {
@@ -508,7 +1039,7 @@ fn open_copy_controlled(
     app: &AppHandle,
     folder: &Path,
     settings: &Settings,
-    adopt: bool,
+    defer_registration: bool,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     report: std::sync::Arc<dyn Fn(u8) + Send + Sync>,
 ) -> Result<Project, CommandError> {
@@ -545,6 +1076,14 @@ fn open_copy_controlled(
         }
         Ok(path)
     };
+    if let Some(bound) = bound_folder(app, &p.id)? {
+        if bound == folder {
+            return locate(app, &p.id, &folder);
+        }
+        p.id = uuid::Uuid::new_v4().to_string();
+    } else if project_path(app, &p.id)?.exists() {
+        p.id = uuid::Uuid::new_v4().to_string();
+    }
     struct ImportedFiles(Vec<PathBuf>);
     impl Drop for ImportedFiles {
         fn drop(&mut self) {
@@ -566,26 +1105,13 @@ fn open_copy_controlled(
         }
         let old = s.id.clone();
         let path = owned(&old, "wav")?;
-        let imported = if adopt {
-            adopt_audio(app, &path, s)?
-        } else {
-            import_controlled(
-                app,
-                &path,
-                &s.name,
-                settings,
-                cancel.clone(),
-                std::sync::Arc::new(|_| {}),
-            )?
-        };
+        let imported = adopt_audio(app, &folder, &path, s)?;
         completed += 1;
         report((65 + completed * 30 / total.max(1)) as u8);
-        imported_files.0.push(source_path(app, &imported.id)?);
-        imported_files.0.push(
-            root(app)?
-                .join("sources")
-                .join(format!("{}.json", imported.id)),
-        );
+        let output = checked_media(&folder, &imported.id)?;
+        if output != path {
+            imported_files.0.push(output);
+        }
         if (imported.duration_ms - s.duration_ms).abs() > 2. {
             return Err(CommandError::new(
                 "INVALID_MEDIA",
@@ -692,17 +1218,25 @@ fn open_copy_controlled(
             "Project opening cancelled.",
         ));
     }
-    p.id = uuid::Uuid::new_v4().to_string();
     p.revision = 0;
     p.updated_at_ms = now();
-    validate_sources(app, &p)?;
-    audio_assets::atomic_json(&project_path(app, &p.id)?, &p)?;
+    super::wave_studio::validate(&p)?;
+    // Bundle callers finish voice remapping and archive publication before registration.
+    if !defer_registration {
+        audio_assets::atomic_json(&folder.join("project.json"), &p)?;
+        imported_files.0.clear();
+        bind_folder(app, &p, &folder)?;
+        for source in &p.sources {
+            register_source(app, source, &p.id)?;
+        }
+        audio_assets::atomic_json(&project_path(app, &p.id)?, &p)?;
+    }
     imported_files.0.clear();
     report(100);
     Ok(p)
 }
 // Bundle audio is already canonical float PCM. Reuse bytes rather than launching a decoder.
-fn adopt_audio(app: &AppHandle, path: &Path, source: &Source) -> Result<Source, CommandError> {
+fn validate_pcm(path: &Path, source: &Source) -> Result<(), CommandError> {
     let reader = hound::WavReader::open(path)
         .map_err(|_| CommandError::new("INVALID_MEDIA", "Bundled audio is not a readable WAV."))?;
     let spec = reader.spec();
@@ -730,23 +1264,31 @@ fn adopt_audio(app: &AppHandle, path: &Path, source: &Source) -> Result<Source, 
         ));
     }
     drop(reader);
+    Ok(())
+}
+fn adopt_audio(
+    app: &AppHandle,
+    folder: &Path,
+    path: &Path,
+    source: &Source,
+) -> Result<Source, CommandError> {
+    validate_pcm(path, source)?;
     let mut imported = source.clone();
-    imported.id = uuid::Uuid::new_v4().to_string();
-    let output = source_path(app, &imported.id)?;
-    fs::create_dir_all(output.parent().unwrap())
-        .map_err(|e| CommandError::io("Cannot create audio library", e))?;
-    // A hard link avoids a second large disk copy; scratch removal leaves the owned link intact.
-    if fs::hard_link(path, &output).is_err() {
-        fs::copy(path, &output).map_err(|e| CommandError::io("Cannot restore project audio", e))?;
+    if root(app)?
+        .join("sources")
+        .join(format!("{}.json", source.id))
+        .exists()
+    {
+        imported.id = uuid::Uuid::new_v4().to_string();
     }
-    if let Err(e) = audio_assets::atomic_json(
-        &root(app)?
-            .join("sources")
-            .join(format!("{}.json", imported.id)),
-        &imported,
-    ) {
-        let _ = fs::remove_file(output);
-        return Err(e);
+    let output = checked_media(folder, &imported.id)?;
+    if output != path {
+        copy_media(
+            folder,
+            path,
+            &PathBuf::from(format!("media/{}.wav", imported.id)),
+        )?;
+        verify_copy(path, &output)?;
     }
     Ok(imported)
 }
@@ -804,14 +1346,195 @@ mod adoption_tests {
             duration_ms: 100.,
             channels: 2,
         };
-        let imported = adopt_audio(&app, &input, &source).unwrap();
+        let project = create(&app, "Test", None).unwrap();
+        let folder = require_package(&app, &project.id).unwrap();
+        let imported = adopt_audio(&app, &folder, &input, &source).unwrap();
+        register_source(&app, &imported, &project.id).unwrap();
         let output = source_path(&app, &imported.id).unwrap();
         assert_eq!(fs::read(&input).unwrap(), fs::read(&output).unwrap());
         fs::remove_file(input).unwrap();
         assert!(output.is_file());
         let mut invalid = source;
         invalid.duration_ms = 500.;
-        assert!(adopt_audio(&app, &output, &invalid).is_err());
+        assert!(adopt_audio(&app, &folder, &output, &invalid).is_err());
+        fs::remove_dir_all(directory).unwrap();
+    }
+    fn fixture() -> (PathBuf, AppHandle, Source) {
+        let directory = std::env::temp_dir().join(format!("wave-storage-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let app = AppHandle::new(directory.join("data"), directory.clone());
+        let source = Source {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "Legacy".into(),
+            duration_ms: 100.,
+            channels: 2,
+        };
+        let input = audio_assets::path(&root(&app).unwrap(), &source.id).unwrap();
+        fs::create_dir_all(input.parent().unwrap()).unwrap();
+        let mut writer = hound::WavWriter::create(
+            input,
+            hound::WavSpec {
+                channels: 2,
+                sample_rate: 48000,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
+        .unwrap();
+        for _ in 0..9600 {
+            writer.write_sample(0.1f32).unwrap();
+        }
+        writer.finalize().unwrap();
+        audio_assets::atomic_json(
+            &root(&app)
+                .unwrap()
+                .join("sources")
+                .join(format!("{}.json", source.id)),
+            &source,
+        )
+        .unwrap();
+        (directory, app, source)
+    }
+    fn legacy(app: &AppHandle, source: &Source) -> Project {
+        let mut project = create(app, "Legacy", None).unwrap();
+        fs::remove_file(
+            root(app)
+                .unwrap()
+                .join("folders")
+                .join(format!("{}.json", project.id)),
+        )
+        .unwrap();
+        project.sources.push(source.clone());
+        audio_assets::atomic_json(&project_path(app, &project.id).unwrap(), &project).unwrap();
+        project
+    }
+    #[test]
+    fn migration_preserves_shared_trash_and_results_then_reclaims_verified_bytes() {
+        let (directory, app, source) = fixture();
+        let first = legacy(&app, &source);
+        let second = legacy(&app, &source);
+        trash(&app, &second.id, false).unwrap();
+        let global = audio_assets::path(&root(&app).unwrap(), &source.id).unwrap();
+        let bytes = fs::read(&global).unwrap();
+        let a = directory.join("first.wavehs");
+        let status = save_folder(&app, &first, &a, false).unwrap();
+        assert_eq!(status.migrated_bytes, bytes.len() as u64);
+        assert_eq!(status.reclaimed_bytes, 0);
+        assert!(global.is_file());
+        assert_eq!(
+            fs::read(project_source_path_at(&root(&app).unwrap(), &first.id, &source.id).unwrap())
+                .unwrap(),
+            bytes
+        );
+        trash(&app, &second.id, true).unwrap();
+        let b = directory.join("second.wavehs");
+        let status = save_folder(&app, &second, &b, false).unwrap();
+        assert_eq!(status.reclaimed_bytes, bytes.len() as u64);
+        assert!(!global.exists());
+        fs::write(&global, &bytes).unwrap();
+        let result = root(&app).unwrap().join("results").join("pending.json");
+        audio_assets::atomic_json(
+            &result,
+            &serde_json::json!({"projectId":first.id,"sources":[source]}),
+        )
+        .unwrap();
+        assert_eq!(
+            save_folder(&app, &first, &a, false)
+                .unwrap()
+                .reclaimed_bytes,
+            0
+        );
+        assert!(global.is_file());
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn package_manifest_is_authoritative_and_moved_package_requires_relocation() {
+        let (directory, app, source) = fixture();
+        let p = legacy(&app, &source);
+        let folder = directory.join("owned.wavehs");
+        save_folder(&app, &p, &folder, false).unwrap();
+        let mut changed = p.clone();
+        changed.name = "Edited externally".into();
+        changed.revision = 9;
+        audio_assets::atomic_json(&folder.join("project.json"), &changed).unwrap();
+        assert_eq!(load(&app, &p.id).unwrap().revision, 9);
+        assert!(save(&app, p.clone(), 0).is_err());
+        let moved = directory.join("moved.wavehs");
+        fs::rename(folder, &moved).unwrap();
+        assert!(load(&app, &p.id).is_err());
+        assert!(project_source_path_at(&root(&app).unwrap(), &p.id, &source.id).is_err());
+        locate(&app, &p.id, &moved).unwrap();
+        assert_eq!(load(&app, &p.id).unwrap().name, "Edited externally");
+        assert!(
+            project_source_path_at(&root(&app).unwrap(), &p.id, &source.id)
+                .unwrap()
+                .starts_with(moved.canonicalize().unwrap())
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn migration_copy_conflict_and_unreadable_metadata_keep_legacy_audio() {
+        let (directory, app, source) = fixture();
+        let p = legacy(&app, &source);
+        let folder = directory.join("conflict.wavehs");
+        fs::create_dir_all(folder.join("media")).unwrap();
+        audio_assets::atomic_json(&folder.join("project.json"), &p).unwrap();
+        fs::write(
+            folder.join("media").join(format!("{}.wav", source.id)),
+            b"conflicting audio",
+        )
+        .unwrap();
+        assert!(save_folder(&app, &p, &folder, false).is_err());
+        assert!(bound_folder(&app, &p.id).unwrap().is_none());
+        let bad = root(&app).unwrap().join("trash");
+        fs::create_dir_all(&bad).unwrap();
+        fs::write(bad.join("unknown.json"), b"invalid").unwrap();
+        let valid = directory.join("valid.wavehs");
+        assert_eq!(
+            save_folder(&app, &p, &valid, false)
+                .unwrap()
+                .reclaimed_bytes,
+            0
+        );
+        assert!(audio_assets::path(&root(&app).unwrap(), &source.id)
+            .unwrap()
+            .is_file());
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn reusable_library_survives_missing_project_package() {
+        let (directory, app, source) = fixture();
+        let base = root(&app).unwrap();
+        let library = base.join("library");
+        fs::create_dir_all(library.join("media")).unwrap();
+        let media = library.join("media").join(format!("{}.wav", source.id));
+        fs::copy(audio_assets::path(&base, &source.id).unwrap(), &media).unwrap();
+        let project = create(&app, "Library user", None).unwrap();
+        register_source(&app, &source, &project.id).unwrap();
+        fs::remove_dir_all(require_package(&app, &project.id).unwrap()).unwrap();
+        assert_eq!(
+            source_path(&app, &source.id).unwrap(),
+            media.canonicalize().unwrap()
+        );
+        assert!(project_source_path_at(&base, &project.id, &source.id).is_err());
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn cancelled_import_cannot_publish_project_audio() {
+        let (directory, app, source) = fixture();
+        let p = create(&app, "Cancelled", None).unwrap();
+        let folder = require_package(&app, &p.id).unwrap();
+        assert!(import_controlled(
+            &app,
+            &audio_assets::path(&root(&app).unwrap(), &source.id).unwrap(),
+            "Cancelled",
+            &Settings::default(),
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            std::sync::Arc::new(|_| {}),
+            &p.id
+        )
+        .is_err());
+        assert_eq!(fs::read_dir(folder.join("media")).unwrap().count(), 0);
         fs::remove_dir_all(directory).unwrap();
     }
 }

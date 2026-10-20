@@ -24,7 +24,9 @@ export function sourceClip(source: WaveSource, startMs = 0, sfx = false): WaveCl
   return { id: newId(), sourceId: source.id, name: source.name, startMs, sourceStartMs: 0, sourceEndMs: source.durationMs, speed: 1, gainDb: sfx ? -10 : 0, fadeInMs: 0, fadeOutMs: 0 }
 }
 
-export interface WaveProcessingResult { kind: string; projectId: string; revision: number; sources: WaveSource[]; replacements: { startMs: number; endMs: number; sourceId: string; regionId?: string }[]; warnings: string[] }
+export interface WaveAudioComparison {sources: WaveSource[]; replacements: { startMs:number;endMs:number;sourceId:string;regionId?:string }[];warnings:string[]}
+export interface WaveNormalization {gainDb:number;sources:WaveSource[];baked:[string,string][];warnings:string[]}
+export interface WaveProcessingResult { withoutCleanup?:WaveAudioComparison;withCleanup?:WaveAudioComparison; kind: string; projectId: string; revision: number; sources: WaveSource[]; replacements: { startMs: number; endMs: number; sourceId: string; regionId?: string }[]; warnings: string[] }
 
 export function voiceColor(voice: {id: string; color?: string}): string {
  if (voice.color && !['#718392', '#6c7f91'].includes(voice.color.toLowerCase())) return voice.color

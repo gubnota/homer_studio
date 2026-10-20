@@ -316,3 +316,33 @@ Context: Split video ranges must restore the original source and remain portable
 Decision: Add optional asset/source-range fields to schema-1 video placements, retain unique placement IDs, snapshot audio/video in one edit history, allow overlapping narration, and preserve soundtrack row assignments in the renderer session. Normalize encoded selected-video frame rate before padding and bound FFmpeg threads.
 Consequences: Legacy projects remain readable. Copies reuse original assets; relinking updates their placements together. Explicit ripple edits retain their existing semantics.
 Related files: src/shared/waveStudioEdits.ts, src/renderer/src/WaveStudioProvider.tsx, crates/homer-core/src/services/wave_video.rs, crates/homer-core/src/services/wave_store.rs.
+
+# ADR-0045: Defer macOS document window activation until startup completes
+
+Date: 2026-10-09
+Status: Accepted
+
+Context: Finder cold-opening exported `.wavehs` projects delivered Opened before Ready. Creating `main` in that handler made Tauri's configured-window setup abort with “a webview with label `main` already exists.” Reproduced against the installed 0.3.6 app with isolated data.
+Decision: Queue incoming document paths immediately, activate their window only after Ready, and retain window restoration for later opens. Detect extensions through Path so macOS folder URLs ending in `/` are accepted. Exercise the native event ordering through LaunchServices using an isolated signed app copy.
+Consequences: Folder/compressed formats and import contracts stay unchanged. The regression check validates imported media and references, plus repeated and malformed opens; playback, cancellation and other opening routes remain manual checks.
+Related files: src-tauri/src/lib.rs, scripts/smoke-app.mjs, tests/DESKTOP_SMOKE.md.
+
+# ADR-0046: Store Wave audio in required working packages
+
+Date: 2026-10-09
+Status: Accepted
+
+Context: Global `wave-studio/assets` duplicated portable project audio and grew independently of project folders.
+Decision: Require `.wavehs` working folders before durable project media; make their revisioned manifest authoritative and resolve/render audio from their media directory. Preserve independent SFX libraries, legacy formats and schema 1. Migrate by verified copy followed by binding publication; reclaim only when all known references are safe.
+Consequences: Desktop creation/archive extraction needs a destination; moved packages need relinking. Recents removal keeps package files. Unreadable metadata blocks reclamation. Caches remain disposable app data; editing history can still grow within a package.
+Related files: `services/wave_store.rs`, `wave_bundle.rs`, `wave_render.rs`, `wave_processing.rs`, `sfx_store.rs`, `WaveStudioProvider.tsx`, `docs/IMPLEMENTATION_PLAN_PROJECT_AUDIO_STORAGE.md`.
+
+# ADR-0047: Preserve conversion originals and stage passage-wide audio repair
+
+Date: 2026-10-21
+Status: Accepted
+
+Context: Repeated voice assignment could discard passage originals; conversions were quiet and preview could silently fail despite audible exports. Users approved cleanup, loudness repair, selection normalization and preview fixes while retaining Original Chatterbox.
+Decision: Retain original/cached voice snapshots across assignment; use native float worker audio and process each complete passage before splitting. Stage cleanup-on/off results for explicit acceptance, match original loudness with no-makeup peak limiting, and expose repair without inference. Measure normalization through the shared renderer. Scope preview cancellation to request UUIDs, validate PCM transport and prebuffer two bounded chunks.
+Consequences: Schema 1 and model installation stay compatible. Comparison toggles never repeat inference; acceptance rejects a changed timeline. A peak ceiling may restrict loudness; processing cannot guarantee model speaker similarity or recreate missing frequencies. Real-model listening remains required for perceptual quality.
+Related files: wave_voice_audio.rs, wave_processing.rs, WaveProductionPanel, WaveStudioInspector, waveStudioEdits, useWaveStudioPlayback, wavePreviewAudio, original.py and focused audio/HTTP/worker tests.

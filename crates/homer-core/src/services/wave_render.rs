@@ -6,7 +6,7 @@ use super::{
 };
 use std::{
     path::Path,
-    sync::{Arc, atomic::AtomicBool},
+    sync::{atomic::AtomicBool, Arc},
 };
 // Tempo variants are streamed once into an immutable native cache. Preview and
 // export seek the same PCM, with sample-accurate envelopes on the 48 kHz grid.
@@ -68,7 +68,7 @@ pub fn arguments(
             local
         };
         let input = if c.speed == 1. {
-            audio_assets::path(base, c.source_id.as_ref().unwrap())?
+            super::wave_store::project_source_path_at(base, &p.id, c.source_id.as_ref().unwrap())?
         } else {
             tempo_path(base, c)
         };
@@ -192,9 +192,13 @@ pub fn render(
                     "-t".into(),
                     format!("{:.9}", (c.source_end_ms - c.source_start_ms) / 1000.),
                     "-i".into(),
-                    audio_assets::path(base, c.source_id.as_ref().unwrap())?
-                        .to_string_lossy()
-                        .into(),
+                    super::wave_store::project_source_path_at(
+                        base,
+                        &p.id,
+                        c.source_id.as_ref().unwrap(),
+                    )?
+                    .to_string_lossy()
+                    .into(),
                     "-af".into(),
                     format!(
                         "atempo={:.9},apad,atrim=end_sample={}",

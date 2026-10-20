@@ -1,8 +1,34 @@
-# Task log
+## 2026-10-21 — Requested v0.3.7 release and installed app replacement
+- Incremented app, JavaScript/Rust manifests and local lock entries from 0.3.6 to 0.3.7. Includes the completed voice/preview/normalization fixes, required project-owned audio packages, and macOS document-opening correction. User authorized annotated patch tag and push to origin/main; release automation publishes the Apple Silicon DMG and Linux application bundle.
+- Fresh release verification: 82 renderer tests, typecheck/web build, 4 desktop tests, tag/version alignment, arm64 resources/signature and DMG checks passed. Isolated packaged startup and cold/running folder/archive document opening passed, including audio round-trip and repeated/malformed opens. Earlier core/server/worker and 20-second voice HTTP checks are recorded below.
+- Replaced `/Applications/Homer Studio.app` and reopened verified v0.3.7; running process confirmed and executable matched the built bundle. Previous v0.3.6 retained in a temporary `homer-v037-previous-*` backup. User project/model data and unrelated duplicate/untracked files were not deleted. Real-model perceptual voice quality remains a listening follow-up.
+
+## 2026-10-21 — Approved converted voice volume, quality, and preview fixes
+- Conversion now uses preserved original recordings and native float audio; 16 kHz mono worker uploads fit the existing upload limit. Complete passages receive optional conservative 6 dB hiss cleanup and original loudness matching before splitting, with exact duration and a −1 dB true-peak ceiling. Cleanup comparison reuses staged audio and requires acceptance. Existing conversions can match original volume without an AI worker.
+- Fixed the voice selector discarding original/version history before reassignment, which broke restoration after repeated conversions. Reset cached worker reference conditioning per request; distinct reference transport is covered. Original remains the conversion engine; its voice-conversion interface has no English-only language setting.
+- Added shared-gain selection normalization, partial-fragment splitting with preserved envelopes, narration/SFX isolation, limits warnings, and one-edit Undo/Redo. Preview now uses scoped cancellation, validated PCM16 transport/decoding, two-chunk buffering, visible errors/buffering, and edit cache invalidation.
+- Verification: 82 renderer tests, 71 core tests, 2 HTTP-server tests, and 12 Python worker tests passed; renderer typecheck/web build and desktop compilation passed. Real FFmpeg checks cover loudness, cleanup, duration, normalization, and preview/export agreement. A mock-worker HTTP integration covers successive 20-second conversions, distinct references, preview boundaries/cancellation, normalization, and worker-free volume repair.
+- Follow-up: representative real-model listening for speaker identity, consonants, breaths, hiss, and boundaries, plus native desktop listening. Automated synthetic fixtures do not establish perceptual voice quality. No release, installed-app replacement, schema change, or model-install change; unrelated workspace edits preserved.
 
 ## 2026-10-17 — Development folder cleanup
 - Added `npm run clean` with a dry run and allowlisted build-output removal. The initial preview found 24.85 GiB; optional local Python environments and downloaded models require separate flags, with model deletion explicitly confirmed.
 - Updated English/Russian README instructions and added fixture tests for project/model preservation and symlink refusal. Existing `.wavehs` packages and Application Support are outside the command's scope.
+
+## 2026-10-09 — Approved required .wavehs audio storage
+- Desktop creation and first media work now choose a working package first; cancellation creates nothing. HTTP uses owned packages. Immutable project WAVs publish in package `media/`; the revisioned package manifest is authoritative.
+- Package-aware rendering/processing, folder/archive reopening, collision remapping and Save as preserve complete source/voice history. Archive remapping removes redundant extracted WAVs before publication. SFX remain independently library-owned. Missing packages require relinking; recents/trash removal preserves external files.
+- Legacy migration copies/verifies all sources plus outstanding results, switches bindings after publication, then reclaims only verified global WAVs without unsafe shared/trash/SFX/result references. User data was not bulk-deleted; reclamation occurs through migration.
+- Verification: 69 renderer tests/typecheck/build; 67 core, 2 HTTP-server and 4 desktop tests; release HTTP real-media integration (including no new global assets and no duplicate archive WAVs), recording, Join, voice-version bundle round trips and video exports passed. Local fixture sockets required system access for the final core/integration runs.
+- Apple Silicon app rebuilt and signature/resources verified. Isolated packaged startup and cold/running folder/archive document tests passed, including repeated/malformed opens, exact WAV bytes and no global project-audio writes. `git diff --check` passed.
+- Manual follow-up: native microphone capture, live model inference/quality, and read-only destination UX; automated fixtures cover import cancellation, moved packages and revision/copy failures. No version bump/tag/push or installed-app replacement.
+# Task log
+
+## 2026-10-09 — Approved .wavehs document-opening crash fix
+- Reproduced the installed v0.3.6 crash through macOS LaunchServices: Opened arrived before Ready and created `main` before Tauri's configured window setup, causing a duplicate-window panic. Queue documents immediately but defer window activation until Ready; retain running-window restoration.
+- Found and fixed folder URLs ending in `/` being ignored by the string extension check. Added archive/folder/case/dedup queue regression coverage.
+- Verification: 66 renderer tests/typecheck/production build and 4 desktop tests passed. Apple Silicon app rebuilt, resources/architecture/ad-hoc signature verified. Packaged startup smoke passed. Isolated signed app copy passed both compressed and folder document cold/running launches, audio byte round-trip, repeated opens and malformed-document survival. Interactive playback, File Open, drag/drop and very large imports remain manual checks.
+- Local rebuilt app: `src-tauri/target/release/bundle/macos/Homer Studio.app`. No version increment, tag/push, installed-app replacement or user-project changes.
+- Additional user request: require `.wavehs` working folders and store audio there to stop global `wave-studio/assets` growth. Current save-folder copies audio while global assets remain authoritative. Concrete storage/migration plan: `docs/IMPLEMENTATION_PLAN_PROJECT_AUDIO_STORAGE.md`; proposed and awaiting approval, no storage implementation or cleanup yet.
 
 ## 2026-09-23 — English narration and model setup
 - Approved plan: `docs/IMPLEMENTATION_PLAN_NARRATION_EDITING_AND_MODEL_SETUP.md`. Commits are local; pushing is deferred. The user's heading-font change in `src/renderer/styles/app.css` is deliberately untouched.

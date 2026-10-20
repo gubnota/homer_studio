@@ -1,3 +1,4 @@
+import { previewBytes } from './wavePreviewAudio'
 import { invoke as nativeInvoke } from '@tauri-apps/api/core'
 import { listen as nativeListen } from '@tauri-apps/api/event'
 import { open as nativeOpen, save as nativeSave } from '@tauri-apps/plugin-dialog'
@@ -49,7 +50,7 @@ export async function invoke<T>(command:string,args:Record<string,unknown>={}):P
  if(command.startsWith('audio_capture_')) {const {captureCommand}=await import('./browserCapture');return captureCommand(command,args) as Promise<T>}
  const response=await serverRequest(`/api/command/${encodeURIComponent(command)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(args)})
  const result=await response.json()
- if(command==='wave_preview')return new Uint8Array(result.binary).buffer as T
+ if(command==='wave_preview')return previewBytes(result?.binary) as T
  if(['wave_export','export_memo'].includes(command)&&typeof result==='string'&&typeof args.outputPath==='string')pendingDownloads.set(result,args.outputPath)
  else if(['export_sounds','save_exports'].includes(command)&&Array.isArray(result)){for(const path of result)if(typeof path==='string')await downloadFile(path)}
  else if(['wave_export_bundle','export_sound','save_export_file'].includes(command)){const path=args.path||args.outputPath||args.destination;if(typeof path==='string')await downloadFile(path)}

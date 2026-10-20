@@ -288,8 +288,21 @@ pub fn import(
     settings: &Settings,
     cancel: Arc<AtomicBool>,
     report: Arc<dyn Fn(u8) + Send + Sync>,
+    destination: Option<&Path>,
 ) -> Result<Project, CommandError> {
-    let scratch = Scratch(std::env::temp_dir().join(format!("wavehs-{}", uuid::Uuid::new_v4())));
+    let target = if path.is_dir() {
+        None
+    } else {
+        Some(super::wave_store::package_destination(app, destination)?)
+    };
+    let scratch = Scratch(if let Some(target) = &target {
+        target
+            .parent()
+            .unwrap()
+            .join(format!(".homer-open-{}", uuid::Uuid::new_v4()))
+    } else {
+        std::env::temp_dir().join(format!("wavehs-{}", uuid::Uuid::new_v4()))
+    });
     fs::create_dir(&scratch.0).map_err(io)?;
     let folder = if path.is_dir() {
         path
@@ -303,22 +316,16 @@ pub fn import(
             "Project opening cancelled.",
         ));
     }
-    let bytes = fs::read(folder.join("project.json")).map_err(io)?;
-    let p: Project = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
-    super::wave_studio::validate(&p)?;
     if path.is_dir() {
-        if let Ok(existing) = super::wave_store::load(app, &p.id) {
-            if super::wave_store::bound_folder(app, &p.id)?.as_deref()
-                == Some(path.canonicalize().map_err(io)?.as_path())
-                && serde_json::to_value(&existing).map_err(|_| invalid())?
-                    == serde_json::to_value(&p).map_err(|_| invalid())?
-            {
-                super::wave_store::validate_sources(app, &existing)?;
-                return Ok(existing);
-            }
+        let p: Project =
+            serde_json::from_slice(&fs::read(folder.join("project.json")).map_err(io)?)
+                .map_err(|_| invalid())?;
+        if super::wave_store::bound_folder(app, &p.id)?.as_deref()
+            == Some(folder.canonicalize().map_err(io)?.as_path())
+        {
+            return super::wave_store::locate(app, &p.id, folder);
         }
     }
-    let old_videos = p.videos.clone();
     let mapping = super::voice_store::import_portable(app, folder, settings)?;
     let imported = super::wave_store::open_bundle_copy(app, folder, settings, cancel, report);
     let mut p = match imported {
@@ -353,52 +360,29 @@ pub fn import(
             }
         }
     }
-    let result = super::wave_store::save(app, p.clone(), 0);
-    if result.is_err() {
-        for id in mapping.values() {
-            let _ = super::voice_store::delete(app, id, super::voice_store::DEFAULT_VOICE);
-        }
-        for source in &p.sources {
-            if let Ok(path) = super::wave_store::source_path(app, &source.id) {
-                let _ = fs::remove_file(path);
+    super::voice_store::export_portable(app, &p, folder)?;
+    super::audio_assets::atomic_json(&folder.join("project.json"), &p)?;
+    if let Some(target) = target {
+        // The extracted scratch package can contain old IDs after collision remapping.
+        // Retain only manifest-owned WAVs before publishing the new archive destination.
+        for entry in fs::read_dir(folder.join("media")).map_err(io)? {
+            let path = entry.map_err(io)?.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("wav") {
+                if let Some(id) = path.file_stem().and_then(|s| s.to_str()) {
+                    if uuid::Uuid::parse_str(id).is_ok() && !p.sources.iter().any(|s| s.id == id) {
+                        fs::remove_file(path).map_err(io)?;
+                    }
+                }
             }
         }
-        for video in &p.videos {
-            if let Ok(path) = super::wave_video::path(app, video.asset_id()) {
-                let _ = fs::remove_file(path);
-            }
-        }
-        let _ = fs::remove_file(
-            super::wave_store::root(app)?
-                .join("projects")
-                .join(format!("{}.json", p.id)),
-        );
+        fs::rename(folder, &target).map_err(io)?;
+        super::wave_store::locate(app, &p.id, &target)?;
+    } else {
+        super::wave_store::locate(app, &p.id, folder)?;
     }
-    let result = result?;
-    if path.is_dir() {
-        for source in &result.sources {
-            super::wave_store::copy_media(
-                path,
-                &super::wave_store::source_path(app, &source.id)?,
-                &PathBuf::from(format!("media/{}.wav", source.id)),
-            )?;
-        }
-        // Linked video stays external; only preserve an explicit bundled copy.
-        for (old, video) in old_videos.iter().zip(result.videos.iter()) {
-            if path.join("media").join(format!("{}.mp4", old.id)).is_file() {
-                super::wave_store::copy_media(
-                    path,
-                    &super::wave_video::original_path(app, video.asset_id())?,
-                    &PathBuf::from(format!("media/{}.mp4", video.id)),
-                )?;
-            }
-        }
-        super::voice_store::export_portable(app, &result, path)?;
-        super::audio_assets::atomic_json(&path.join("project.json"), &result)?;
-        super::wave_store::bind_folder(app, &result, path)?;
-    }
-    Ok(result)
+    Ok(p)
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

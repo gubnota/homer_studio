@@ -9,6 +9,8 @@
 - Users: authors and audiobook creators on Apple Silicon Macs.
 
 ## Current milestone
+- v0.3.7: converted-voice loudness/cleanup, reliable preview, repeated original restoration, selection normalization, required project-owned audio packages and document-opening fixes. Verified Apple Silicon app/DMG and isolated startup/document opening; installed app replaced and reopened. User authorized the new patch tag and push; existing automation publishes macOS/Linux artifacts.
+- Startup fix included in v0.3.7: queue macOS `.wavehs` document events until Tauri Ready before creating/focusing windows. Finder cold launches previously aborted with duplicate `main`; packaged document smoke covers folder/compressed imports and running-app opens.
 - v0.3.6: bounded FFmpeg encoding with observed progress; keep-full-length exports hold trimmed final frames at 30 fps. Cross-lane audio moves preserve time/overlap and other soundtrack rows. Source-bounded audio/video edge restoration, fragment copy/paste/duplicate and combined audio/video Undo/Redo. Original assets stay immutable.
 - v0.3.5: visible held-frame coverage, complete soundtrack scrolling, Option/Ctrl fragment bounds and video navigation fallback. Full-length MP4 checks both stream durations. Local macOS build/replacement instructions in both READMEs.
 - v0.3.4: export failures/overlap recovery stay visible inside the dialog; preparation and queued/running/completed progress are explicit. Reproduced overlap rejection in the user’s native app; preserve their project placements.
@@ -136,7 +138,7 @@
 
 ## Wave Studio
 - Default workspace: independent persistent narration timeline with voice annotations and a separate SFX lane. Existing chapter, memo and conversion workflows remain available.
-- Immutable app-owned 48 kHz stereo sources; non-destructive splits, ripple edits, silence, moves, gain/fades and pitch-preserving speed. Voice assignments label passages without invoking AI.
+- Immutable package-owned 48 kHz stereo sources; non-destructive splits, ripple edits, silence, moves, gain/fades and pitch-preserving speed. Voice assignments label passages without invoking AI.
 - App-level undo/redo survives navigation; revisioned schema-v1 projects and viewport settings reopen after restart.
 - Renderer requests viewport peaks and bounded ten-second mixed previews. Native FFmpeg renders playback and exports using the same sample-accurate processing.
 - Changed-speed clips use disk-cached native tempo variants; first playback/export may wait for preparation. No full audiobook is decoded in the renderer.
@@ -145,3 +147,11 @@
 ## Wave production milestone
 - Wave Studio supports empty projects, native recording, queued local TTS, explicit tagged-voice conversion preview/acceptance, Join, ripple insertion, cross-lane moves and peak normalization.
 - Project/view and preconversion timeline persist in backward-compatible schema 1. Ten additional user-supplied SFX are bundled. Models still require explicit installation.
+- Converted passages reuse preserved originals across voice changes. Passage-wide optional 6 dB hiss cleanup defaults on; loudness matches the original with short-passage RMS fallback and a −1 dB true-peak ceiling. Existing conversions can be repaired without AI through explicit preview/acceptance.
+- Selection normalization uses one shared gain across the rendered selection, splits partial fragments and excludes unselected SFX. Restore retains original and cached voice versions after repeated conversions. Playback uses request-scoped cancellation, validated WAVs and two-chunk prebuffering.
+- Original Chatterbox and installation behavior remain unchanged. Native 16 kHz float conversion input avoids oversized uploads; processing cannot recover missing model frequencies. Real-model speaker similarity and listening quality remain manual validation.
+
+## Required Wave project storage (2026-10-09)
+- New desktop projects require a chosen `.wavehs` working folder before media work; HTTP creates server-owned packages. Project audio lives in package `media/`, with authoritative revisioned `project.json`.
+- App data holds recents, bindings/source locations and disposable caches. Independent SFX use `wave-studio/library/media`; memo/voice libraries retain their own storage.
+- Opening legacy projects migrates verified audio before switching bindings. Global WAV reclamation is conservative across projects, trash, SFX and outstanding results; unknown metadata blocks deletion. Missing packages require location recovery. Removing recents preserves external packages.

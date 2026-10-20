@@ -46,7 +46,7 @@
 - `tests/manuscript-drop.test.ts` and `tests/standalone-audio.test.tsx`: focused renderer behavior tests.
 - `tests/DESKTOP_SMOKE.md`: automated and manual packaged-app smoke procedure.
 - `scripts/verify-release.mjs`: version, architecture, signature, microphone usage/entitlement, bundled worker resources, and DMG package verification.
-- `scripts/smoke-app.mjs`: isolated packaged-app startup check.
+- `scripts/smoke-app.mjs`: isolated packaged-app startup check; `--documents` exercises macOS cold/running folder/archive opens and audio round-trips through LaunchServices.
 - `.github/workflows/ci.yml`: push/PR checks and Apple Silicon app build.
 - `.github/workflows/release.yml`: version-tagged arm64 DMG and Linux x86_64 bundle publishing.
 - `README.md`: user setup, local engine configuration, workflow, checks, and packaging.
@@ -65,7 +65,7 @@
 - `npm run test:integration`: real FFmpeg export fixture.
 - `npm run pack:mac`: release `.app` bundle plus arm64/signature verification.
 - `npm run test:smoke`: packaged app startup check.
-- `npm run package:mac`: verified Apple Silicon app, DMG, and ZIP.
+- `npm run package:mac`: verified Apple Silicon app and DMG.
 
 ## Shared voice production
 - `src/shared/audio.ts`: memo, composition, capture, processing and voice-profile contracts.
@@ -86,9 +86,10 @@
 - `src/shared/waveStudio.ts`, `waveStudioEdits.ts`: schema, timing and immutable editing operations.
 - `src/renderer/src/WaveStudioProvider.tsx`: session history, revisioned saves, restore and import handoffs.
 - `WaveStudioPage.tsx`, `components/WaveStudio*.tsx`, `WaveformCanvas.tsx`: project toolbar, selection, inspector, libraries and canvas lanes.
-- `useWaveStudioPlayback.ts`, `waveStudioNative.ts`: bounded Web Audio scheduling and typed native calls.
+- `useWaveStudioPlayback.ts`, `wavePreviewAudio.ts`, `waveStudioNative.ts`: request-scoped bounded Web Audio scheduling, strict PCM decoding and typed desktop/HTTP calls.
 - `crates/homer-core/src/commands/wave_studio.rs`: import, persistence, peaks, preview cancellation, exports and SFX commands.
 - `services/wave_studio.rs`, `wave_store.rs`, `wave_render.rs`, `wave_processing.rs`, `wave_video.rs`, `sfx_store.rs`: validation, owned media, shared preview/export processing and reusable effects.
+- `services/wave_voice_audio.rs`: native WAV analysis, conservative cleanup, original loudness matching and exact-duration true-peak limiting. `wave_audio_tests.rs` verifies real FFmpeg processing; `tests/wave-preview.test.ts` verifies scheduling/cancellation. `scripts/test-wave-voice.py` exercises 20-second HTTP conversion using a deterministic worker; `workers/tests/test_voice_conversion.py` checks reference conditioning.
 - `resources/sfx/sitcom_laugh01.m4a`: immutable bundled Audience effect; release verification requires it.
 - `src/renderer/styles/wave-studio.css`; `tests/wave-studio.test.ts`; native validation/render tests in the services above.
 
@@ -128,3 +129,6 @@
 - Shared `waveStudio.ts` owns fragment navigation/video hold intervals; `tests/wave-navigation.test.ts` verifies narration precedence, video fallback and hold coverage. `wave-studio.css` constrains the editor grid and owns vertical timeline scrolling.
 
 - v0.3.6: shared `waveStudioEdits.ts` owns stable soundtrack row packing, cross-lane transfers, source-bounded video splits/trims and fragment copies. Provider history snapshots both audio timeline and video placements. `scripts/test-server.py` verifies edited video portability, overlapping main audio, and optional actual 4K HEVC export with live progress.
+
+- Required package storage: `wave_store.rs` owns `.wavehs/project.json`, `media/`, legacy migration, source-owner metadata and conservative reclamation; `wave_bundle.rs` owns archive extraction/publication. `wave_store::adoption_tests` covers moved packages, revision conflicts, cancelled imports and shared/trash/result migration.
+- Destination/recovery UI: `WaveStudioProvider.tsx` (`choosePackage`, `createWavePackage`, project preparation); `WaveProjectsPanel.tsx` owns Save as and migration feedback. `tests/wave-import.test.tsx` covers cancellation and desktop/HTTP creation policy.

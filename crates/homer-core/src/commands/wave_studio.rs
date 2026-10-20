@@ -97,8 +97,16 @@ pub fn wave_get(app: AppHandle, id: String) -> Result<Project, CommandError> {
     wave_store::load(&app, &id)
 }
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn wave_create(app: AppHandle, name: String) -> Result<Project, CommandError> {
-    wave_store::create(&app, &name)
+pub fn wave_create(
+    app: AppHandle,
+    name: String,
+    destination: Option<String>,
+) -> Result<Project, CommandError> {
+    wave_store::create(
+        &app,
+        &name,
+        destination.as_deref().map(std::path::Path::new),
+    )
 }
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub fn wave_save(
@@ -116,6 +124,7 @@ pub fn wave_save(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn wave_import(
     app: AppHandle,
+    project_id: String,
     kind: String,
     path: Option<String>,
     id: Option<String>,
@@ -173,6 +182,7 @@ pub async fn wave_import(
             &settings::load(&app)?,
             operation.cancel.clone(),
             operation.reporter(),
+            &project_id,
         )
     })
     .await
@@ -233,13 +243,56 @@ pub async fn wave_peaks(
     .await
     .map_err(|e| CommandError::internal(e.to_string()))?
 }
-static PREVIEW_CANCEL: std::sync::Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> =
-    std::sync::Mutex::new(None);
+static PREVIEW_CANCEL: LazyLock<Mutex<std::collections::HashMap<String, Arc<AtomicBool>>>> =
+    LazyLock::new(|| Mutex::new(Default::default()));
+struct PreviewTicket {
+    id: String,
+    flag: Arc<AtomicBool>,
+}
+impl PreviewTicket {
+    fn new(id: Option<String>) -> Result<Self, CommandError> {
+        let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        crate::services::audio_assets::id(&id)?;
+        let mut requests = PREVIEW_CANCEL
+            .lock()
+            .map_err(|_| CommandError::internal("Preview unavailable"))?;
+        if requests.len() > 128 {
+            requests.retain(|_, flag| Arc::strong_count(flag) > 1);
+        }
+        if requests
+            .get(&id)
+            .is_some_and(|flag| Arc::strong_count(flag) > 1)
+        {
+            return Err(CommandError::new(
+                "PREVIEW_BUSY",
+                "This preview request is already active.",
+            ));
+        }
+        let flag = requests.entry(id.clone()).or_default().clone();
+        Ok(Self { id, flag })
+    }
+}
+impl Drop for PreviewTicket {
+    fn drop(&mut self) {
+        if let Ok(mut requests) = PREVIEW_CANCEL.lock() {
+            requests.remove(&self.id);
+        }
+    }
+}
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn wave_cancel_preview() {
-    if let Ok(mut current) = PREVIEW_CANCEL.lock() {
-        if let Some(flag) = current.take() {
-            flag.store(true, std::sync::atomic::Ordering::SeqCst);
+pub fn wave_cancel_preview(request_id: Option<String>) {
+    if let Ok(mut requests) = PREVIEW_CANCEL.lock() {
+        if let Some(id) = request_id {
+            if requests.len() < 128 || requests.contains_key(&id) {
+                requests
+                    .entry(id)
+                    .or_default()
+                    .store(true, Ordering::SeqCst);
+            }
+        } else {
+            for flag in requests.values() {
+                flag.store(true, Ordering::SeqCst);
+            }
         }
     }
 }
@@ -249,18 +302,23 @@ pub async fn wave_preview(
     project: Project,
     start_ms: f64,
     end_ms: f64,
+    request_id: Option<String>,
 ) -> Result<crate::runtime::ipc::Response, CommandError> {
-    if end_ms - start_ms > 10_001. {
+    if !start_ms.is_finite()
+        || !end_ms.is_finite()
+        || start_ms < 0.
+        || end_ms <= start_ms
+        || end_ms - start_ms > 10_001.
+    {
         return Err(CommandError::new(
             "INVALID_PREVIEW_RANGE",
             "Preview chunks must be at most ten seconds.",
         ));
     }
-    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    *PREVIEW_CANCEL
-        .lock()
-        .map_err(|_| CommandError::internal("Preview unavailable"))? = Some(cancel.clone());
+    let ticket = PreviewTicket::new(request_id)?;
     crate::runtime::async_runtime::spawn_blocking(move || {
+        let _ticket = ticket;
+        let cancel = _ticket.flag.clone();
         wave_store::validate_sources(&app, &project)?;
         // Serialize preview cache publication only; project saves remain responsive.
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -275,6 +333,7 @@ pub async fn wave_preview(
         serde_json::to_string(&project)
             .map_err(|e| CommandError::internal(e.to_string()))?
             .hash(&mut hash);
+        "pcm16-preview-v2".hash(&mut hash);
         start_ms.to_bits().hash(&mut hash);
         end_ms.to_bits().hash(&mut hash);
         let cache = wave_store::root(&app)?.join("preview");
@@ -290,14 +349,43 @@ pub async fn wave_preview(
                 end_ms,
                 &temp,
                 &settings::load(&app)?,
-                cancel,
+                cancel.clone(),
             );
             if let Err(error) = result {
                 let _ = std::fs::remove_file(&temp);
                 return Err(error);
             }
-            std::fs::rename(&temp, &out)
-                .map_err(|e| CommandError::io("Cannot publish preview", e))?;
+            // A plain PCM WAV works in WebKit and HTTP, including converted float sources.
+            let encoded = temp.with_extension("pcm.wav");
+            let encode = (|| {
+                let mut reader = hound::WavReader::open(&temp)
+                    .map_err(|e| CommandError::internal(e.to_string()))?;
+                let mut spec = reader.spec();
+                spec.bits_per_sample = 16;
+                spec.sample_format = hound::SampleFormat::Int;
+                let mut writer = hound::WavWriter::create(&encoded, spec)
+                    .map_err(|e| CommandError::internal(e.to_string()))?;
+                for sample in reader.samples::<f32>() {
+                    let value = sample.map_err(|e| CommandError::internal(e.to_string()))?;
+                    writer
+                        .write_sample((value.clamp(-1., 1.) * 32767.).round() as i16)
+                        .map_err(|e| CommandError::internal(e.to_string()))?;
+                }
+                writer
+                    .finalize()
+                    .map_err(|e| CommandError::internal(e.to_string()))?;
+                if cancel.load(Ordering::SeqCst) {
+                    return Err(CommandError::new("CANCELLED", "Preview cancelled."));
+                }
+                std::fs::rename(&encoded, &out)
+                    .map_err(|e| CommandError::io("Cannot publish preview", e))
+            })();
+            let _ = std::fs::remove_file(&temp);
+            let _ = std::fs::remove_file(&encoded);
+            encode?;
+        }
+        if cancel.load(Ordering::SeqCst) {
+            return Err(CommandError::new("CANCELLED", "Preview cancelled."));
         }
         let bytes = std::fs::read(&out).map_err(|e| CommandError::io("Cannot read preview", e))?;
         if bytes.len() > 4 * 1024 * 1024 {
@@ -572,6 +660,47 @@ pub async fn wave_normalize(
     .map_err(|e| CommandError::internal(e.to_string()))?
 }
 #[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn wave_normalize_selection(
+    app: AppHandle,
+    project: Project,
+    clip_ids: Vec<String>,
+    start_ms: f64,
+    end_ms: f64,
+) -> Result<crate::services::wave_processing::NormalizedSelection, CommandError> {
+    crate::runtime::async_runtime::spawn_blocking(move || {
+        crate::services::wave_processing::normalize_selection(
+            &app,
+            &project,
+            &clip_ids,
+            start_ms,
+            end_ms,
+            &settings::load(&app)?,
+        )
+    })
+    .await
+    .map_err(|e| CommandError::internal(e.to_string()))?
+}
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub fn wave_match_voice_volume(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    project: Project,
+    region_id: String,
+) -> Result<String, CommandError> {
+    wave_store::validate_sources(&app, &project)?;
+    let settings = settings::load(&app)?;
+    Ok(enqueue_processing(
+        app,
+        state,
+        "Match original voice volume",
+        move |app, control, progress| {
+            crate::services::wave_processing::match_existing(
+                app, &project, &region_id, &settings, control, progress,
+            )
+        },
+    ))
+}
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn wave_join(
     app: AppHandle,
     project: Project,
@@ -623,6 +752,7 @@ pub fn wave_generate_speech(
             "Enter text shorter than 100,000 bytes.",
         ));
     }
+    wave_store::require_package(&app, &project_id)?;
     let settings = settings::load(&app)?;
     Ok(enqueue_processing(
         app,
@@ -649,6 +779,7 @@ pub fn wave_convert_regions(
     mut project: Project,
     region_ids: Vec<String>,
     regenerate: bool,
+    reduce_noise: Option<bool>,
 ) -> Result<String, CommandError> {
     wave_store::validate_sources(&app, &project)?;
     project
@@ -667,7 +798,14 @@ pub fn wave_convert_regions(
         state,
         "Apply tagged voices",
         move |app, control, progress| {
-            crate::services::wave_processing::convert(app, &project, &settings, control, progress)
+            crate::services::wave_processing::convert(
+                app,
+                &project,
+                &settings,
+                control,
+                progress,
+                reduce_noise.unwrap_or(true),
+            )
         },
     ))
 }
@@ -767,7 +905,7 @@ pub async fn wave_save_copy(
     project: Project,
     path: String,
     include_video: Option<bool>,
-) -> Result<(), CommandError> {
+) -> Result<wave_store::StorageStatus, CommandError> {
     crate::runtime::async_runtime::spawn_blocking(move || {
         wave_store::save_folder(
             &app,
@@ -811,6 +949,7 @@ pub async fn wave_import_bundle(
     app: AppHandle,
     path: String,
     request_id: Option<String>,
+    destination: Option<String>,
 ) -> Result<Project, CommandError> {
     crate::runtime::async_runtime::spawn_blocking(move || {
         let operation = Operation::new(request_id, "Opening project")?;
@@ -820,7 +959,91 @@ pub async fn wave_import_bundle(
             &settings::load(&app)?,
             operation.cancel.clone(),
             operation.reporter(),
+            destination.as_deref().map(std::path::Path::new),
         )
+    })
+    .await
+    .map_err(|e| CommandError::internal(e.to_string()))?
+}
+
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub fn wave_project_storage(
+    app: AppHandle,
+    id: String,
+) -> Result<wave_store::StorageStatus, CommandError> {
+    wave_store::storage(&app, &id)
+}
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub fn wave_locate_project(
+    app: AppHandle,
+    id: String,
+    directory: String,
+) -> Result<Project, CommandError> {
+    wave_store::locate(&app, &id, std::path::Path::new(&directory))
+}
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub fn wave_project_path_kind(path: String) -> Result<String, CommandError> {
+    let path = std::path::Path::new(&path);
+    if path.is_dir() {
+        Ok("folder".into())
+    } else if path.is_file() {
+        Ok(if wave_store::smoke_destination_enabled() {
+            "smoke-archive"
+        } else {
+            "archive"
+        }
+        .into())
+    } else {
+        Err(CommandError::new(
+            "PROJECT_NOT_FOUND",
+            "Choose an existing .wavehs project.",
+        ))
+    }
+}
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub fn wave_cached_project(app: AppHandle, id: String) -> Result<Project, CommandError> {
+    wave_store::cached(&app, &id)
+}
+
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn wave_import_sfx(
+    app: AppHandle,
+    kind: String,
+    path: Option<String>,
+    id: Option<String>,
+) -> Result<Source, CommandError> {
+    crate::runtime::async_runtime::spawn_blocking(move || {
+        let (path, name) = match kind.as_str() {
+            "file" => {
+                let path = std::path::PathBuf::from(
+                    path.ok_or_else(|| CommandError::new("INVALID_IMPORT", "Choose audio."))?,
+                );
+                let name = path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Custom sound")
+                    .to_string();
+                (path, name)
+            }
+            "sound" => {
+                let id = id.unwrap_or_default();
+                let asset = sound_store::list(&app)?
+                    .into_iter()
+                    .find(|a| a.id == id)
+                    .ok_or_else(|| CommandError::new("SOUND_NOT_FOUND", "Choose a sound."))?;
+                (
+                    sound_store::asset_path(&app, &asset, true)?,
+                    asset.prompt.chars().take(160).collect(),
+                )
+            }
+            _ => {
+                return Err(CommandError::new(
+                    "INVALID_IMPORT",
+                    "Choose a file or saved sound.",
+                ))
+            }
+        };
+        wave_store::import_library(&app, &path, &name, &settings::load(&app)?)
     })
     .await
     .map_err(|e| CommandError::internal(e.to_string()))?

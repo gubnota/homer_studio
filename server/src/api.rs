@@ -1,7 +1,7 @@
 // Explicit allowlist shared with the desktop command boundary.
-use homer_core::{AppState, commands, runtime::AppHandle, services::project_store::CommandError};
+use homer_core::{commands, runtime::AppHandle, services::project_store::CommandError, AppState};
 use serde::de::DeserializeOwned;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 fn argument<T: DeserializeOwned>(args: &Value, key: &str) -> Result<T, CommandError> {
     serde_json::from_value(args.get(key).cloned().unwrap_or(Value::Null))
         .map_err(|_| CommandError::new("INVALID_ARGUMENT", format!("Invalid {key}.")))
@@ -102,8 +102,36 @@ pub async fn dispatch(app: AppHandle, command: &str, args: Value) -> Result<Valu
             let result = commands::wave_studio::wave_get(app.clone(), argument(&args, "id")?)?;
             serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
         }
+        "wave_project_storage" => serde_json::to_value(
+            commands::wave_studio::wave_project_storage(app.clone(), argument(&args, "id")?)?,
+        )
+        .map_err(|e| CommandError::internal(e.to_string())),
+        "wave_cached_project" => serde_json::to_value(commands::wave_studio::wave_cached_project(
+            app.clone(),
+            argument(&args, "id")?,
+        )?)
+        .map_err(|e| CommandError::internal(e.to_string())),
+        "wave_locate_project" => serde_json::to_value(commands::wave_studio::wave_locate_project(
+            app.clone(),
+            argument(&args, "id")?,
+            argument(&args, "directory")?,
+        )?)
+        .map_err(|e| CommandError::internal(e.to_string())),
+        "wave_project_path_kind" => serde_json::to_value(
+            commands::wave_studio::wave_project_path_kind(argument(&args, "path")?)?,
+        )
+        .map_err(|e| CommandError::internal(e.to_string())),
+        "wave_migration_destination" => {
+            let path = homer_core::services::wave_store::package_destination(&app, None)?;
+            serde_json::to_value(path.to_string_lossy())
+                .map_err(|e| CommandError::internal(e.to_string()))
+        }
         "wave_create" => {
-            let result = commands::wave_studio::wave_create(app.clone(), argument(&args, "name")?)?;
+            let result = commands::wave_studio::wave_create(
+                app.clone(),
+                argument(&args, "name")?,
+                argument(&args, "destination")?,
+            )?;
             serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
         }
         "wave_save" => {
@@ -115,9 +143,20 @@ pub async fn dispatch(app: AppHandle, command: &str, args: Value) -> Result<Valu
             )?;
             serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
         }
+        "wave_import_sfx" => {
+            let result = commands::wave_studio::wave_import_sfx(
+                app.clone(),
+                argument(&args, "kind")?,
+                argument(&args, "path")?,
+                argument(&args, "id")?,
+            )
+            .await?;
+            serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
+        }
         "wave_import" => {
             let result = commands::wave_studio::wave_import(
                 app.clone(),
+                argument(&args, "projectId")?,
                 argument(&args, "kind")?,
                 argument(&args, "path")?,
                 argument(&args, "id")?,
@@ -143,7 +182,7 @@ pub async fn dispatch(app: AppHandle, command: &str, args: Value) -> Result<Valu
             serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
         }
         "wave_cancel_preview" => {
-            commands::wave_studio::wave_cancel_preview();
+            commands::wave_studio::wave_cancel_preview(argument(&args, "requestId")?);
             Ok(Value::Null)
         }
         "wave_preview" => {
@@ -152,6 +191,7 @@ pub async fn dispatch(app: AppHandle, command: &str, args: Value) -> Result<Valu
                 argument(&args, "project")?,
                 argument(&args, "startMs")?,
                 argument(&args, "endMs")?,
+                argument(&args, "requestId")?,
             )
             .await?;
             Ok(json!({"binary":result.0}))
@@ -209,6 +249,26 @@ pub async fn dispatch(app: AppHandle, command: &str, args: Value) -> Result<Valu
             .await?;
             serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
         }
+        "wave_normalize_selection" => {
+            let result = commands::wave_studio::wave_normalize_selection(
+                app.clone(),
+                argument(&args, "project")?,
+                argument(&args, "clipIds")?,
+                argument(&args, "startMs")?,
+                argument(&args, "endMs")?,
+            )
+            .await?;
+            serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
+        }
+        "wave_match_voice_volume" => {
+            let result = commands::wave_studio::wave_match_voice_volume(
+                app.clone(),
+                app.state::<AppState>(),
+                argument(&args, "project")?,
+                argument(&args, "regionId")?,
+            )?;
+            serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
+        }
         "wave_join" => {
             let result = commands::wave_studio::wave_join(
                 app.clone(),
@@ -236,6 +296,7 @@ pub async fn dispatch(app: AppHandle, command: &str, args: Value) -> Result<Valu
                 argument(&args, "project")?,
                 argument(&args, "regionIds")?,
                 argument(&args, "regenerate")?,
+                argument(&args, "reduceNoise")?,
             )?;
             serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))
         }
@@ -321,6 +382,7 @@ pub async fn dispatch(app: AppHandle, command: &str, args: Value) -> Result<Valu
                 app.clone(),
                 argument(&args, "path")?,
                 argument(&args, "requestId")?,
+                argument(&args, "destination")?,
             )
             .await?;
             serde_json::to_value(result).map_err(|e| CommandError::internal(e.to_string()))

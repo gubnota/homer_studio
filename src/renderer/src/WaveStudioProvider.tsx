@@ -1,4 +1,4 @@
-import { isDesktop, invoke, uploadFile, open as chooseFile } from './platform'
+import { isDesktop, invoke, uploadFile, open as chooseFile, save as chooseSave } from './platform'
 import {getCurrentWebview} from '@tauri-apps/api/webview'
 import {StudioModal} from './components/StudioModal'
 import {notify} from './components/StudioToast'
@@ -8,6 +8,32 @@ import { placeVideo, videosOverlap, blankTimeline, reconcileVoiceProduction, sou
 import { recoverVoiceVersions, insertMain } from '../../shared/waveStudioEdits'
 import { errorMessage, hasBackend } from './native'
 import { waveApi } from './waveStudioNative'
+export async function choosePackage(name:string):Promise<string|null> {
+ const selected=await chooseSave({title:'Choose .wavehs project location',defaultPath:`${name.replace(/[/:]/g,'-')}.wavehs`,filters:[{name:'Homer Wave project',extensions:['wavehs']}]})
+ return selected ? (/\.wavehs$/i.test(selected)?selected:`${selected}.wavehs`) : null
+}
+export async function createWavePackage(name:string):Promise<WaveProject|null> {
+ const destination=isDesktop()?await choosePackage(name):null
+ if(isDesktop()&&!destination)return null
+ return waveApi.create(name,destination)
+}
+async function prepareProject(id:string):Promise<WaveProject|null> {
+ const storage=await waveApi.storage(id)
+ if(!storage.folder){
+  const project=await waveApi.cached(id),destination=isDesktop()?await choosePackage(project.name):null
+  if(isDesktop()&&!destination)return null
+  // HTTP legacy projects use an owned package destination too.
+  const path=destination||await invoke<string>('wave_migration_destination')
+  const status=await waveApi.saveCopy(project,path)
+  notify(`Project audio moved into .wavehs. Reclaimed ${(status.reclaimedBytes/1048576).toFixed(1)} MB of shared storage.`)
+  return waveApi.get(id)
+ }
+ try{return await waveApi.get(id)}catch(error){
+  if(!isDesktop())throw error
+  const folder=await chooseFile({title:'Locate this project’s .wavehs folder',directory:true,multiple:false})
+  return typeof folder==='string'?waveApi.locate(id,folder):null
+ }
+}
 interface EditSnapshot { timeline:WaveTimeline; videos:WaveVideo[] }
 interface EditHistory {past:EditSnapshot[];present:EditSnapshot;future:EditSnapshot[]}
 interface State { project: WaveProject | null; history: EditHistory; change: number }
@@ -74,7 +100,7 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
    if (!hasBackend()) { restoring.current=false; return }
    let alive = true
    const id = localStorage.getItem('homer.wave.lastProject')
-   if (id) { setBusy(true); void waveApi.get(id).then(p => { if (alive) load(p) }).catch(cause => { if (alive) setError(errorMessage(cause)) }).finally(() => { restoring.current=false; if (alive) setBusy(false) }) } else { restoring.current=false }
+   if (id) { setBusy(true); void prepareProject(id).then(p => { if (alive&&p) load(p) }).catch(cause => { if (alive) setError(errorMessage(cause)) }).finally(() => { restoring.current=false; if (alive) setBusy(false) }) } else { restoring.current=false }
    return () => { alive = false }
  }, [])
  useEffect(() => { const timer = window.setTimeout(() => { void flush().catch(() => {}) }, 450); return () => window.clearTimeout(timer) }, [state.change, view])
@@ -90,11 +116,16 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
    await drain();setOpeningBundle(true)
    const controller=new AbortController();uploadAbort.current=controller
    try {
+    let destination:string|null=null
+    if(isDesktop()&&typeof path==='string'&&await waveApi.pathKind(path)==='archive'){
+     destination=await choosePackage(path.split('/').pop()?.replace(/\.wavehs$/i,'')||'Opened project')
+     if(!destination)return
+    }
     const project=await importing(typeof path==='string'?'Opening project':'Uploading project',async id=>{
      const source=typeof path==='string'?path:await uploadFile(path,path.name,controller.signal)
      if(controller.signal.aborted)throw new Error('Project opening cancelled.')
      setOperation({id,label:'Opening project',progress:0})
-     return waveApi.importBundle(source,id)
+     return waveApi.importBundle(source,id,destination)
     })
     load(project);window.location.hash='wave-studio';notify('Project opened with its media and voice versions.')
    }catch(cause){notify(errorMessage(cause),'error');throw cause}
@@ -112,11 +143,11 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
   window.addEventListener('dragover',drag);window.addEventListener('drop',drop,true)
   return()=>{window.removeEventListener('dragover',drag);window.removeEventListener('drop',drop,true)}
  },[])
- async function create(): Promise<boolean> { return task(async () => { await drain(); load(await waveApi.create('Untitled narration')) }) }
- async function open(id: string): Promise<boolean> { return task(async () => { await drain(); load(await waveApi.get(id)); window.location.hash = 'wave-studio' }) }
+ async function create(): Promise<boolean> { let created=false;const ok=await task(async () => { await drain(); const p=await createWavePackage('Untitled narration');if(p){load(p);created=true} });return ok&&created }
+ async function open(id: string): Promise<boolean> { let opened=false;const ok=await task(async () => { await drain();const p=await prepareProject(id);if(p){load(p);opened=true;window.location.hash='wave-studio'} });return ok&&opened }
  async function deleteProject(id:string):Promise<void>{await drain();await waveApi.delete(id);if(current.current.project?.id===id){current.current=initial;dispatch({kind:'clear'});setView(defaultView);savedView.current=JSON.stringify(defaultView);savedChange.current=0;revision.current=0;localStorage.removeItem('homer.wave.lastProject')}}
  function setVideos(videos:WaveVideo[]):void{if(videosOverlap(videos)){setError('Video fragments cannot overlap. Arrange them sequentially first.');return}dispatch({kind:'videos',videos})}
- async function importVideos(paths:string[],at:number):Promise<void>{await task(async()=>{batchCancelled.current=false;let position=at;for(let i=0;i<paths.length;i++){if(batchCancelled.current)throw new Error(`Import cancelled. ${i} of ${paths.length} videos added; remaining files were not imported.`);try{const origin=current.current.project?.id,video=await importing(`Preparing video ${i+1} of ${paths.length}`,id=>waveApi.importVideo(paths[i]!,id));let p=current.current.project;if(p?.id!==origin)throw new Error('Project changed during video import. Try again.');if(!p){p=await waveApi.create(video.name);load(p)}if(videosOverlap(p.videos||[]))throw new Error('Arrange existing overlapping videos before adding more.');const start=placeVideo(p.videos||[],video.durationMs,position);setVideos([...(p.videos||[]),{...video,startMs:start}]);position=start+video.durationMs;setView(v=>({...v,selectedId:video.id,spanMs:Math.max(v.spanMs,position*1.04)}));if(start!==at&&i===0)setError(`Video placed at ${(start/1000).toFixed(3)}s to avoid overlap.`)}catch(e){throw new Error(`${errorMessage(e)} (${i} of ${paths.length} videos added; unfinished: ${paths.slice(i).map(p=>p.split('/').pop()).join(', ')})`)}}})}
+ async function importVideos(paths:string[],at:number):Promise<void>{await task(async()=>{if(!current.current.project){const p=await createWavePackage('Untitled video project');if(!p)return;load(p)}batchCancelled.current=false;let position=at;for(let i=0;i<paths.length;i++){if(batchCancelled.current)throw new Error(`Import cancelled. ${i} of ${paths.length} videos added; remaining files were not imported.`);try{const origin=current.current.project?.id,video=await importing(`Preparing video ${i+1} of ${paths.length}`,id=>waveApi.importVideo(paths[i]!,id));let p=current.current.project;if(p?.id!==origin)throw new Error('Project changed during video import. Try again.');if(!p)throw new Error('Choose a project first.');if(videosOverlap(p.videos||[]))throw new Error('Arrange existing overlapping videos before adding more.');const start=placeVideo(p.videos||[],video.durationMs,position);setVideos([...(p.videos||[]),{...video,startMs:start}]);position=start+video.durationMs;setView(v=>({...v,selectedId:video.id,spanMs:Math.max(v.spanMs,position*1.04)}));if(start!==at&&i===0)setError(`Video placed at ${(start/1000).toFixed(3)}s to avoid overlap.`)}catch(e){throw new Error(`${errorMessage(e)} (${i} of ${paths.length} videos added; unfinished: ${paths.slice(i).map(p=>p.split('/').pop()).join(', ')})`)}}})}
  async function importVideo(path:string,at:number):Promise<void>{await importVideos([path],at)}
  function edit(timeline: WaveTimeline, sources?: WaveSource[]): void { dispatch({ kind: 'edit', timeline: reconcileVoiceProduction(timeline), sources }) }
  function addSource(source: WaveSource, at?: number, lane: 'main' | 'sfx' = 'sfx'): void {
@@ -127,11 +158,12 @@ export function WaveStudioProvider({ children }: PropsWithChildren): JSX.Element
  }
  async function importAudio(kind: 'file' | 'memo' | 'sound', value: string, mode: 'insert' | 'append' | 'replace' | 'sfx' = 'insert', at?: number): Promise<void> {
    await task(async () => {
-     const origin = current.current.project?.id
-     const source = await importing('Preparing audio',id=>waveApi.import(kind, kind === 'file' ? value : null, kind === 'file' ? null : value,id))
+     if(!current.current.project){const p=await createWavePackage(value.split('/').pop()?.replace(/\.[^.]+$/,'')||'Untitled narration');if(!p)return;load(p)}
+     const origin = current.current.project!.id
+     const source = await importing('Preparing audio',id=>waveApi.import(origin,kind, kind === 'file' ? value : null, kind === 'file' ? null : value,id))
      let p = current.current.project
      if (p?.id !== origin) throw new Error('Project changed during import. Add the audio again to this project.')
-     if (!p) { p = await waveApi.create(source.name.replace(/\.[^.]+$/, '')); load(p) }
+     if (!p) throw new Error('Choose a project first.')
      const timeline = mode === 'replace' ? { ...p.timeline, clips: [], voices: [] } : p.timeline
      const position = mode === 'append' ? Math.max(0, ...timeline.clips.map(c => c.startMs + (c.sourceEndMs - c.sourceStartMs) / c.speed)) : mode === 'replace' ? 0 : Math.max(0, at ?? viewRef.current.selection?.[0] ?? viewRef.current.playheadMs)
      if(position+source.durationMs>86400000)throw new Error('Audio would exceed the 24-hour timeline limit. Choose an earlier position.')

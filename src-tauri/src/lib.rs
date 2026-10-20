@@ -19,12 +19,44 @@ fn take_open_wave_files() -> Vec<String> {
         .unwrap_or_default()
 }
 fn queue_wave_file(path: String) {
-    if path == ":open-dialog:" || path.to_lowercase().ends_with(".wavehs") {
+    if path == ":open-dialog:"
+        || std::path::Path::new(&path)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("wavehs"))
+    {
         if let Ok(mut q) = OPEN_FILES.lock() {
             if !q.contains(&path) {
                 q.push(path)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod document_tests {
+    use super::{queue_wave_file, take_open_wave_files};
+
+    #[test]
+    fn queues_archive_and_package_paths_without_duplicates() {
+        take_open_wave_files();
+        for path in [
+            "/tmp/Archive.wavehs",
+            "/tmp/Folder.WAVEHS/",
+            "/tmp/Archive.wavehs",
+            ":open-dialog:",
+            "/tmp/Not a project.wav",
+        ] {
+            queue_wave_file(path.into());
+        }
+        assert_eq!(
+            take_open_wave_files(),
+            [
+                "/tmp/Archive.wavehs",
+                "/tmp/Folder.WAVEHS/",
+                ":open-dialog:"
+            ]
+        );
     }
 }
 
@@ -60,6 +92,8 @@ pub fn run() {
                 std::env::var_os("HOMER_SMOKE_WEB_DATA").map(std::path::PathBuf::from);
         }
     }
+    #[cfg(target_os = "macos")]
+    let mut app_ready = false;
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -120,6 +154,8 @@ pub fn run() {
             take_open_wave_files,
             commands::wave_studio::wave_cancel_peaks,
             commands::wave_studio::wave_normalize,
+            commands::wave_studio::wave_normalize_selection,
+            commands::wave_studio::wave_match_voice_volume,
             commands::wave_studio::wave_join,
             commands::wave_studio::wave_generate_speech,
             commands::wave_studio::wave_convert_regions,
@@ -139,6 +175,11 @@ pub fn run() {
             commands::wave_studio::wave_import_bundle,
             commands::wave_studio::wave_open_copy,
             commands::wave_studio::wave_get,
+            commands::wave_studio::wave_import_sfx,
+            commands::wave_studio::wave_project_storage,
+            commands::wave_studio::wave_cached_project,
+            commands::wave_studio::wave_locate_project,
+            commands::wave_studio::wave_project_path_kind,
             commands::wave_studio::wave_create,
             commands::wave_studio::wave_save,
             commands::wave_studio::wave_import,
@@ -238,25 +279,39 @@ pub fn run() {
         ])
         .build(context)
         .expect("failed to build Homer Studio")
-        .run(|app, event| {
+        .run(move |app, event| {
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Opened { urls } = &event {
-                for url in urls {
-                    if let Ok(path) = url.to_file_path() {
-                        queue_wave_file(path.to_string_lossy().into_owned());
+            {
+                let activate = match &event {
+                    tauri::RunEvent::Ready => {
+                        app_ready = true;
+                        OPEN_FILES.lock().map(|q| !q.is_empty()).unwrap_or(false)
                     }
-                }
-                let window = app.get_webview_window("main").or_else(|| {
-                    app.config().app.windows.first().and_then(|config| {
-                        tauri::WebviewWindowBuilder::from_config(app, config)
-                            .ok()?
-                            .build()
-                            .ok()
-                    })
-                });
-                if let Some(window) = window {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                    tauri::RunEvent::Opened { urls } => {
+                        for url in urls {
+                            if let Ok(path) = url.to_file_path() {
+                                queue_wave_file(path.to_string_lossy().into_owned());
+                            }
+                        }
+                        // Finder can deliver Opened before Tauri creates its configured windows.
+                        // Keep the paths queued until Ready to avoid creating `main` twice.
+                        app_ready
+                    }
+                    _ => false,
+                };
+                if activate {
+                    let window = app.get_webview_window("main").or_else(|| {
+                        app.config().app.windows.first().and_then(|config| {
+                            tauri::WebviewWindowBuilder::from_config(app, config)
+                                .ok()?
+                                .build()
+                                .ok()
+                        })
+                    });
+                    if let Some(window) = window {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
                 }
             }
             if let tauri::RunEvent::ExitRequested {

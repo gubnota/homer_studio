@@ -78,3 +78,13 @@ Rules:
 - Renderer displays held-frame coverage without changing source video durations; shared navigation helpers select narration or video fallback. Core verifies both MP4 stream lengths before export publication.
 
 - Video placement IDs are distinct from app-owned asset IDs after trims/splits/copies. Renderer edits placements and retains immutable asset references; core validates source bounds and resolves trusted asset metadata. Audio transfers preserve concurrent mixing and every unrelated placement; explicit narration ripple operations retain their existing semantics. Provider owns shared audio/video edit history.
+
+## Package audio ownership (2026-10-09)
+- `wave_store` owns required destinations, authoritative package manifests, validated media bindings, atomic audio publication and verified legacy migration/reclamation. App-owned source/location metadata must never accept manifest absolute paths.
+- Rendering resolves each source within its project's package. Processing imports immutable outputs into that package; independent SFX remain library-owned and are copied into projects before use.
+- Bundle import validates/extracts archives at a chosen destination and defers package registration until publication. Desktop/provider owns chooser cancellation and location recovery; HTTP owns destination scope. Recents/trash operations never delete external packages.
+
+## Converted voice and selection processing
+- Core `wave_voice_audio` owns passage cleanup, loudness measurement/matching and peak limiting; `wave_processing` owns native-rate worker input, immutable comparison variants and normalization measurement/bakes. Existing-conversion repair must not depend on an AI worker.
+- Shared edits own boundary splitting and original/cached voice preservation. Renderer owns explicit acceptance, stale-timeline rejection and one-edit Undo/Redo. Assignment must retain original/version metadata across repeated voice changes.
+- Preview commands own request-scoped cancellation and bounded PCM16 caches; renderer validates transport/WAVs, manages the audio clock, prebuffers two bounded chunks and reports buffering/output errors. Desktop and HTTP forward the same contracts.

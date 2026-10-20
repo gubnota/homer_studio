@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { placeVideo, videosOverlap, arrangeVideos, videoFrame, voiceAudioKey, voiceComplete, reconcileVoiceProduction, projectDuration, blankTimeline, clipDuration, clipEnd, formatWaveTime, sourceClip, timelineDuration } from '../src/shared/waveStudio'
-import { rememberVoiceVersions, restoreVoiceOriginal, recoverVoiceVersions, packSfxRows, insertMain, transferClip, replaceRange, joinCandidateIds, assignVoice, changeSpeed, historyEdit, historyRedo, historyUndo, insertSilence, moveClip, removeRange, splitAt, splitSoundtrack, trimSoundtrack, splitVideo, trimVideo, copyFragments, pasteFragments } from '../src/shared/waveStudioEdits'
+import { normalizeSelection, rememberVoiceVersions, restoreVoiceOriginal, recoverVoiceVersions, packSfxRows, insertMain, transferClip, replaceRange, joinCandidateIds, assignVoice, changeSpeed, historyEdit, historyRedo, historyUndo, insertSilence, moveClip, removeRange, splitAt, splitSoundtrack, trimSoundtrack, splitVideo, trimVideo, copyFragments, pasteFragments } from '../src/shared/waveStudioEdits'
 const source = { id: crypto.randomUUID(), name: 'Narration', durationMs: 10000, channels: 2 }
 const original = () => ({ ...blankTimeline(), clips: [sourceClip(source)] })
 describe('Wave Studio reversible editing', () => {
@@ -119,3 +119,31 @@ describe('source restoration and fragment copies',()=>{
 
 it('moves the third soundtrack to narration without moving the second soundtrack or its row',()=>{const main=sourceClip(source,0),second=sourceClip(source,1000),third=sourceClip(source,2000),t={...blankTimeline(),clips:[main],sfx:[second,third]};const rows=packSfxRows(t.sfx),preferred=new Map(rows.flatMap((row,i)=>row.map(c=>[c.id,i] as const)));const next=transferClip(t,third.id,'main',third.startMs);expect(next.clips).toEqual([main,third]);expect(next.sfx).toEqual([second]);expect(packSfxRows(next.sfx,preferred)[preferred.get(second.id)!]).toEqual([second]);expect(t.sfx).toEqual([second,third])})
 it('keeps remaining soundtrack rows stable when an earlier row becomes empty',()=>{const a=sourceClip(source,0),b=sourceClip(source,0),c=sourceClip(source,0),rows=packSfxRows([a,b,c]),preferred=new Map(rows.flatMap((row,i)=>row.map(c=>[c.id,i] as const)));expect(packSfxRows([b,c],preferred)).toEqual([[],[b],[c]])})
+
+
+describe('selection normalization and repeated conversion restoration',()=>{
+ it('preserves selected balance, isolates effects, and supports one Undo/Redo edit',()=>{
+  const t=splitAt(original(),5000);t.clips[0]!.gainDb=-8;t.clips[1]!.gainDb=2;t.sfx=[sourceClip(source,0,true)]
+  const n=normalizeSelection(t,[],0,10000,3,[])
+  expect(n.clips.map(c=>c.gainDb)).toEqual([-5,5]);expect(n.sfx).toEqual(t.sfx)
+  const h=historyEdit({past:[],present:t,future:[]},n);expect(historyUndo(h).present).toEqual(t);expect(historyRedo(historyUndo(h)).present).toEqual(n)
+  const effectOnly=normalizeSelection(t,[t.sfx[0]!.id],0,10000,3,[]);expect(effectOnly.clips).toEqual(t.clips);expect(effectOnly.sfx[0]!.gainDb).toBe(t.sfx[0]!.gainDb+3)
+ })
+ it('splits partial fragments using the baked full envelope and changes only selected gain',()=>{
+  const t=original();t.clips[0]!.fadeInMs=4000;t.clips[0]!.gainDb=-2
+  const n=normalizeSelection(t,[],2000,6000,5,[[t.clips[0]!.id,'baked']])
+  expect(n.clips.map(c=>[c.startMs,c.sourceStartMs,c.sourceEndMs,c.gainDb,c.fadeInMs])).toEqual([[0,0,2000,-2,0],[2000,2000,6000,3,0],[6000,6000,10000,-2,0]])
+  expect(n.clips.every(c=>c.sourceId==='baked')).toBe(true);expect(t.clips[0]!.sourceId).toBe(source.id)
+ })
+ it('restores the initial recording after repeated voices, regeneration, normalization and reload',()=>{
+  let t=assignVoice(original(),0,10000,{id:'woman-a',name:'A'});const initial=structuredClone(t)
+  for(const [i,voiceId] of ['woman-a','woman-b','woman-c','woman-c'].entries()){
+   t=assignVoice(t,0,10000,{id:voiceId,name:voiceId});const before=structuredClone(t)
+   t=replaceRange(t,0,10000,sourceClip({...source,id:`converted-${i}`}));t.voices=t.voices.map(v=>({...v,production:{status:'converted',voiceId:v.voiceId,audioKey:voiceAudioKey(t,v)}}));t=rememberVoiceVersions(before,t,new Set(t.voices.map(v=>v.id)));t=reconcileVoiceProduction(t)
+  }
+  t=normalizeSelection(t,[],2000,6000,2,[[t.clips[0]!.id,'matched-and-baked']]);t=JSON.parse(JSON.stringify(t))
+  expect(voiceComplete(t,t.voices[0]!)).toBe(true)
+  const restored=restoreVoiceOriginal(t,t.voices[0]!.id);expect(restored.clips.map(c=>[c.sourceId,c.sourceStartMs,c.sourceEndMs])).toEqual(initial.clips.map(c=>[c.sourceId,c.sourceStartMs,c.sourceEndMs]));expect(restored.voices[0]!.audio!.versions).toHaveLength(3)
+  expect(assignVoice(restored,0,10000,{id:'woman-b',name:'B'}).clips[0]!.sourceId).toBe('converted-1')
+ })
+})

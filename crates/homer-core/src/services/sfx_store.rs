@@ -1,7 +1,7 @@
 use super::{audio_assets, project_store::CommandError, settings, wave_store, wave_studio::Source};
 #[cfg(feature = "desktop")]
 use crate::runtime::Manager;
-use crate::runtime::{AppHandle, path::BaseDirectory};
+use crate::runtime::{path::BaseDirectory, AppHandle};
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,7 +65,7 @@ pub fn list(app: &AppHandle) -> Result<Vec<Asset>, CommandError> {
         let fallback = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../resources/sfx")
             .join(file);
-        let source = wave_store::import(
+        let source = wave_store::import_library(
             app,
             if bundled.is_file() {
                 &bundled
@@ -98,6 +98,25 @@ pub fn add(app: &AppHandle, source: Source, category: &str) -> Result<Vec<Asset>
         ));
     }
     let mut all = list(app)?;
+    let input = wave_store::source_path(app, &source.id)?;
+    let mut source = source;
+    let library = wave_store::root(app)?.join("library");
+    std::fs::create_dir_all(library.join("media"))
+        .map_err(|e| CommandError::io("Cannot create sound library", e))?;
+    if input != library.join("media").join(format!("{}.wav", source.id)) {
+        source.id = uuid::Uuid::new_v4().to_string();
+        wave_store::copy_media(
+            &library,
+            &input,
+            &std::path::PathBuf::from(format!("media/{}.wav", source.id)),
+        )?;
+        audio_assets::atomic_json(
+            &wave_store::root(app)?
+                .join("sources")
+                .join(format!("{}.json", source.id)),
+            &source,
+        )?;
+    }
     all.push(Asset {
         source,
         category: category.into(),

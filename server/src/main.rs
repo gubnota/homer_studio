@@ -1,18 +1,18 @@
 mod api;
 use axum::{
-    Json, Router,
     body::Body,
     extract::Request,
     extract::{DefaultBodyLimit, Path, Query, State},
-    http::{HeaderMap, StatusCode, header},
+    http::{header, HeaderMap, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
+    Json, Router,
 };
 use homer_core::runtime::AppHandle;
 use http_body_util::BodyExt;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{path::PathBuf, sync::Arc};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tower_http::services::{ServeDir, ServeFile};
@@ -133,6 +133,7 @@ fn validate_paths(app: &AppHandle, args: &Value) -> bool {
                     | "parentPath"
                     | "destination"
                     | "destinationDir"
+                    | "directory"
                     | "outputPath"
             ) {
                 if let Some(path) = value.as_str() {

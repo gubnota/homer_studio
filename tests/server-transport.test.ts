@@ -5,13 +5,21 @@ afterEach(() => vi.unstubAllGlobals())
 describe('browser backend transport', () => {
  it('uses the HTTP backend and restores binary preview data', async () => {
   vi.stubGlobal('window', {location:{protocol:'http:'}})
-  const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({binary:[82,73,70,70]})))
+  const binary=[82,73,70,70,...Array(40).fill(0)]
+  const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({binary})))
   vi.stubGlobal('fetch',fetch)
   expect(isDesktop()).toBe(false); expect(hasBackend()).toBe(true)
   const result=await invoke<ArrayBuffer>('wave_preview',{startMs:0,endMs:1000})
-  expect([...new Uint8Array(result)]).toEqual([82,73,70,70])
+  expect([...new Uint8Array(result)]).toEqual(binary)
   expect(fetch.mock.calls[0]?.[0]).toBe('/api/command/wave_preview')
   expect(JSON.parse(fetch.mock.calls[0]?.[1].body)).toEqual({startMs:0,endMs:1000})
+ })
+ it('rejects missing or invalid preview bytes before coercion', async()=>{
+  vi.stubGlobal('window',{location:{protocol:'http:'}})
+  const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({}))).mockResolvedValueOnce(new Response(JSON.stringify({binary:Array(44).fill(256)})))
+  vi.stubGlobal('fetch',fetch)
+  await expect(invoke('wave_preview')).rejects.toThrow(/arrive/)
+  await expect(invoke('wave_preview')).rejects.toThrow(/arrive/)
  })
  it('uploads a file as a body without expanding it into JSON', async () => {
   const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({path:'/data/uploads/audio.mp3'})))

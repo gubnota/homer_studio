@@ -40,7 +40,7 @@ export function WaveStudioTimeline({ sources, videos, setVideos, durationMs, tim
    if (e.button !== 0) return
    const at = ms(e.clientX), list = lane === 'sfx' ? sfxRows[Math.max(0, Math.floor((e.clientY-e.currentTarget.getBoundingClientRect().top)/110))] || [] : timeline.clips, c = lane!=='voice'&&regionId?(lane==='sfx'?timeline.sfx:list).find(c=>c.id===regionId):[...list].reverse().find(c => at >= c.startMs && at <= clipEnd(c)), v = lane === 'voice' ? timeline.voices.find(v => regionId ? v.id === regionId : at >= v.startMs && at < v.endMs) : null
    if(c && lane !== 'voice' && (e.shiftKey || e.metaKey || e.ctrlKey)) {
-     setView(state=>{const ids=state.selectedIds?.length ? state.selectedIds : state.selectedId ? [state.selectedId] : [];const selected=e.shiftKey ? [...new Set([...ids,c.id])] : ids.includes(c.id) ? ids.filter(id=>id!==c.id) : [...ids,c.id];const clips=list.filter(clip=>selected.includes(clip.id));return {...state, selectedId:c.id, selectedIds:selected, selection:clips.length ? [Math.min(...clips.map(clip=>clip.startMs)),Math.max(...clips.map(clipEnd))] : null}})
+     setView(state=>{const ids=state.selectedIds?.length ? state.selectedIds : state.selectedId ? [state.selectedId] : [];const selected=e.shiftKey ? [...new Set([...ids,c.id])] : ids.includes(c.id) ? ids.filter(id=>id!==c.id) : [...ids,c.id];const clips=[...timeline.clips,...timeline.sfx].filter(clip=>selected.includes(clip.id));return {...state, selectedId:c.id, selectedIds:selected, selection:clips.length ? [Math.min(...clips.map(clip=>clip.startMs)),Math.max(...clips.map(clipEnd))] : null}})
      return
    }
    let mode: Drag['mode'] = 'select', id = '', offset = 0
@@ -58,7 +58,7 @@ export function WaveStudioTimeline({ sources, videos, setVideos, durationMs, tim
    const d = drag.current; if (!d) return
    if (Math.abs(e.clientX - d.pointerX) < 3 && Math.abs(e.clientY-d.pointerY)<3 && !d.moved) return; d.moved = true
    const at = snap(ms(e.clientX), d.id), selectedAt = Math.min(duration, at); setDropAt(null)
-   if (d.mode === 'select') setView(v => { const start = Math.min(duration, d.start, selectedAt), end = Math.min(duration, Math.max(d.start, selectedAt)); return { ...v, selection: end > start ? [start, end] : null } })
+   if (d.mode === 'select') setView(v => { const start = Math.min(duration, d.start, selectedAt), end = Math.min(duration, Math.max(d.start, selectedAt)); return { ...v, selectedId:null, selectedIds:[], selection: end > start ? [start, end] : null } })
    else if (d.mode === 'selection-start' || d.mode === 'selection-end') setView(v => { const s = d.originView.selection; if (!s) return v; return { ...v, selection: d.mode === 'selection-start' ? [Math.max(0, Math.min(selectedAt, s[1] - 1)), s[1]] : [s[0], Math.min(duration, Math.max(selectedAt, s[0] + 1))] } })
    else if (d.mode==='sfx-start'||d.mode==='sfx-end'||d.mode==='main-start'||d.mode==='main-end') {const clip=[...d.original.clips,...d.original.sfx].find(c=>c.id===d.id)!;updatePreview(trimSoundtrack(d.original,d.id,d.mode.endsWith('start')?'start':'end',at,sources.find(s=>s.id===clip.sourceId)?.durationMs||clip.sourceEndMs))}
    else if (d.mode === 'clip' && e.clientY >= (ref.current?.querySelector('.wave-sfx-lane')?.getBoundingClientRect().top ?? Infinity)) updatePreview(transferClip(d.original,d.id,'sfx',Math.max(0,at-d.offset)))

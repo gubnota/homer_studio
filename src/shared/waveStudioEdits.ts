@@ -257,3 +257,20 @@ export function pasteFragments(copy:FragmentCopy,t:WaveTimeline,videos:WaveVideo
  const added=copy.items.map(c=>{const id=newId();ids.push(id);const startMs=c.startMs+offset;if(startMs+clipDuration(c)>86400000)throw new Error('No free space within the 24-hour timeline.');return {...c,id,startMs}})
  return {timeline:{...t,[copy.lane]:[...t[copy.lane],...added].sort((a,b)=>a.startMs-b.startMs)},videos,ids}
 }
+
+/** One shared gain; boundary sources contain the old envelopes so outside audio stays exact. */
+export function normalizeSelection(t:WaveTimeline, ids:string[], start:number, end:number, gainDb:number, baked:[string,string][]):WaveTimeline {
+ const explicit=new Set(ids), sources=new Map(baked)
+ const selected=(c:WaveClip,lane:'clips'|'sfx')=>!!c.sourceId&&c.startMs<end&&clipEnd(c)>start&&(explicit.size?explicit.has(c.id):lane==='clips')
+ const lane=(name:'clips'|'sfx')=>t[name].flatMap(c=>{
+  if(!selected(c,name))return [c]
+  const sourceId=sources.get(c.id)
+  const base=sourceId?{...c,sourceId,sourceStartMs:0,sourceEndMs:clipDuration(c),speed:1,fadeInMs:0,fadeOutMs:0}:c
+  return splitClip(base,start).flatMap(part=>splitClip(part,end)).map(part=>part.startMs>=start-.001&&clipEnd(part)<=end+.001?{...part,gainDb:part.gainDb+gainDb}:part)
+ })
+ const next={...t,clips:lane('clips'),sfx:lane('sfx')}
+ // Store the active adjusted version, retaining originals and every other cached voice.
+ const completed=new Set(t.voices.filter(v=>v.production&&t.clips.some(c=>selected(c,'clips')&&c.startMs<v.endMs&&clipEnd(c)>v.startMs)).map(v=>v.id))
+ next.voices=next.voices.map(v=>completed.has(v.id)&&v.production?{...v,production:{...v.production,audioKey:voiceAudioKey(next,v)}}:v)
+ return rememberVoiceVersions(t,next,completed)
+}

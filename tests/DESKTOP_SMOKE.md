@@ -2,6 +2,10 @@
 
 The automated smoke check launches the packaged application executable with isolated configuration/data folders, requires it to stay alive for four seconds, and then sends a termination signal. It does not exercise the normal Quit event.
 
+After `bun run pack:mac`, run `node scripts/smoke-app.mjs --documents` for the macOS document-opening regression. It makes an isolated, ad-hoc signed app copy and uses LaunchServices (the Finder opening path). Both folder and compressed WAVEHS02 projects must import on cold launch and into a running app, retain remapped source references and exact audio bytes, and survive repeated and malformed document opens. Temporary app/data folders are removed afterward; local model workers are disabled for this check. Passing a path directly to the executable does not reproduce the macOS Opened-before-Ready ordering.
+
+For changes to document opening, also manually check File Open, drag-and-drop, direct executable CLI opening, playback of included audio/video, and cancellation of a large import. These actions are not established by the automated document smoke.
+
 For a release candidate, also check these actions manually:
 
 1. Open the app and create a project in a temporary folder.
@@ -29,3 +33,15 @@ For a release candidate, also check these actions manually:
 - Import the reported MP3 when supplied; compare waveform/playback and file handles across repeated import/cancel/remove cycles.
 - Verify desktop drag/File Open/CLI `.wavehs`, custom-voice round trip, video remux/fallback cancellation and collapsed-sidebar spacing.
 - On a supplied CUDA Linux host, test secure-origin browser microphone, inference quality, cancellation and RAM/VRAM over long jobs.
+
+## Required package storage follow-up
+- New/first import/recording/generation: choose a `.wavehs` destination; Cancel creates no project/media. Save and restart; audio must remain in package `media/`, with no new global `assets` WAVs.
+- Move a working package, reopen and locate it. Test Save as recovery to a writable destination after making a test package read-only.
+- Open a legacy project, verify originals/inactive voice takes and outstanding results survive migration; shared/trash/library references must prevent unsafe legacy reclamation.
+- Run real local TTS/conversion cancellation and accepted recording/Join with a test project; confirm cancelled work leaves no incomplete published audio. Automated checks cover import cancellation and real-media HTTP recording/Join/export; live model quality and native microphone remain manual checks.
+
+## Converted voice listening follow-up (2026-10-21)
+- Convert real 20-second speech with two distinct women’s references, then a third voice. Compare consonants, breaths, speaker identity and chunk boundaries. Verify original restoration after acceptance, volume repair, save/reload and Undo/Redo. Synthetic tests establish reference routing and processing, not perceptual quality.
+- Compare Gentle hiss cleanup on/off before accepting; toggling must not repeat inference. Stop the AI worker and preview/accept Match original volume on an existing conversion.
+- Listen before/after acceptance, during continuous timeline and selection playback, seeking across ten seconds, rapid Play/Stop/Play, then compare export. Automated tests cover PCM decoding/scheduling and matching rendered samples; physical desktop audio output remains a listening check.
+- Normalize unequal-level fragments and a partial range with overlaps/fades. Confirm relative balance, unaffected unselected narration/SFX, reported gain limits and one-step Undo/Redo.
